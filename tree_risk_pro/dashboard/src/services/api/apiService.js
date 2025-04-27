@@ -2,8 +2,18 @@
 
 /**
  * Core API service for interacting with the backend
+ * 
+ * For production with Nginx:
+ * - Set VITE_API_URL="" in .env to use relative URLs (/api/...)
+ * 
+ * For development:
+ * - Set VITE_API_URL="http://localhost:5000" in .env
  */
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Using strict equality to check for undefined specifically
+// This ensures empty string is used as-is for relative URLs
+const API_BASE_URL = import.meta.env.VITE_API_URL === undefined 
+  ? 'http://localhost:5000' 
+  : import.meta.env.VITE_API_URL;
 
 console.log('API_BASE_URL:', API_BASE_URL);
 
