@@ -1,0 +1,92 @@
+{
+  "tree_id": "tree-007",
+  "species": "Cedar Elm",
+  "scan_date": "2025-02-28",
+  "scan_type": "Aerial",
+  "point_count": 10235,
+  "height": 42.0,
+  "dbh": 22.0,
+  "canopy_width": 28.0,
+  "canopy_area": 615.8,
+  "canopy_volume": 7389.6,
+  "trunk_volume": 331.4,
+  "biomass_estimate": 7951.5,
+  "carbon_sequestration": 3975.8,
+  "structure_model": {
+    "trunk": {
+      "height": 16.8,
+      "diameter_base": 30.5,
+      "diameter_breast": 22.0,
+      "taper": 0.38,
+      "lean_angle": 0.0,
+      "lean_direction": 0
+    },
+    "scaffold_branches": [
+      {
+        "height": 10.2,
+        "diameter": 12.4,
+        "length": 8.7,
+        "azimuth": 50,
+        "inclination": 20
+      },
+      {
+        "height": 12.5,
+        "diameter": 10.8,
+        "length": 10.2,
+        "azimuth": 140,
+        "inclination": 15
+      },
+      {
+        "height": 14.7,
+        "diameter": 9.2,
+        "length": 9.8,
+        "azimuth": 230,
+        "inclination": 25
+      },
+      {
+        "height": 16.8,
+        "diameter": 7.5,
+        "length": 11.3,
+        "azimuth": 320,
+        "inclination": 30
+      }
+    ],
+    "canopy": {
+      "base_height": 9.5,
+      "max_width": 28.0,
+      "width_north": 25.4,
+      "width_east": 27.2,
+      "width_south": 28.0,
+      "width_west": 26.3,
+      "asymmetry_index": 0.05,
+      "density_index": 0.65
+    }
+  },
+  "risk_indicators": {
+    "cavity": {
+      "detected": true,
+      "severity": "medium",
+      "location": "Main trunk at 4.2m height",
+      "size": 15.0,
+      "confidence": 0.85
+    },
+    "decay": {
+      "detected": true,
+      "severity": "low",
+      "location": "Junction of main trunk and east scaffold branch",
+      "confidence": 0.72
+    },
+    "broken_branch": {
+      "detected": false
+    },
+    "lean": {
+      "detected": false
+    },
+    "canopy_decline": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-007-thumb.png",
+  "model_url": "/mock/models/tree-007.glb",
+  "point_cloud_url": "/mock/lidar/tree-007/points"
+}

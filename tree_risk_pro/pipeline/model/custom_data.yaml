@@ -1,0 +1,18 @@
+names:
+  0: tree
+  1: bush
+  2: grass
+  3: plant
+  4: flower
+  5: forest
+  6: vegetation
+  7: shrub
+  8: branch
+  9: trunk
+  10: foliage
+  11: hedge
+  12: garden
+  13: greenery
+  14: landscape
+nc: 15
+path: /ttt/tree_ml/pipeline/model

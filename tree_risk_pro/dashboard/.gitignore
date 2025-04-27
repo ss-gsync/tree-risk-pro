@@ -1,0 +1,93 @@
+# Node.js dependencies and build files
+node_modules/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+package-lock.json
+yarn.lock
+.npm/
+
+# Python virtual environments and cache
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+.egg-info/
+*.egg
+.installed.cfg
+
+# Python poetry and environment
+.venv/
+poetry.lock
+.python-version
+
+# Environment variables and secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+*.pem
+*.key
+*.crt
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.classpath
+.c9/
+*.launch
+*.sublime-workspace
+*.sublime-project
+
+# Build and system files
+.coverage
+coverage/
+*.lcov
+.nyc_output
+build/
+*.log
+
+# Backend specific files
+backend/logs/*.log
+reports/**
+
+# Keep mock data for development
+!backend/mock_data/**
+!backend/mock_data/lidar/**
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+temp/
+tmp/
+
+# Deployment and Google Cloud specific files
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+*.pem
+gcp-credentials.json
+google-cloud-sdk/
+DEPLOYMENT.md
+gcp-deploy.sh
+
+# Exclude but keep certain files for local development
+!backend/server.js
+!backend/package.json

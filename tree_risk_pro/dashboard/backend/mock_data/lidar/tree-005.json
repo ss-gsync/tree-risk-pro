@@ -1,0 +1,101 @@
+{
+  "tree_id": "tree-005",
+  "species": "Red Oak",
+  "scan_date": "2025-03-01",
+  "scan_type": "Aerial",
+  "point_count": 13562,
+  "height": 55.0,
+  "dbh": 28.0,
+  "canopy_width": 35.0,
+  "canopy_area": 962.1,
+  "canopy_volume": 10583.1,
+  "trunk_volume": 594.7,
+  "biomass_estimate": 11872.4,
+  "carbon_sequestration": 5936.2,
+  "structure_model": {
+    "trunk": {
+      "height": 22.8,
+      "diameter_base": 38.5,
+      "diameter_breast": 28.0,
+      "taper": 0.36,
+      "lean_angle": 3.0,
+      "lean_direction": 190
+    },
+    "scaffold_branches": [
+      {
+        "height": 15.4,
+        "diameter": 16.2,
+        "length": 11.5,
+        "azimuth": 45,
+        "inclination": 25,
+        "damage": {
+          "type": "bark_damage",
+          "location": 2.3,
+          "severity": "medium"
+        }
+      },
+      {
+        "height": 17.8,
+        "diameter": 14.5,
+        "length": 13.2,
+        "azimuth": 135,
+        "inclination": 20
+      },
+      {
+        "height": 19.5,
+        "diameter": 13.7,
+        "length": 12.8,
+        "azimuth": 225,
+        "inclination": 15
+      },
+      {
+        "height": 22.8,
+        "diameter": 10.3,
+        "length": 14.5,
+        "azimuth": 315,
+        "inclination": 30
+      }
+    ],
+    "canopy": {
+      "base_height": 13.2,
+      "max_width": 35.0,
+      "width_north": 33.6,
+      "width_east": 35.0,
+      "width_south": 30.2,
+      "width_west": 32.1,
+      "asymmetry_index": 0.12,
+      "density_index": 0.68
+    }
+  },
+  "risk_indicators": {
+    "root_damage": {
+      "detected": true,
+      "severity": "high",
+      "location": "North side of root flare",
+      "confidence": 0.92
+    },
+    "trunk_damage": {
+      "detected": true,
+      "severity": "medium",
+      "location": "North side of trunk, 1.5m from ground",
+      "size": 25.0,
+      "confidence": 0.88
+    },
+    "lean": {
+      "detected": true,
+      "severity": "low",
+      "angle": 3.0,
+      "direction": "South",
+      "confidence": 0.75
+    },
+    "broken_branch": {
+      "detected": false
+    },
+    "canopy_decline": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-005-thumb.png",
+  "model_url": "/mock/models/tree-005.glb",
+  "point_cloud_url": "/mock/lidar/tree-005/points"
+}

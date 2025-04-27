@@ -1,0 +1,159 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 48%;
+  }
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.mapboxgl-map {
+  height: 100%;
+  width: 100%;
+}
+
+/* Custom Google Maps styling */
+.gm-style-iw {
+  border-radius: 8px !important;
+  padding: 0 !important; /* Remove default padding */
+}
+
+/* Fix for InfoWindow - top padding issue */
+.gm-style-iw-d {
+  overflow: hidden !important; /* Prevent scroll */
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Remove the close button's container padding */
+.gm-style-iw-c {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* Hide the close button using various selectors to ensure it's targeted */
+button.gm-ui-hover-effect,
+.gm-style-iw button,
+.gm-style-iw-t button,
+.gm-style-iw .gm-ui-hover-effect,
+.gm-style-iw-d ~ button,
+.gm-style-iw-c > button {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Custom LiDAR label styling */
+.lidar-label {
+  font-weight: bold !important;
+  background-color: rgba(255, 255, 255, 0.7) !important;
+  padding: 3px 6px !important;
+  border-radius: 4px !important;
+}
+
+/* Fix for login form input styling */
+#username, #password {
+  background-color: #f9fafb !important; /* bg-gray-50 equivalent */
+  border: 1px solid #e5e7eb !important; /* border-gray-200 equivalent */
+}
+
+#username:focus, #password:focus {
+  background-color: #ffffff !important;
+  border-color: #ef4444 !important; /* border-red-500 equivalent */
+  box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important; /* ring-1 ring-red-500 equivalent */
+}
+
+/* Ensure the login page has proper background */
+.min-h-screen.flex.items-center.justify-center {
+  background-color: #e5e7eb !important; /* bg-gray-200 equivalent */
+}
+
+/* Ensure the icons in login form inputs remain visible */
+.relative svg.absolute,
+#username-icon,
+#password-icon {
+  position: absolute !important;
+  left: 0.5rem !important;
+  top: 0.625rem !important;
+  height: 1rem !important;
+  width: 1rem !important;
+  color: #9ca3af !important; /* text-gray-400 equivalent */
+  pointer-events: none !important;
+  z-index: 10 !important;
+}
+
+/* Extra specific selectors for login page */
+#login-page {
+  background-color: #e5e7eb !important; /* bg-gray-200 */
+}
+
+#login-container input[type="text"],
+#login-container input[type="password"] {
+  padding-left: 2rem !important;
+  background-color: #f9fafb !important; /* bg-gray-50 */
+  border: 1px solid #e5e7eb !important; /* border-gray-200 */
+}
+
+/* Ensure the 3D toggle container is visible */
+.threeDToggleContainer {
+  display: block !important;
+  visibility: visible !important;
+  z-index: 50 !important;
+}

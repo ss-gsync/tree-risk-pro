@@ -1,0 +1,101 @@
+{
+  "tree_id": "tree-001",
+  "species": "Live Oak",
+  "scan_date": "2025-02-15",
+  "scan_type": "Aerial",
+  "point_count": 12458,
+  "height": 45.3,
+  "dbh": 24.2,
+  "canopy_width": 30.5,
+  "canopy_area": 729.4,
+  "canopy_volume": 8753.2,
+  "trunk_volume": 431.8,
+  "biomass_estimate": 9874.6,
+  "carbon_sequestration": 4937.3,
+  "structure_model": {
+    "trunk": {
+      "height": 18.5,
+      "diameter_base": 32.4,
+      "diameter_breast": 24.2,
+      "taper": 0.43,
+      "lean_angle": 5.2,
+      "lean_direction": 287
+    },
+    "scaffold_branches": [
+      {
+        "height": 12.3,
+        "diameter": 14.8,
+        "length": 8.5,
+        "azimuth": 45,
+        "inclination": 20
+      },
+      {
+        "height": 14.7,
+        "diameter": 12.2,
+        "length": 11.3,
+        "azimuth": 120,
+        "inclination": 15,
+        "damage": {
+          "type": "broken_end",
+          "location": 9.2,
+          "severity": "high"
+        }
+      },
+      {
+        "height": 16.1,
+        "diameter": 10.5,
+        "length": 10.8,
+        "azimuth": 240,
+        "inclination": 25
+      },
+      {
+        "height": 18.5,
+        "diameter": 8.7,
+        "length": 14.2,
+        "azimuth": 330,
+        "inclination": 40
+      }
+    ],
+    "canopy": {
+      "base_height": 10.2,
+      "max_width": 30.5,
+      "width_north": 28.3,
+      "width_east": 30.5,
+      "width_south": 25.7,
+      "width_west": 29.2,
+      "asymmetry_index": 0.15,
+      "density_index": 0.63
+    }
+  },
+  "risk_indicators": {
+    "broken_branch": {
+      "detected": true,
+      "severity": "high",
+      "location": "East scaffold branch at 14.7m height",
+      "size": 12.2,
+      "confidence": 0.92
+    },
+    "lean": {
+      "detected": true,
+      "severity": "low",
+      "angle": 5.2,
+      "direction": "West",
+      "confidence": 0.88
+    },
+    "asymmetry": {
+      "detected": true,
+      "severity": "medium",
+      "index": 0.15,
+      "confidence": 0.75
+    },
+    "canopy_decline": {
+      "detected": false
+    },
+    "trunk_damage": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-001-thumb.png",
+  "model_url": "/mock/models/tree-001.glb",
+  "point_cloud_url": "/mock/lidar/tree-001/points"
+}

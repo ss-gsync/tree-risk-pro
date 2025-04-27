@@ -1,0 +1,93 @@
+{
+  "tree_id": "tree-008",
+  "species": "Pecan",
+  "scan_date": "2025-03-02",
+  "scan_type": "Aerial",
+  "point_count": 11876,
+  "height": 50.0,
+  "dbh": 26.0,
+  "canopy_width": 32.0,
+  "canopy_area": 804.2,
+  "canopy_volume": 8445.1,
+  "trunk_volume": 445.3,
+  "biomass_estimate": 9123.6,
+  "carbon_sequestration": 4561.8,
+  "structure_model": {
+    "trunk": {
+      "height": 19.6,
+      "diameter_base": 35.2,
+      "diameter_breast": 26.0,
+      "taper": 0.35,
+      "lean_angle": 2.0,
+      "lean_direction": 45
+    },
+    "scaffold_branches": [
+      {
+        "height": 12.3,
+        "diameter": 14.5,
+        "length": 10.2,
+        "azimuth": 35,
+        "inclination": 20
+      },
+      {
+        "height": 14.8,
+        "diameter": 12.7,
+        "length": 12.8,
+        "azimuth": 125,
+        "inclination": 25
+      },
+      {
+        "height": 16.9,
+        "diameter": 10.9,
+        "length": 11.5,
+        "azimuth": 215,
+        "inclination": 15
+      },
+      {
+        "height": 19.6,
+        "diameter": 8.4,
+        "length": 13.7,
+        "azimuth": 305,
+        "inclination": 30
+      }
+    ],
+    "canopy": {
+      "base_height": 10.8,
+      "max_width": 32.0,
+      "width_north": 31.2,
+      "width_east": 32.0,
+      "width_south": 29.5,
+      "width_west": 30.1,
+      "asymmetry_index": 0.06,
+      "density_index": 0.62
+    }
+  },
+  "risk_indicators": {
+    "deadwood": {
+      "detected": true,
+      "severity": "low",
+      "location": "Upper canopy, western quadrant",
+      "size": 8.0,
+      "confidence": 0.78
+    },
+    "lean": {
+      "detected": true,
+      "severity": "low",
+      "angle": 2.0,
+      "direction": "Northeast",
+      "confidence": 0.65
+    },
+    "broken_branch": {
+      "detected": false
+    },
+    "trunk_damage": {
+      "detected": false
+    },
+    "canopy_decline": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-008-thumb.png",
+  "model_url": "/mock/models/tree-008.glb",
+  "point_cloud_url": "/mock/lidar/tree-008/points"
+}

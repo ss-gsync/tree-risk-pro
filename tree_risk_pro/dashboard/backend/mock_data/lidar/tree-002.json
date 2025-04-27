@@ -1,0 +1,96 @@
+{
+  "tree_id": "tree-002",
+  "species": "Post Oak",
+  "scan_date": "2025-03-01",
+  "scan_type": "Aerial",
+  "point_count": 11392,
+  "height": 52.0,
+  "dbh": 25.0,
+  "canopy_width": 28.0,
+  "canopy_area": 615.7,
+  "canopy_volume": 7388.4,
+  "trunk_volume": 485.2,
+  "biomass_estimate": 8768.9,
+  "carbon_sequestration": 4384.5,
+  "structure_model": {
+    "trunk": {
+      "height": 21.5,
+      "diameter_base": 33.7,
+      "diameter_breast": 25.0,
+      "taper": 0.38,
+      "lean_angle": 12.0,
+      "lean_direction": 135
+    },
+    "scaffold_branches": [
+      {
+        "height": 14.2,
+        "diameter": 15.3,
+        "length": 9.8,
+        "azimuth": 35,
+        "inclination": 25
+      },
+      {
+        "height": 16.5,
+        "diameter": 14.6,
+        "length": 12.0,
+        "azimuth": 110,
+        "inclination": 20
+      },
+      {
+        "height": 18.3,
+        "diameter": 13.1,
+        "length": 10.5,
+        "azimuth": 210,
+        "inclination": 30
+      },
+      {
+        "height": 21.5,
+        "diameter": 9.8,
+        "length": 13.7,
+        "azimuth": 315,
+        "inclination": 35
+      }
+    ],
+    "canopy": {
+      "base_height": 12.1,
+      "max_width": 28.0,
+      "width_north": 22.7,
+      "width_east": 28.0,
+      "width_south": 25.3,
+      "width_west": 18.5,
+      "asymmetry_index": 0.28,
+      "density_index": 0.58
+    }
+  },
+  "risk_indicators": {
+    "codominant_stem": {
+      "detected": true,
+      "severity": "high",
+      "location": "Main trunk at 15m height",
+      "size": 18.6,
+      "confidence": 0.94
+    },
+    "lean": {
+      "detected": true,
+      "severity": "medium",
+      "angle": 12.0,
+      "direction": "Southeast",
+      "confidence": 0.91
+    },
+    "asymmetry": {
+      "detected": true,
+      "severity": "medium",
+      "index": 0.28,
+      "confidence": 0.82
+    },
+    "canopy_decline": {
+      "detected": false
+    },
+    "trunk_damage": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-002-thumb.png",
+  "model_url": "/mock/models/tree-002.glb",
+  "point_cloud_url": "/mock/lidar/tree-002/points"
+}

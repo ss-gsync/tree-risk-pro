@@ -1,0 +1,95 @@
+{
+  "tree_id": "tree-004",
+  "species": "Bald Cypress",
+  "scan_date": "2025-02-10",
+  "scan_type": "Aerial",
+  "point_count": 14892,
+  "height": 60.0,
+  "dbh": 30.0,
+  "canopy_width": 20.0,
+  "canopy_area": 314.2,
+  "canopy_volume": 9426.0,
+  "trunk_volume": 795.2,
+  "biomass_estimate": 12150.3,
+  "carbon_sequestration": 6075.2,
+  "structure_model": {
+    "trunk": {
+      "height": 32.5,
+      "diameter_base": 42.8,
+      "diameter_breast": 30.0,
+      "taper": 0.25,
+      "lean_angle": 18.0,
+      "lean_direction": 310
+    },
+    "scaffold_branches": [
+      {
+        "height": 18.3,
+        "diameter": 12.5,
+        "length": 7.2,
+        "azimuth": 30,
+        "inclination": 10
+      },
+      {
+        "height": 24.7,
+        "diameter": 8.6,
+        "length": 6.8,
+        "azimuth": 120,
+        "inclination": 5
+      },
+      {
+        "height": 29.3,
+        "diameter": 7.1,
+        "length": 8.3,
+        "azimuth": 210,
+        "inclination": 12
+      },
+      {
+        "height": 32.5,
+        "diameter": 5.3,
+        "length": 9.4,
+        "azimuth": 300,
+        "inclination": 18
+      }
+    ],
+    "canopy": {
+      "base_height": 14.5,
+      "max_width": 20.0,
+      "width_north": 16.2,
+      "width_east": 18.4,
+      "width_south": 20.0,
+      "width_west": 12.3,
+      "asymmetry_index": 0.24,
+      "density_index": 0.45
+    }
+  },
+  "risk_indicators": {
+    "lean": {
+      "detected": true,
+      "severity": "medium",
+      "angle": 18.0,
+      "direction": "Northwest",
+      "confidence": 0.95
+    },
+    "root_exposure": {
+      "detected": true,
+      "severity": "medium",
+      "location": "Northeast side of tree base",
+      "confidence": 0.85
+    },
+    "canopy_dieback": {
+      "detected": true,
+      "severity": "medium",
+      "location": "Upper third of canopy",
+      "confidence": 0.78
+    },
+    "trunk_damage": {
+      "detected": false
+    },
+    "broken_branch": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-004-thumb.png",
+  "model_url": "/mock/models/tree-004.glb",
+  "point_cloud_url": "/mock/lidar/tree-004/points"
+}

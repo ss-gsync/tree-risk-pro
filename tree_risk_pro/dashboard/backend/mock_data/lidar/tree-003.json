@@ -1,0 +1,91 @@
+{
+  "tree_id": "tree-003",
+  "species": "Chinese Pistache",
+  "scan_date": "2025-02-15",
+  "scan_type": "Ground",
+  "point_count": 8754,
+  "height": 35.0,
+  "dbh": 18.0,
+  "canopy_width": 25.0,
+  "canopy_area": 490.9,
+  "canopy_volume": 5105.4,
+  "trunk_volume": 186.3,
+  "biomass_estimate": 5643.2,
+  "carbon_sequestration": 2821.6,
+  "structure_model": {
+    "trunk": {
+      "height": 12.8,
+      "diameter_base": 24.5,
+      "diameter_breast": 18.0,
+      "taper": 0.32,
+      "lean_angle": 0.0,
+      "lean_direction": 0
+    },
+    "scaffold_branches": [
+      {
+        "height": 7.2,
+        "diameter": 10.5,
+        "length": 8.2,
+        "azimuth": 60,
+        "inclination": 15
+      },
+      {
+        "height": 8.9,
+        "diameter": 9.8,
+        "length": 10.1,
+        "azimuth": 150,
+        "inclination": 20
+      },
+      {
+        "height": 10.2,
+        "diameter": 7.9,
+        "length": 9.5,
+        "azimuth": 240,
+        "inclination": 15
+      },
+      {
+        "height": 12.8,
+        "diameter": 6.2,
+        "length": 11.3,
+        "azimuth": 330,
+        "inclination": 25
+      }
+    ],
+    "canopy": {
+      "base_height": 6.5,
+      "max_width": 25.0,
+      "width_north": 22.8,
+      "width_east": 24.5,
+      "width_south": 25.0,
+      "width_west": 22.1,
+      "asymmetry_index": 0.08,
+      "density_index": 0.78
+    }
+  },
+  "risk_indicators": {
+    "foliage_discoloration": {
+      "detected": true,
+      "severity": "low",
+      "location": "Northeast quadrant of canopy",
+      "confidence": 0.75
+    },
+    "canopy_thinning": {
+      "detected": true,
+      "severity": "low",
+      "location": "Upper canopy",
+      "confidence": 0.68
+    },
+    "lean": {
+      "detected": false
+    },
+    "asymmetry": {
+      "detected": false
+    },
+    "trunk_damage": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-003-thumb.png",
+  "model_url": "/mock/models/tree-003.glb",
+  "point_cloud_url": "/mock/lidar/tree-003/points"
+}

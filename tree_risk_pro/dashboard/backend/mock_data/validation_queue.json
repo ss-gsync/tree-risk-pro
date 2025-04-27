@@ -1,0 +1,502 @@
+[
+  {
+    "id": "val-001",
+    "tree_id": "tree-001",
+    "property_id": "prop-001",
+    "tree_species": "Live Oak",
+    "tree_height": 45,
+    "tree_diameter": 24,
+    "tree_condition": "Mature",
+    "canopy_density": "Moderate",
+    "leaning_angle": "5\u00b0 SE",
+    "lidar_height": 46.5,
+    "proximity": "Near power lines",
+    "property_type": "Residential",
+    "location": {
+      "description": "2082 Hillcrest Avenue, Dallas, TX 75230",
+      "coordinates": [
+        -96.80542964970164,
+        32.87769319534349
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-08T09:30:00.000Z",
+    "updated_at": "2025-03-12T14:07:41.913Z",
+    "riskFactors": [
+      {
+        "type": "split_branch",
+        "level": "high",
+        "description": "Large split limb (15+ ft) detected"
+      },
+      {
+        "type": "structure_proximity",
+        "level": "medium",
+        "description": "Canopy overhanging structure"
+      },
+      {
+        "type": "unbalanced_canopy",
+        "level": "medium",
+        "description": "Asymmetrical canopy development"
+      }
+    ]
+  },
+  {
+    "id": "val-002",
+    "tree_id": "tree-003",
+    "property_id": "prop-002",
+    "tree_species": "Bald Cypress",
+    "tree_height": 60,
+    "tree_diameter": 30,
+    "tree_condition": "Stressed",
+    "canopy_density": "Sparse",
+    "leaning_angle": "18\u00b0 NW",
+    "lidar_height": 61.2,
+    "proximity": "Near roadway",
+    "property_type": "Commercial",
+    "location": {
+      "description": "6121 Preston Hollow Road, Dallas, TX 75230",
+      "coordinates": [
+        -96.755,
+        32.8937
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-09T14:15:00.000Z",
+    "updated_at": "2025-03-12T14:07:41.913Z",
+    "riskFactors": [
+      {
+        "type": "lean",
+        "level": "medium",
+        "description": "Tree leaning 15-25 degrees"
+      },
+      {
+        "type": "root_exposure",
+        "level": "medium",
+        "description": "Root system partially exposed"
+      },
+      {
+        "type": "canopy_dieback",
+        "level": "medium",
+        "description": "Upper canopy dieback detected"
+      }
+    ]
+  },
+  {
+    "id": "val-003",
+    "tree_id": "tree-002",
+    "property_id": "prop-001",
+    "tree_species": "Chinese Pistache",
+    "tree_height": 35,
+    "tree_diameter": 18,
+    "tree_condition": "Healthy",
+    "canopy_density": "Dense",
+    "leaning_angle": "No Lean",
+    "lidar_height": 34.8,
+    "proximity": "Near structure",
+    "property_type": "Residential",
+    "location": {
+      "description": "2082 Hillcrest Avenue, Dallas, TX 75230",
+      "coordinates": [
+        -96.80607053808008,
+        32.87694806481281
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-10T11:45:00.000Z",
+    "updated_at": "2025-03-12T14:07:41.913Z",
+    "riskFactors": [
+      {
+        "type": "foliage_discoloration",
+        "level": "low",
+        "description": "Minor canopy discoloration detected"
+      },
+      {
+        "type": "canopy_thinning",
+        "level": "low",
+        "description": "Slight canopy thinning pattern"
+      }
+    ],
+    "inspector_notes": "Tree appears to be responding well to treatment. LiDAR scan indicates healthy overall structure."
+  },
+  {
+    "id": "val-004",
+    "tree_id": "tree-005",
+    "property_id": "prop-004",
+    "tree_species": "Southern Magnolia",
+    "tree_height": 38,
+    "tree_diameter": 20,
+    "tree_condition": "Diseased",
+    "canopy_density": "Dense",
+    "leaning_angle": "No Lean",
+    "lidar_height": 37.5,
+    "proximity": "Near fence",
+    "property_type": "Residential",
+    "location": {
+      "description": "8350 Forest Lane, Dallas, TX 75243",
+      "coordinates": [
+        -96.7595,
+        32.9075
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-01T13:25:00.000Z",
+    "updated_at": "2025-03-05T09:15:30.000Z",
+    "riskFactors": [
+      {
+        "type": "disease",
+        "level": "high",
+        "description": "Possible fungal infection affecting crown"
+      }
+    ],
+    "inspector_id": "INS-27",
+    "inspector_name": "Robert Chen",
+    "recommendations": "Treatment with fungicide required. LiDAR shows 20% crown thinning indicative of disease progression. Schedule follow-up inspection in 3 months.",
+    "follow_up_date": "2025-06-05"
+  },
+  {
+    "id": "val-005",
+    "tree_id": "tree-004",
+    "property_id": "prop-003",
+    "tree_species": "Red Oak",
+    "tree_height": 55,
+    "tree_diameter": 28,
+    "tree_condition": "Damaged",
+    "canopy_density": "Moderate",
+    "leaning_angle": "3\u00b0 SW",
+    "lidar_height": 54.5,
+    "proximity": "Near construction",
+    "property_type": "Commercial",
+    "location": {
+      "description": "4367 Twin Hills Avenue, Dallas, TX 75230",
+      "coordinates": [
+        -96.7235,
+        32.8585
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-11T10:10:00.000Z",
+    "updated_at": "2025-03-12T09:30:15.000Z",
+    "riskFactors": [
+      {
+        "type": "root_damage",
+        "level": "high",
+        "description": "Exposed roots with signs of damage from recent construction"
+      },
+      {
+        "type": "trunk_damage",
+        "level": "medium",
+        "description": "Bark damage on north side of trunk"
+      }
+    ],
+    "inspector_id": "INS-14",
+    "inspector_name": "Lisa Wong",
+    "inspection_scheduled": "2025-03-14T13:00:00.000Z",
+    "priority": "high",
+    "reported_by": "Neighbor"
+  },
+  {
+    "id": "val-007",
+    "tree_id": "tree-006",
+    "property_id": "prop-005",
+    "tree_species": "Cedar Elm",
+    "tree_height": 42,
+    "tree_diameter": 22,
+    "tree_condition": "Mature",
+    "canopy_density": "Moderate",
+    "leaning_angle": "No Lean",
+    "lidar_height": 41.5,
+    "proximity": "Near structure",
+    "property_type": "Residential",
+    "location": {
+      "description": "9200 White Rock Trail, Dallas, TX 75238",
+      "coordinates": [
+        -96.7325,
+        32.8825
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-11T09:15:00.000Z",
+    "updated_at": "2025-03-12T14:07:41.913Z",
+    "riskFactors": [
+      {
+        "type": "cavity",
+        "level": "medium",
+        "description": "Small cavity in main trunk"
+      }
+    ]
+  },
+  {
+    "id": "val-008",
+    "tree_id": "tree-007",
+    "property_id": "prop-005",
+    "tree_species": "Pecan",
+    "tree_height": 50,
+    "tree_diameter": 26,
+    "tree_condition": "Healthy",
+    "canopy_density": "Moderate",
+    "leaning_angle": "2\u00b0 NE",
+    "lidar_height": 49.5,
+    "proximity": "Near structure",
+    "property_type": "Residential",
+    "location": {
+      "description": "9200 White Rock Trail, Dallas, TX 75238",
+      "coordinates": [
+        -96.7315,
+        32.8815
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-10T16:30:00.000Z",
+    "updated_at": "2025-03-12T14:07:41.913Z",
+    "riskFactors": [
+      {
+        "type": "deadwood",
+        "level": "low",
+        "description": "Minor deadwood in upper canopy"
+      }
+    ]
+  },
+  {
+    "id": "val-009",
+    "tree_id": "tree-008",
+    "property_id": "prop-002",
+    "tree_species": "Post Oak",
+    "tree_height": 52,
+    "tree_diameter": 25,
+    "tree_condition": "Stressed",
+    "canopy_density": "Moderate",
+    "leaning_angle": "12\u00b0 SE",
+    "lidar_height": 51.5,
+    "proximity": "Near driveway",
+    "property_type": "Commercial",
+    "location": {
+      "description": "6121 Preston Hollow Road, Dallas, TX 75230",
+      "coordinates": [
+        -96.756,
+        32.8947
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-10T09:45:00.000Z",
+    "updated_at": "2025-03-12T14:07:41.913Z",
+    "riskFactors": [
+      {
+        "type": "codominant_stem",
+        "level": "high",
+        "description": "Severe included bark at main stem union"
+      },
+      {
+        "type": "lean",
+        "level": "medium",
+        "description": "Tree leaning 12 degrees toward house"
+      }
+    ]
+  },
+  {
+    "id": "val-010",
+    "tree_id": "tree-009",
+    "property_id": "prop-003",
+    "tree_species": "Shumard Oak",
+    "tree_height": 65,
+    "tree_diameter": 32,
+    "tree_condition": "Mature",
+    "canopy_density": "Dense",
+    "leaning_angle": "3\u00b0 S",
+    "lidar_height": 64.2,
+    "proximity": "Near power lines",
+    "property_type": "Commercial",
+    "location": {
+      "description": "4367 Twin Hills Avenue, Dallas, TX 75230",
+      "coordinates": [
+        -96.7245,
+        32.8595
+      ]
+    },
+    "status": "pending",
+    "created_at": "2025-03-12T10:20:00.000Z",
+    "updated_at": "2025-03-12T14:07:41.913Z",
+    "riskFactors": [
+      {
+        "type": "power_line_conflict",
+        "level": "high",
+        "description": "Multiple branches in contact with high-voltage lines"
+      },
+      {
+        "type": "decay",
+        "level": "medium",
+        "description": "Signs of heart rot visible at trunk base"
+      }
+    ],
+    "priority": "high"
+  },
+  {
+    "id": "area_1744419958384_tree_0",
+    "tree_id": "area_1744419958384_tree_0",
+    "tree_species": "Unknown Species",
+    "tree_height": 30,
+    "tree_diameter": 12,
+    "property_id": "property_area_1744419958384",
+    "property_type": "Residential",
+    "status": "pending",
+    "created_at": "2025-04-11T19:06:01.424481",
+    "updated_at": "2025-04-11T19:06:01.424488",
+    "confidence": 0.8,
+    "location": [
+      -96.7781497442724,
+      32.866027999321695
+    ],
+    "bbox": [
+      10,
+      10,
+      50,
+      50
+    ],
+    "riskFactors": [
+      {
+        "description": "Tree detected by ML pipeline",
+        "level": "medium",
+        "score": 3.0
+      }
+    ],
+    "proximity": "Near structure",
+    "canopy_density": "Medium",
+    "area_id": "area_1744419958384",
+    "frame_idx": 0
+  },
+  {
+    "id": "area_1744419958384_tree_1",
+    "tree_id": "area_1744419958384_tree_1",
+    "tree_species": "Unknown Species",
+    "tree_height": 30,
+    "tree_diameter": 12,
+    "property_id": "property_area_1744419958384",
+    "property_type": "Residential",
+    "status": "pending",
+    "created_at": "2025-04-11T19:06:01.424495",
+    "updated_at": "2025-04-11T19:06:01.424497",
+    "confidence": 0.8,
+    "location": [
+      -96.77768751025216,
+      32.866488383231086
+    ],
+    "bbox": [
+      110,
+      60,
+      150,
+      100
+    ],
+    "riskFactors": [
+      {
+        "description": "Tree detected by ML pipeline",
+        "level": "medium",
+        "score": 3.0
+      }
+    ],
+    "proximity": "Near structure",
+    "canopy_density": "Medium",
+    "area_id": "area_1744419958384",
+    "frame_idx": 0
+  },
+  {
+    "id": "area_1744419958384_tree_2",
+    "tree_id": "area_1744419958384_tree_2",
+    "tree_species": "Unknown Species",
+    "tree_height": 30,
+    "tree_diameter": 12,
+    "property_id": "property_area_1744419958384",
+    "property_type": "Residential",
+    "status": "pending",
+    "created_at": "2025-04-11T19:06:01.424500",
+    "updated_at": "2025-04-11T19:06:01.424502",
+    "confidence": 0.8,
+    "location": [
+      -96.77722527623193,
+      32.86694876714047
+    ],
+    "bbox": [
+      210,
+      110,
+      250,
+      150
+    ],
+    "riskFactors": [
+      {
+        "description": "Tree detected by ML pipeline",
+        "level": "medium",
+        "score": 3.0
+      }
+    ],
+    "proximity": "Near structure",
+    "canopy_density": "Medium",
+    "area_id": "area_1744419958384",
+    "frame_idx": 0
+  },
+  {
+    "id": "area_1744419958384_tree_3",
+    "tree_id": "area_1744419958384_tree_3",
+    "tree_species": "Unknown Species",
+    "tree_height": 30,
+    "tree_diameter": 12,
+    "property_id": "property_area_1744419958384",
+    "property_type": "Residential",
+    "status": "pending",
+    "created_at": "2025-04-11T19:06:01.424505",
+    "updated_at": "2025-04-11T19:06:01.424506",
+    "confidence": 0.8,
+    "location": [
+      -96.7767630422117,
+      32.867409151049856
+    ],
+    "bbox": [
+      310,
+      160,
+      350,
+      200
+    ],
+    "riskFactors": [
+      {
+        "description": "Tree detected by ML pipeline",
+        "level": "medium",
+        "score": 3.0
+      }
+    ],
+    "proximity": "Near structure",
+    "canopy_density": "Medium",
+    "area_id": "area_1744419958384",
+    "frame_idx": 0
+  },
+  {
+    "id": "area_1744419958384_tree_4",
+    "tree_id": "area_1744419958384_tree_4",
+    "tree_species": "Unknown Species",
+    "tree_height": 30,
+    "tree_diameter": 12,
+    "property_id": "property_area_1744419958384",
+    "property_type": "Residential",
+    "status": "pending",
+    "created_at": "2025-04-11T19:06:01.424510",
+    "updated_at": "2025-04-11T19:06:01.424511",
+    "confidence": 0.8,
+    "location": [
+      -96.77630080819146,
+      32.86786953495925
+    ],
+    "bbox": [
+      410,
+      210,
+      450,
+      250
+    ],
+    "riskFactors": [
+      {
+        "description": "Tree detected by ML pipeline",
+        "level": "medium",
+        "score": 3.0
+      }
+    ],
+    "proximity": "Near structure",
+    "canopy_density": "Medium",
+    "area_id": "area_1744419958384",
+    "frame_idx": 0
+  }
+]

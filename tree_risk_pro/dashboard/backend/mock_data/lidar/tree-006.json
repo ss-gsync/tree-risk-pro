@@ -1,0 +1,91 @@
+{
+  "tree_id": "tree-006",
+  "species": "Southern Magnolia",
+  "scan_date": "2025-03-05",
+  "scan_type": "Ground",
+  "point_count": 9254,
+  "height": 38.0,
+  "dbh": 20.0,
+  "canopy_width": 22.0,
+  "canopy_area": 380.1,
+  "canopy_volume": 4561.2,
+  "trunk_volume": 248.5,
+  "biomass_estimate": 5238.7,
+  "carbon_sequestration": 2619.4,
+  "structure_model": {
+    "trunk": {
+      "height": 15.2,
+      "diameter_base": 28.6,
+      "diameter_breast": 20.0,
+      "taper": 0.41,
+      "lean_angle": 0.0,
+      "lean_direction": 0
+    },
+    "scaffold_branches": [
+      {
+        "height": 8.4,
+        "diameter": 11.5,
+        "length": 6.8,
+        "azimuth": 40,
+        "inclination": 15
+      },
+      {
+        "height": 10.6,
+        "diameter": 9.8,
+        "length": 8.3,
+        "azimuth": 130,
+        "inclination": 20
+      },
+      {
+        "height": 12.5,
+        "diameter": 8.3,
+        "length": 7.9,
+        "azimuth": 220,
+        "inclination": 15
+      },
+      {
+        "height": 15.2,
+        "diameter": 6.7,
+        "length": 9.5,
+        "azimuth": 310,
+        "inclination": 25
+      }
+    ],
+    "canopy": {
+      "base_height": 7.2,
+      "max_width": 22.0,
+      "width_north": 20.8,
+      "width_east": 18.5,
+      "width_south": 22.0,
+      "width_west": 19.3,
+      "asymmetry_index": 0.10,
+      "density_index": 0.72
+    }
+  },
+  "risk_indicators": {
+    "disease": {
+      "detected": true,
+      "severity": "high",
+      "location": "Upper canopy and foliage",
+      "confidence": 0.90
+    },
+    "canopy_decline": {
+      "detected": true,
+      "severity": "medium",
+      "index": 0.25,
+      "confidence": 0.85
+    },
+    "broken_branch": {
+      "detected": false
+    },
+    "lean": {
+      "detected": false
+    },
+    "trunk_damage": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-006-thumb.png",
+  "model_url": "/mock/models/tree-006.glb",
+  "point_cloud_url": "/mock/lidar/tree-006/points"
+}

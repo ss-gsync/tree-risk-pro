@@ -1,0 +1,101 @@
+{
+  "tree_id": "tree-009",
+  "species": "Shumard Oak",
+  "scan_date": "2025-03-10",
+  "scan_type": "Aerial",
+  "point_count": 15682,
+  "height": 65.0,
+  "dbh": 32.0,
+  "canopy_width": 40.0,
+  "canopy_area": 1256.6,
+  "canopy_volume": 13195.3,
+  "trunk_volume": 926.8,
+  "biomass_estimate": 14983.2,
+  "carbon_sequestration": 7491.6,
+  "structure_model": {
+    "trunk": {
+      "height": 25.4,
+      "diameter_base": 45.7,
+      "diameter_breast": 32.0,
+      "taper": 0.30,
+      "lean_angle": 3.0,
+      "lean_direction": 175
+    },
+    "scaffold_branches": [
+      {
+        "height": 16.8,
+        "diameter": 18.5,
+        "length": 12.8,
+        "azimuth": 30,
+        "inclination": 20
+      },
+      {
+        "height": 19.5,
+        "diameter": 16.7,
+        "length": 15.3,
+        "azimuth": 120,
+        "inclination": 15,
+        "damage": {
+          "type": "power_line_contact",
+          "location": 10.8,
+          "severity": "high"
+        }
+      },
+      {
+        "height": 22.1,
+        "diameter": 14.2,
+        "length": 14.5,
+        "azimuth": 210,
+        "inclination": 25
+      },
+      {
+        "height": 25.4,
+        "diameter": 11.8,
+        "length": 17.2,
+        "azimuth": 300,
+        "inclination": 30
+      }
+    ],
+    "canopy": {
+      "base_height": 14.7,
+      "max_width": 40.0,
+      "width_north": 35.6,
+      "width_east": 40.0,
+      "width_south": 38.2,
+      "width_west": 36.8,
+      "asymmetry_index": 0.08,
+      "density_index": 0.76
+    }
+  },
+  "risk_indicators": {
+    "power_line_conflict": {
+      "detected": true,
+      "severity": "high",
+      "location": "East scaffold branch at 19.5m height",
+      "confidence": 0.95
+    },
+    "decay": {
+      "detected": true,
+      "severity": "medium",
+      "location": "Trunk base, southeast quadrant",
+      "size": 28.0,
+      "confidence": 0.82
+    },
+    "lean": {
+      "detected": true,
+      "severity": "low",
+      "angle": 3.0,
+      "direction": "South",
+      "confidence": 0.75
+    },
+    "broken_branch": {
+      "detected": false
+    },
+    "canopy_decline": {
+      "detected": false
+    }
+  },
+  "thumbnail_url": "/mock/frames/tree-009-thumb.png",
+  "model_url": "/mock/models/tree-009.glb",
+  "point_cloud_url": "/mock/lidar/tree-009/points"
+}

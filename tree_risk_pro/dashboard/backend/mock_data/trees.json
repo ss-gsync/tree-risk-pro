@@ -1,0 +1,275 @@
+[
+  {
+    "id": "tree-001",
+    "property_id": "prop-001",
+    "species": "Live Oak",
+    "height": 45,
+    "diameter": 24,
+    "dbh": 24,
+    "canopy_spread": 30,
+    "canopy_density": "Moderate",
+    "tree_condition": "Mature",
+    "leaning_angle": 5,
+    "lidar_height": 46.5,
+    "proximity": "Near power lines",
+    "location": [
+      -96.80542964970164,
+      32.87769319534349
+    ],
+    "risk_factors": [
+      {
+        "type": "split_branch",
+        "level": "high",
+        "description": "Large split limb (15+ ft) detected"
+      },
+      {
+        "type": "structure_proximity",
+        "level": "medium",
+        "description": "Canopy overhanging structure"
+      },
+      {
+        "type": "unbalanced_canopy",
+        "level": "medium",
+        "description": "Asymmetrical canopy development"
+      }
+    ],
+    "last_assessment": "2025-02-15"
+  },
+  {
+    "id": "tree-002",
+    "property_id": "prop-002",
+    "species": "Post Oak",
+    "height": 52,
+    "diameter": 25,
+    "dbh": 25,
+    "canopy_spread": 28,
+    "canopy_density": "Moderate",
+    "tree_condition": "Stressed",
+    "leaning_angle": 12,
+    "lidar_height": 51.5,
+    "proximity": "Near driveway",
+    "location": [
+      -96.7560,
+      32.8947
+    ],
+    "risk_factors": [
+      {
+        "type": "codominant_stem",
+        "level": "high",
+        "description": "Severe included bark at main stem union"
+      },
+      {
+        "type": "lean",
+        "level": "medium",
+        "description": "Tree leaning 12 degrees toward house"
+      }
+    ],
+    "last_assessment": "2025-03-01"
+  },
+  {
+    "id": "tree-003",
+    "property_id": "prop-001",
+    "species": "Chinese Pistache",
+    "height": 35,
+    "diameter": 18,
+    "dbh": 18,
+    "canopy_spread": 25,
+    "canopy_density": "Dense",
+    "tree_condition": "Healthy",
+    "lidar_height": 34.8,
+    "proximity": "Near structure",
+    "location": [
+      -96.80607053808008,
+      32.87694806481281
+    ],
+    "risk_factors": [
+      {
+        "type": "foliage_discoloration",
+        "level": "low",
+        "description": "Minor canopy discoloration detected"
+      },
+      {
+        "type": "canopy_thinning",
+        "level": "low",
+        "description": "Slight canopy thinning pattern"
+      }
+    ],
+    "last_assessment": "2025-02-15"
+  },
+  {
+    "id": "tree-004",
+    "property_id": "prop-002",
+    "species": "Bald Cypress",
+    "height": 60,
+    "diameter": 30,
+    "dbh": 30,
+    "canopy_spread": 20,
+    "canopy_density": "Sparse",
+    "tree_condition": "Stressed",
+    "leaning_angle": 18,
+    "lidar_height": 61.2,
+    "proximity": "Near roadway",
+    "location": [
+      -96.7550,
+      32.8937
+    ],
+    "risk_factors": [
+      {
+        "type": "lean",
+        "level": "medium",
+        "description": "Tree leaning 15-25 degrees"
+      },
+      {
+        "type": "root_exposure",
+        "level": "medium",
+        "description": "Root system partially exposed"
+      },
+      {
+        "type": "canopy_dieback",
+        "level": "medium",
+        "description": "Upper canopy dieback detected"
+      }
+    ],
+    "last_assessment": "2025-02-10"
+  },
+  {
+    "id": "tree-005",
+    "property_id": "prop-003",
+    "species": "Red Oak",
+    "height": 55,
+    "diameter": 28,
+    "dbh": 28,
+    "canopy_spread": 35,
+    "canopy_density": "Moderate",
+    "tree_condition": "Damaged",
+    "leaning_angle": 3,
+    "lidar_height": 54.5,
+    "proximity": "Near construction",
+    "location": [
+      -96.7235,
+      32.8585
+    ],
+    "risk_factors": [
+      {
+        "type": "root_damage",
+        "level": "high",
+        "description": "Exposed roots with signs of damage from recent construction"
+      },
+      {
+        "type": "trunk_damage",
+        "level": "medium",
+        "description": "Bark damage on north side of trunk"
+      }
+    ],
+    "last_assessment": "2025-03-01"
+  },
+  {
+    "id": "tree-006",
+    "property_id": "prop-004",
+    "species": "Southern Magnolia",
+    "height": 38,
+    "diameter": 20,
+    "dbh": 20,
+    "canopy_spread": 22,
+    "canopy_density": "Dense",
+    "tree_condition": "Diseased",
+    "leaning_angle": 0,
+    "lidar_height": 37.5,
+    "proximity": "Near fence",
+    "location": [
+      -96.7595,
+      32.9075
+    ],
+    "risk_factors": [
+      {
+        "type": "disease",
+        "level": "high",
+        "description": "Possible fungal infection affecting crown"
+      }
+    ],
+    "last_assessment": "2025-03-05"
+  },
+  {
+    "id": "tree-007",
+    "property_id": "prop-005",
+    "species": "Cedar Elm",
+    "height": 42,
+    "diameter": 22,
+    "dbh": 22,
+    "canopy_spread": 28,
+    "canopy_density": "Moderate",
+    "tree_condition": "Mature",
+    "leaning_angle": 0,
+    "lidar_height": 41.5,
+    "proximity": "Near structure",
+    "location": [
+      -96.7325,
+      32.8825
+    ],
+    "risk_factors": [
+      {
+        "type": "cavity",
+        "level": "medium",
+        "description": "Small cavity in main trunk"
+      }
+    ],
+    "last_assessment": "2025-02-28"
+  },
+  {
+    "id": "tree-008",
+    "property_id": "prop-005",
+    "species": "Pecan",
+    "height": 50,
+    "diameter": 26,
+    "dbh": 26,
+    "canopy_spread": 32,
+    "canopy_density": "Moderate",
+    "tree_condition": "Healthy",
+    "leaning_angle": 2,
+    "lidar_height": 49.5,
+    "proximity": "Near structure",
+    "location": [
+      -96.7315,
+      32.8815
+    ],
+    "risk_factors": [
+      {
+        "type": "deadwood",
+        "level": "low",
+        "description": "Minor deadwood in upper canopy"
+      }
+    ],
+    "last_assessment": "2025-03-02"
+  },
+  {
+    "id": "tree-009",
+    "property_id": "prop-003",
+    "species": "Shumard Oak",
+    "height": 65,
+    "diameter": 32,
+    "dbh": 32,
+    "canopy_spread": 40,
+    "canopy_density": "Dense",
+    "tree_condition": "Mature",
+    "leaning_angle": 3,
+    "lidar_height": 64.2,
+    "proximity": "Near power lines",
+    "location": [
+      -96.7245,
+      32.8595
+    ],
+    "risk_factors": [
+      {
+        "type": "power_line_conflict",
+        "level": "high",
+        "description": "Multiple branches in contact with high-voltage lines"
+      },
+      {
+        "type": "decay",
+        "level": "medium", 
+        "description": "Signs of heart rot visible at trunk base"
+      }
+    ],
+    "last_assessment": "2025-03-10"
+  }
+]
