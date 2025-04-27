@@ -3,7 +3,6 @@ Authentication module for the Tree Risk Dash
 
 Provides basic authentication middleware for Flask using HTTP Basic Auth.
 Uses environment variables for credentials to avoid hardcoding.
-In production environment, uses hardcoded TestAdmin/trp345! credentials.
 """
 
 from functools import wraps
@@ -18,15 +17,15 @@ logger = logging.getLogger(__name__)
 # Import APP_MODE from config
 from config import APP_MODE
 
-# Set credentials based on environment
+# Default credentials (should be overridden by environment variables in production)
+DEFAULT_USERNAME = "admin"
+DEFAULT_PASSWORD = "change_this_password_immediately"
+
+# For production, explicitly require environment variables to be set
 if APP_MODE == 'production':
-    # Production credentials
-    DEFAULT_USERNAME = "TestAdmin"
-    DEFAULT_PASSWORD = "trp345!"
-else:
-    # Development credentials
-    DEFAULT_USERNAME = "admin"
-    DEFAULT_PASSWORD = "change_this_password_immediately"
+    if "DASHBOARD_USERNAME" not in os.environ or "DASHBOARD_PASSWORD" not in os.environ:
+        logger.warning("WARNING: Running in production without explicit credentials set in environment!")
+        logger.warning("Set DASHBOARD_USERNAME and DASHBOARD_PASSWORD environment variables for security.")
 
 # Load credentials from environment variables or use defaults
 USERNAME = os.environ.get("DASHBOARD_USERNAME", DEFAULT_USERNAME)
