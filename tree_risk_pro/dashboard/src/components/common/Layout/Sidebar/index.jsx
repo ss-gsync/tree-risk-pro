@@ -69,7 +69,7 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
    * Toggles the Data Analysis section dropdown in the sidebar
    * 
    * This controls the visibility of the data analysis tools like
-   * Detection, Database, Analytics, and Reports.
+   * Detection, Database, and Analytics.
    */
   const toggleDataAnalysis = () => {
     setDataAnalysisCollapsed(!dataAnalysisCollapsed);
@@ -185,6 +185,50 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
               ) : (
                 <div className="text-sm text-gray-500">Map controls available when map is active</div>
               )}
+              
+              {/* Customer Reports button */}
+              <div className="mt-2">
+                <div className="border-t border-gray-200 mb-2"></div>
+                <button
+                  onClick={() => {
+                    // First, close the Imagery sidebar if it's open
+                    const closeImageryEvent = new CustomEvent('forceCloseImageryPanel', {
+                      detail: { source: 'sidebar' }
+                    });
+                    window.dispatchEvent(closeImageryEvent);
+                    
+                    // Then exit any active validation mode
+                    window.dispatchEvent(new CustomEvent('exitValidationMode', {
+                      detail: { 
+                        source: 'sidebar', 
+                        target: 'tree_inventory',
+                        clearExisting: true
+                      }
+                    }));
+                    
+                    // Make sure Object Detection sidebar is closed
+                    window.dispatchEvent(new CustomEvent('forceCloseObjectDetection', {
+                      detail: { source: 'sidebar' }
+                    }));
+                    
+                    // Short delay to ensure other sidebars close
+                    setTimeout(() => {
+                      // Open feature selection with reports tab active
+                      window.dispatchEvent(new CustomEvent('openFeatureSelection', {
+                        detail: { 
+                          mode: 'tree_inventory', 
+                          clearExisting: true,
+                          tab: 'reports' // Specify reports tab
+                        }
+                      }));
+                    }, 100); // Short delay
+                  }}
+                  className="flex items-center justify-center w-full p-2 bg-gray-50 text-gray-600 hover:bg-gray-100 rounded-md"
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  <span className="text-xs font-medium">Customer Reports</span>
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -376,48 +420,7 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
               </button>
             </div>
             
-            {/* Third row - Reports Summary button (full width) */}
-            <div className="mt-2">
-              <button
-                onClick={() => {
-                  // First, close the Imagery sidebar if it's open
-                  const closeImageryEvent = new CustomEvent('forceCloseImageryPanel', {
-                    detail: { source: 'sidebar' }
-                  });
-                  window.dispatchEvent(closeImageryEvent);
-                  
-                  // Then exit any active validation mode
-                  window.dispatchEvent(new CustomEvent('exitValidationMode', {
-                    detail: { 
-                      source: 'sidebar', 
-                      target: 'tree_inventory',
-                      clearExisting: true
-                    }
-                  }));
-                  
-                  // Make sure Object Detection sidebar is closed
-                  window.dispatchEvent(new CustomEvent('forceCloseObjectDetection', {
-                    detail: { source: 'sidebar' }
-                  }));
-                  
-                  // Short delay to ensure other sidebars close
-                  setTimeout(() => {
-                    // Open feature selection with reports tab active
-                    window.dispatchEvent(new CustomEvent('openFeatureSelection', {
-                      detail: { 
-                        mode: 'tree_inventory', 
-                        clearExisting: true,
-                        tab: 'reports' // Specify reports tab
-                      }
-                    }));
-                  }, 100); // Short delay
-                }}
-                className="flex items-center justify-center w-full p-2 bg-gray-50 text-gray-600 hover:bg-gray-100 rounded-md"
-              >
-                <FileText className={`h-4 w-4 ${!collapsed && 'mr-2'}`} />
-                {!collapsed && <span className="text-xs font-medium">Reports</span>}
-              </button>
-            </div>
+            {/* Reports button was moved to Map Controls section */}
           </div>
         </div>
         
