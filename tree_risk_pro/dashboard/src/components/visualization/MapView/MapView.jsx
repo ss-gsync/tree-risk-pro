@@ -257,7 +257,6 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
           heading: 0,
           // Enable 3D building layer in the map
           // Keep UI controls minimal so we can add our own
-          mapTypeControl: true,
           mapTypeControlOptions: {
             mapTypeIds: [
               google.maps.MapTypeId.ROADMAP,
