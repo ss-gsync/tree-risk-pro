@@ -10,8 +10,11 @@ dist/
 downloads/
 eggs/
 .eggs/
+# Exclude standard lib directories except for our UI utils
 lib/
 lib64/
+# But include our UI utils file
+!**/components/ui/lib/
 parts/
 sdist/
 var/
