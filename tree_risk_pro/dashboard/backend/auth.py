@@ -18,13 +18,14 @@ logger = logging.getLogger(__name__)
 from config import APP_MODE
 
 # Default credentials (should be overridden by environment variables in production)
-DEFAULT_USERNAME = "admin"
-DEFAULT_PASSWORD = "change_this_password_immediately"
+DEFAULT_USERNAME = "TestAdmin"
+DEFAULT_PASSWORD = "trp345!"
 
 # For production, explicitly require environment variables to be set
 if APP_MODE == 'production':
     if "DASHBOARD_USERNAME" not in os.environ or "DASHBOARD_PASSWORD" not in os.environ:
         logger.warning("WARNING: Running in production without explicit credentials set in environment!")
+        logger.warning("Using default credentials: TestAdmin / trp345!")
         logger.warning("Set DASHBOARD_USERNAME and DASHBOARD_PASSWORD environment variables for security.")
 
 # Load credentials from environment variables or use defaults
