@@ -1098,13 +1098,13 @@ const TreeValidationMode = ({
             <div className="text-center pt-8 pb-8 text-gray-500 flex flex-col items-center">
               <span>
                 {isFeatureSelectionMode ? 
-                  "No index available. Please run Detection." :
+                  "No index available. Please see Review." :
                   "No trees available. Please run Detect Trees."}
               </span>
               {/* Thin separator line between messages */}
               <div className="border-t border-gray-200 w-1/2 my-4"></div>
               <span className="text-sm text-gray-400">
-                Run Detection to find trees in the current view.
+                Review and save trees to the current view.
               </span>
             </div>
           ) : searchQuery && filteredTrees.length === 0 ? (
