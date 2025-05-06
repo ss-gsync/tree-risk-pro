@@ -18,6 +18,21 @@ const API_BASE_URL = import.meta.env.VITE_API_URL === undefined
 console.log('API_BASE_URL:', API_BASE_URL);
 
 /**
+ * Helper function to build proper API URLs
+ * - When API_BASE_URL is empty, returns /api/path (relative URL)
+ * - When API_BASE_URL is set, returns full URL: http://example.com/api/path
+ */
+const buildApiUrl = (path) => {
+  // Make sure path has leading slash
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // Return proper URL format
+  return API_BASE_URL === '' 
+    ? normalizedPath  // Relative URL for production
+    : `${API_BASE_URL}${normalizedPath}`; // Full URL for development
+};
+
+/**
  * Fetch wrapper with authentication and error handling
  * 
  * - Automatically adds authentication headers from localStorage
@@ -25,7 +40,11 @@ console.log('API_BASE_URL:', API_BASE_URL);
  * - Parses JSON responses and provides error information
  */
 const fetchWithErrorHandling = async (url, options = {}) => {
-  console.log('Fetching from URL:', url);
+  // If the URL already includes http:// or https://, use it as-is
+  // Otherwise, process it with our buildApiUrl function
+  const resolvedUrl = url.startsWith('http') ? url : buildApiUrl(url);
+  
+  console.log('Fetching from URL:', resolvedUrl);
   try {
     // Get authentication token
     const authToken = localStorage.getItem('auth');
@@ -42,7 +61,7 @@ const fetchWithErrorHandling = async (url, options = {}) => {
     }
     
     // Execute request
-    const response = await fetch(url, {
+    const response = await fetch(resolvedUrl, {
       ...options,
       headers,
     });
@@ -91,7 +110,7 @@ let appConfig = {
 // Fetch config from backend on init
 const initializeConfig = async () => {
   try {
-    const config = await fetchWithErrorHandling(`${API_BASE_URL}/api/config`);
+    const config = await fetchWithErrorHandling('api/config');
     appConfig = config;
     console.log('App config loaded:', appConfig);
     return config;
@@ -122,7 +141,7 @@ export const PropertyService = {
   // Get all properties
   getProperties: async () => {
     if (!apiCache.properties) {
-      apiCache.properties = await fetchWithErrorHandling(`${API_BASE_URL}/api/properties`);
+      apiCache.properties = await fetchWithErrorHandling('api/properties');
     }
     return apiCache.properties;
   },
@@ -135,7 +154,7 @@ export const PropertyService = {
       if (property) return property;
     }
     
-    return fetchWithErrorHandling(`${API_BASE_URL}/api/properties/${propertyId}`);
+    return fetchWithErrorHandling(`api/properties/${propertyId}`);
   },
   
   // Get trees for a property
@@ -145,7 +164,7 @@ export const PropertyService = {
       return apiCache.trees.filter(tree => tree.property_id === propertyId);
     }
     
-    return fetchWithErrorHandling(`${API_BASE_URL}/api/properties/${propertyId}/trees`);
+    return fetchWithErrorHandling(`api/properties/${propertyId}/trees`);
   }
 };
 
