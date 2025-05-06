@@ -1,6 +1,8 @@
 // src/services/api/reportApi.js
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL === undefined
+  ? 'http://localhost:5000'
+  : (import.meta.env.VITE_API_URL === '' ? '' : import.meta.env.VITE_API_URL);
 
 /**
  * Fetch validation queue items

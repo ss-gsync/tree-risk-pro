@@ -13,7 +13,10 @@ const Login = ({ onLogin }) => {
   useEffect(() => {
     const checkAppMode = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/config`);
+        const apiBase = import.meta.env.VITE_API_URL === undefined
+          ? 'http://localhost:5000'
+          : (import.meta.env.VITE_API_URL === '' ? '' : import.meta.env.VITE_API_URL);
+        const response = await fetch(`${apiBase}/api/config`);
         if (response.ok) {
           const config = await response.json();
           if (config.mode === 'production') {
@@ -54,7 +57,10 @@ const Login = ({ onLogin }) => {
       
       // Validate credentials with API request
       // Use a dedicated auth endpoint instead of a data endpoint when possible
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/properties`, {
+      const apiBase = import.meta.env.VITE_API_URL === undefined
+        ? 'http://localhost:5000'
+        : (import.meta.env.VITE_API_URL === '' ? '' : import.meta.env.VITE_API_URL);
+      const response = await fetch(`${apiBase}/api/properties`, {
         headers: {
           'Authorization': authString
         },

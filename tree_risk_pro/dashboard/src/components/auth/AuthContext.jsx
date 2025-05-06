@@ -36,8 +36,13 @@ export const AuthProvider = ({ children }) => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         
+        // Build proper API URL
+        const apiBase = import.meta.env.VITE_API_URL === undefined
+          ? 'http://localhost:5000'
+          : (import.meta.env.VITE_API_URL === '' ? '' : import.meta.env.VITE_API_URL);
+        
         // Validate token with lightweight API request
-        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/properties`, {
+        const response = await fetch(`${apiBase}/api/properties`, {
           headers: {
             'Authorization': authToken
           },
