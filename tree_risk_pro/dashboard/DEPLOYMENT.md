@@ -1,20 +1,31 @@
-# Tree Risk Pro Dashboard - Deployment Guide (Beta v0.2)
+# Tree Risk Pro Dashboard - Deployment Guide (Beta v0.3)
 
 This guide provides instructions for deploying the Tree Risk Pro Dashboard on our Google Cloud Platform (GCP) instance.
 
 ## Deployment Summary
 
-Our production server is deployed at: **https://34.125.120.78/**
+Our production server is deployed at: **https://34.125.1.171/**
 
-**Current access credentials:**
-- Username: `TestAdmin`
-- Password: `trp345!`
+**Authentication:**
+- Custom username and password required
+- No default credentials - must be set during deployment
+- Environment variables: DASHBOARD_USERNAME and DASHBOARD_PASSWORD
 
-**Note**: These credentials are now hardcoded in the backend as defaults and should work without setting environment variables.
+**Note**: Authentication credentials are never hardcoded and must be provided during deployment either through environment variables or interactive prompts.
+
+## Beta v0.3 Release Highlights
+
+Beta v0.3 includes these key improvements:
+- Removed hardcoded default credentials for enhanced security
+- Interactive credential prompts during deployment
+- Fixed CORS issues in production environment
+- Improved authentication error handling
+- Fixed directory permission issues
+- Frontend properly handles empty API URL in production
 
 ## Beta v0.2 Release Highlights
 
-Beta v0.2 includes these key improvements:
+Beta v0.2 included these improvements:
 - UI refinements in header and sidebar navigation
 - Renamed "Save to Database" to "Save for Review" for clarity
 - Fixed 3D map state preservation between views
@@ -99,15 +110,16 @@ Beta v0.2 includes these key improvements:
    cat > backend/.env << EOF
    APP_MODE=production
    SKIP_AUTH=false
-   DASHBOARD_USERNAME=TestAdmin
-   DASHBOARD_PASSWORD=trp345!
+   # Note: DASHBOARD_USERNAME and DASHBOARD_PASSWORD must be set in the 
+   # environment or provided during deployment. They are no longer hardcoded.
    GEMINI_API_KEY=your_gemini_api_key
    GEMINI_MODEL=gemini-2.0-flash
    EOF
 
    # Frontend environment configuration
+   # IMPORTANT: Use empty VITE_API_URL for production to use relative paths
    cat > .env << EOF
-   VITE_API_URL=https://34.125.120.78
+   VITE_API_URL=
    VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
    VITE_GOOGLE_MAPS_MAP_ID=your_map_id
    EOF
@@ -124,12 +136,12 @@ Beta v0.2 includes these key improvements:
    Run our deployment script to handle Nginx configuration, SSL setup, and service creation:
    
    ```bash
-   # Set required environment variables
-   export DASHBOARD_USERNAME=TestAdmin
-   export DASHBOARD_PASSWORD=trp345!
+   # Optionally set environment variables (or the script will prompt for them)
+   # export DASHBOARD_USERNAME=your_custom_username
+   # export DASHBOARD_PASSWORD=your_secure_password
    export GOOGLE_MAPS_API_KEY=your_google_maps_api_key
    
-   # Run the deployment script
+   # Run the deployment script (it will prompt for credentials if not set)
    ./gcp-deploy.sh
    ```
    
@@ -189,19 +201,29 @@ If you see the error: "The map is initialized without a valid Map ID, which will
 
 ## Service Management for Beta v0.2
 
-### Authentication Updates
+### Authentication Management
 
-If you've updated the backend `auth.py` file with new default credentials, you'll need to restart the backend service:
+To update authentication credentials on a running system:
 
 ```bash
-# Restart backend service
+# Set the environment variables in the systemd service file
+sudo systemctl edit dashboard-backend
+
+# Add the following lines
+[Service]
+Environment="DASHBOARD_USERNAME=your_new_username"
+Environment="DASHBOARD_PASSWORD=your_new_password"
+
+# Save and exit the editor (Ctrl+X, Y in nano)
+
+# Restart the backend service
 sudo systemctl restart dashboard-backend
 
-# Check logs to confirm new credentials are being used
+# Check logs to confirm credentials are being loaded
 tail -f /opt/dashboard/backend/logs/app.log
 ```
 
-You should see a log message indicating: "Using default credentials: TestAdmin / trp345!"
+You should see log messages indicating credentials are being loaded from environment variables.
 
 ### Monitoring Logs
 
@@ -256,11 +278,11 @@ sudo systemctl restart dashboard-backend
 ## Security Checklist
 
 1. **Authentication**:
-   - Default credentials are now set to TestAdmin/trp345! in the backend code
-   - No environment variables needed for basic authentication with these credentials
-   - For production, you should still set DASHBOARD_USERNAME and DASHBOARD_PASSWORD environment variables
+   - No default credentials - authentication credentials must be provided
+   - DASHBOARD_USERNAME and DASHBOARD_PASSWORD environment variables are required
    - Use a strong password (12+ characters with mixed case, numbers, symbols)
-   - Current auth implementation is suitable for beta testing
+   - Password is stored as a hash, not in plaintext
+   - Deployment script will interactively prompt for credentials if not set
 
 2. **SSL/TLS**:
    - Our deployment script sets up a self-signed certificate by default
