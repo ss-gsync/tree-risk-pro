@@ -2,7 +2,7 @@
 set -e
 
 # Project path
-PROJECT_ROOT="/ttt/tree_ml/server"
+PROJECT_ROOT="/ttt/tree_risk_pro/server"
 SERVER_SCRIPT="$PROJECT_ROOT/server.py"
 LOG_DIR="/ttt/system/logs"
 LOG_FILE="$LOG_DIR/edge-cache.log"
@@ -46,6 +46,9 @@ setup_dirs() {
     echo "Setting up required directories..."
     # Create directories
     mkdir -p /ttt/missions /ttt/input /ttt/.hdf5 /ttt/temp
+    
+    # Make sure the directories have proper permissions
+    chmod 755 /ttt/missions /ttt/input /ttt/.hdf5 /ttt/temp
 }
 
 # Setup virtual environment

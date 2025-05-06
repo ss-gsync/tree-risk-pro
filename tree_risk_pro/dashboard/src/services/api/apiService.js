@@ -13,7 +13,7 @@
 // This ensures empty string is used as-is for relative URLs
 const API_BASE_URL = import.meta.env.VITE_API_URL === undefined 
   ? 'http://localhost:5000' 
-  : import.meta.env.VITE_API_URL;
+  : (import.meta.env.VITE_API_URL === '' ? '' : import.meta.env.VITE_API_URL);
 
 console.log('API_BASE_URL:', API_BASE_URL);
 
