@@ -1,8 +1,6 @@
 # Tree Risk Pro - Deployment Guide (v0.2.1)
 
-> This is the master deployment guide for the entire Tree Risk Pro project.
-> For component-specific deployment guides, see:
-> - [Dashboard Deployment Guide](/tree_risk_pro/dashboard/DEPLOYMENT.md)
+> This is the deployment guide for the entire Tree Risk Pro project, including both the dashboard and backend components.
 
 This guide provides instructions for deploying the Tree Risk Pro system on our Google Cloud Platform (GCP) instance.
 
@@ -110,6 +108,11 @@ npm run build
 ### 4. Setup Deployment Directory
 
 ```bash
+# Clear previous deployment to prevent any cached or old files
+sudo rm -rf /opt/dashboard/dist/*
+sudo rm -rf /opt/dashboard/backend/*
+sudo rm -f /opt/dashboard/backend/.env
+
 # Create directory structure
 sudo mkdir -p /opt/dashboard/{backend,dist}
 sudo mkdir -p /opt/dashboard/backend/{logs,data/temp,data/zarr,data/reports,data/exports}
@@ -125,6 +128,8 @@ sudo cp backend/.env /opt/dashboard/backend/
 sudo chmod -R 755 /opt/dashboard/backend/logs
 sudo chmod -R 755 /opt/dashboard/backend/data
 ```
+
+**IMPORTANT**: The step to clear previous deployment files is critical to ensure no cached or outdated files remain from previous versions.
 
 ### 5. Install Backend Dependencies
 
@@ -254,6 +259,41 @@ After completing these steps, your Tree Risk Pro Dashboard should be accessible 
 
 ## Troubleshooting
 
+### Complete Rebuild and Cache Clear
+
+If you're experiencing version display issues or cached content problems:
+
+1. **Stop all services**:
+   ```bash
+   sudo systemctl stop dashboard-backend
+   ```
+
+2. **Create a fresh deployment directory**:
+   ```bash
+   sudo rm -rf /opt/dashboard
+   sudo mkdir -p /opt/dashboard
+   ```
+
+3. **Get the latest code**:
+   ```bash
+   cd ~/tree-risk-pro
+   git fetch
+   git reset --hard origin/main
+   ```
+
+4. **Clean and rebuild the frontend**:
+   ```bash
+   cd tree_risk_pro/dashboard
+   rm -rf node_modules dist
+   npm cache clean --force
+   npm install
+   npm run build
+   ```
+
+5. **Follow the deployment steps** from section 4 onwards.
+
+6. **Clear all browser caches completely** before testing.
+
 ### CORS or API Connection Issues
 
 If you see CORS errors or API connection problems:
@@ -279,8 +319,13 @@ If you see CORS errors or API connection problems:
 3. **Check browser console for the actual URL being used**:
    - If you see `API_BASE_URL: http://localhost:5000`, the frontend was built with the wrong environment settings
    - If you see `API_BASE_URL: /api/api`, there's a path duplication issue
+   
+4. **Clear browser cache thoroughly**:
+   - Use Ctrl+Shift+R or Cmd+Shift+R for a hard refresh
+   - In Chrome DevTools (F12), go to Application > Clear Storage > Clear site data
+   - Try an incognito/private window to test without cache
 
-4. **Check Nginx logs for proxy errors**:
+5. **Check Nginx logs for proxy errors**:
    ```bash
    sudo tail -f /var/log/nginx/error.log
    ```
@@ -319,7 +364,7 @@ If you see the error: "The map is initialized without a valid Map ID, which will
 
 3. **Rebuild the frontend** after updating the environment variables
 
-## Service Management for v0.2.0
+## Service Management for v0.2.1
 
 ### Monitoring Logs
 
