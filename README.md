@@ -185,4 +185,4 @@ See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
 
 ## License
 
-Copyright © 2025 Tree Risk Assessment Team. All rights reserved.
+Copyright © 2025 Texas Tree Transformations, LLC. All rights reserved.
