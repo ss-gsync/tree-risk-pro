@@ -1,4 +1,6 @@
 // components/assessment/Validation/ValidationSystem.jsx
+// This component provides a full validation workflow for tree assessments 
+// and works with the MapView's validation mode
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
@@ -14,7 +16,7 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
   const [validationStep, setValidationStep] = useState(0);
   const [assessmentNotes, setAssessmentNotes] = useState({});
   const [showReport, setShowReport] = useState(false);
-  const [riskLevel, setRiskLevel] = useState('medium');
+  const [riskLevel, setRiskLevel] = useState('no_risk'); // Default to no_risk
   const [propertyInfo, setPropertyInfo] = useState(null);
   const [lidarData, setLidarData] = useState(null);
   const [loadingLidar, setLoadingLidar] = useState(false);
@@ -43,6 +45,14 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
         try {
           const data = await ValidationService.getTreeLidarData(selectedTree.tree_id);
           setLidarData(data);
+          
+          // Also set risk level based on the tree's assessed risk
+          if (selectedTree.risk_level && selectedTree.risk_level !== 'new') {
+            setRiskLevel(selectedTree.risk_level);
+          } else {
+            // Default to no_risk when no risk level is specified or when it's 'new'
+            setRiskLevel('no_risk');
+          }
         } catch (error) {
           console.error('Error fetching LiDAR data:', error);
           setLidarData(null);
@@ -54,6 +64,28 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
     
     fetchLidarData();
   }, [selectedTree]);
+  
+  // Notify map view when validation system is mounted/unmounted
+  useEffect(() => {
+    // When component mounts, dispatch an event to notify map view
+    const validationActiveEvent = new CustomEvent('validationSystemActive', {
+      detail: { 
+        active: true,
+        treeId: selectedTree?.tree_id
+      }
+    });
+    window.dispatchEvent(validationActiveEvent);
+    
+    // When component unmounts, notify map view that validation is inactive
+    return () => {
+      const validationInactiveEvent = new CustomEvent('validationSystemActive', {
+        detail: { 
+          active: false 
+        }
+      });
+      window.dispatchEvent(validationInactiveEvent);
+    };
+  }, [selectedTree?.tree_id]);
   
   const validationSteps = [
     {
@@ -115,6 +147,58 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
       setValidationStep(validationStep - 1);
     }
   };
+  
+  const handleCompleteValidation = async () => {
+    if (!selectedTree) return;
+    
+    try {
+      // Mark the tree as validated in the backend
+      await ValidationService.updateValidationStatus(selectedTree.id, 'approved');
+      
+      // Convert the assessment notes into a structured format
+      const completedChecks = Object.entries(assessmentNotes).reduce((acc, [stepId, checks]) => {
+        return {
+          ...acc,
+          [stepId]: {
+            completed: true,
+            checks: checks
+          }
+        };
+      }, {});
+      
+      // Update the tree with completed validation data
+      const validationData = {
+        tree_id: selectedTree.tree_id,
+        validation_date: new Date().toISOString(),
+        risk_level: riskLevel || 'no_risk', // Ensure we always have a risk_level, default to no_risk
+        validator_notes: assessmentNotes,
+        completed_checks: completedChecks
+      };
+      
+      // Save the validation data
+      await ValidationService.saveValidationData(selectedTree.id, validationData);
+      
+      // Notify map view that validation is complete
+      window.dispatchEvent(new CustomEvent('treeValidationComplete', {
+        detail: {
+          treeId: selectedTree.tree_id,
+          status: 'approved',
+          riskLevel: riskLevel,
+          validationData: validationData
+        }
+      }));
+      
+      // Show the validation report
+      setShowReport(true);
+      
+      // Exit validation mode after a delay
+      setTimeout(() => {
+        onClose();
+      }, 5000);
+    } catch (error) {
+      console.error('Error completing validation:', error);
+    }
+  };
 
   const isStepComplete = (stepId) => {
     const stepChecks = assessmentNotes[stepId] || [];
@@ -167,7 +251,7 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
             </span>
           </div>
           <div className="flex space-x-2">
-            <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-sm flex items-center">
+            <span className="px-2 py-1 bg-amber-100 text-amber-800 rounded-full text-sm flex items-center">
               <Clock className="w-4 h-4 mr-1" />
               Pending
             </span>
@@ -181,8 +265,8 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
         </div>
 
         {/* Tree details */}
-        <Card className="mb-4">
-          <CardHeader className="py-3">
+        <Card className="mb-4 border rounded shadow-sm">
+          <CardHeader className="py-3 border-b bg-gray-50">
             <CardTitle className="text-sm">Tree Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -228,8 +312,8 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
           </h4>
           
           {lidarData ? (
-            <div className="rounded-lg border overflow-hidden">
-              <div className="p-3 bg-gray-50">
+            <div className="rounded border overflow-hidden shadow-sm">
+              <div className="p-3 bg-gray-50 border-b">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                   <div className="flex justify-between">
                     <span className="text-gray-500">Point Count:</span>
@@ -276,7 +360,7 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
         </div>
 
         {/* LiDAR view */}
-        <div className="h-64 bg-gray-100 rounded-lg mb-4 flex items-center justify-center flex-col">
+        <div className="h-64 bg-gray-100 rounded border border-gray-300 mb-4 flex items-center justify-center flex-col shadow-sm">
           <img src="/api/placeholder/400/200" alt="LiDAR view" className="object-contain" />
           <span className="text-xs text-gray-500 mt-2">LiDAR view coming soon</span>
         </div>
@@ -325,7 +409,7 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
         </div>
 
         {/* Validation checks for current step */}
-        <Card className="mb-6">
+        <Card className="mb-6 border rounded shadow-sm">
           <CardContent className="p-4">
             {validationSteps[validationStep].checks.map((check, checkIndex) => (
               <div 
@@ -335,10 +419,10 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
                 <span>{check}</span>
                 <button
                   onClick={() => handleCheckToggle(validationSteps[validationStep].id, check)}
-                  className={`w-6 h-6 rounded-full flex items-center justify-center ${
+                  className={`w-6 h-6 rounded flex items-center justify-center ${
                     (assessmentNotes[validationSteps[validationStep].id] || []).includes(check)
-                      ? 'bg-green-500 text-white'
-                      : 'bg-gray-200'
+                      ? 'bg-green-500 text-white border border-green-600'
+                      : 'bg-gray-200 border border-gray-300'
                   }`}
                 >
                   {(assessmentNotes[validationSteps[validationStep].id] || []).includes(check) && (
@@ -354,7 +438,7 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
         <div className="mb-6">
           <h4 className="text-sm font-medium mb-2">Notes</h4>
           <textarea
-            className="w-full border rounded-md p-3 h-24 resize-none bg-gray-50 text-gray-800 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
+            className="w-full border rounded p-3 h-24 resize-none bg-gray-50 text-gray-800 focus:bg-white focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:outline-none"
             placeholder="Add any additional notes about this validation step..."
           />
         </div>
@@ -365,31 +449,41 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
             <h4 className="text-sm font-medium mb-2">Risk Level Assessment</h4>
             <div className="flex space-x-2">
               <button
+                onClick={() => setRiskLevel('no_risk')}
+                className={`flex-1 py-2 px-4 rounded border ${
+                  riskLevel === 'no_risk' 
+                    ? 'bg-green-200 text-green-700 border-green-300' 
+                    : 'bg-green-100 text-green-700 hover:bg-green-200 border-green-200'
+                }`}
+              >
+                No Risk
+              </button>
+              <button
                 onClick={() => setRiskLevel('low')}
-                className={`flex-1 py-2 px-4 rounded-md ${
+                className={`flex-1 py-2 px-4 rounded border ${
                   riskLevel === 'low' 
-                    ? 'bg-green-200 text-green-700' 
-                    : 'bg-green-100 text-green-700 hover:bg-green-200'
+                    ? 'bg-yellow-200 text-yellow-700 border-yellow-300' 
+                    : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border-yellow-200'
                 }`}
               >
                 Low
               </button>
               <button
                 onClick={() => setRiskLevel('medium')}
-                className={`flex-1 py-2 px-4 rounded-md ${
+                className={`flex-1 py-2 px-4 rounded border ${
                   riskLevel === 'medium' 
-                    ? 'bg-orange-200 text-orange-700' 
-                    : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+                    ? 'bg-orange-200 text-orange-700 border-orange-300' 
+                    : 'bg-orange-100 text-orange-700 hover:bg-orange-200 border-orange-200'
                 }`}
               >
                 Medium
               </button>
               <button
                 onClick={() => setRiskLevel('high')}
-                className={`flex-1 py-2 px-4 rounded-md ${
+                className={`flex-1 py-2 px-4 rounded border ${
                   riskLevel === 'high' 
-                    ? 'bg-red-200 text-red-700' 
-                    : 'bg-red-100 text-red-700 hover:bg-red-200'
+                    ? 'bg-red-200 text-red-700 border-red-300' 
+                    : 'bg-red-100 text-red-700 hover:bg-red-200 border-red-200'
                 }`}
               >
                 High
@@ -402,8 +496,8 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
         <div className="flex justify-between">
           <button
             onClick={handlePrevStep}
-            className={`px-4 py-2 rounded-md ${
-              validationStep === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-gray-100 hover:bg-gray-200'
+            className={`px-4 py-2 rounded border ${
+              validationStep === 0 ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'
             }`}
             disabled={validationStep === 0}
           >
@@ -411,9 +505,9 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
           </button>
           <button
             onClick={handleNextStep}
-            className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 flex items-center"
+            className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200 flex items-center"
           >
-            {validationStep === validationSteps.length - 1 ? 'Generate Report' : 'Next'}
+            {validationStep === validationSteps.length - 1 ? 'Complete Validation' : 'Next'}
             <ArrowRight className="w-4 h-4 ml-1" />
           </button>
         </div>
@@ -423,37 +517,40 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
 
   const ReportPreview = () => (
     <div>
-      <div className="p-6 border-b border-gray-200 flex justify-between items-center">
-        <h2 className="text-xl font-semibold">Tree Risk Assessment Report</h2>
-        <div className="flex space-x-4">
-          <button 
-            onClick={() => alert("Print functionality coming soon.")}
-            className="px-4 py-2 flex items-center text-gray-600 hover:bg-gray-100 rounded-md"
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex justify-between items-center mb-4">
+          <button
+            onClick={handleCompleteValidation}
+            className="px-4 py-2 flex items-center bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200"
           >
-            <Printer className="h-5 w-5 mr-2" />
-            Print
+            Generate Report
           </button>
+          <div className="flex space-x-4">
+          {/* Print button removed */}
           <button 
             onClick={() => alert("Email functionality coming soon.")}
-            className="px-4 py-2 flex items-center text-gray-600 hover:bg-gray-100 rounded-md"
+            className="px-4 py-2 flex items-center text-gray-600 hover:bg-gray-100 rounded border border-gray-200"
           >
             <Mail className="h-5 w-5 mr-2" />
             Email
           </button>
           <button 
             onClick={() => alert("PDF download functionality coming soon.")}
-            className="px-4 py-2 flex items-center text-gray-600 hover:bg-gray-100 rounded-md"
+            className="px-4 py-2 flex items-center text-gray-600 hover:bg-gray-100 rounded border border-gray-200"
           >
             <Download className="h-5 w-5 mr-2" />
             Download PDF
           </button>
           <button
             onClick={() => setShowReport(false)}
-            className="px-4 py-2 flex items-center text-gray-600 hover:bg-gray-100 rounded-md"
+            className="px-4 py-2 flex items-center text-gray-600 hover:bg-gray-100 rounded border border-gray-200"
           >
             Edit
           </button>
         </div>
+        </div>
+        
+        {/* Risk Level Assessment buttons removed */}
       </div>
 
       <div className="flex-1 p-6 overflow-y-auto">
@@ -724,16 +821,16 @@ const ValidationSystem = ({ selectedTree, onClose }) => {
   );
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg w-3/4 h-3/4 flex flex-col overflow-hidden">
-        <div className="flex justify-between items-center p-4 border-b">
-          <h2 className="text-xl font-semibold flex items-center">
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg w-11/12 h-5/6 max-w-7xl flex flex-col overflow-hidden shadow-2xl">
+        <div className="flex justify-between items-center p-4 border-b bg-slate-50">
+          <h2 className="text-xl font-semibold flex items-center text-slate-800">
             <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
-            Validation System
+            Tree Validation & Report
           </h2>
           <button 
             onClick={onClose} 
-            className="p-2 rounded-full hover:bg-gray-100"
+            className="p-2 rounded-full hover:bg-gray-200 text-gray-700"
             aria-label="Close"
           >
             <X className="h-5 w-5" />

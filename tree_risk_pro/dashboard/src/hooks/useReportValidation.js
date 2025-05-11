@@ -14,20 +14,33 @@ export const useValidation = () => {
     setRefreshTrigger(prev => prev + 1);
   }, []);
 
+  // Only fetch once on mount, or when explicitly triggered
   useEffect(() => {
+    // Track if component is mounted to prevent state updates after unmount
+    let isMounted = true;
+    
     const fetchValidationItems = async () => {
       try {
         // Fetch validation items from backend API
         const data = await ValidationService.getValidationQueue();
-        console.log('Fetched validation queue:', data);
-        setValidationItems(data);
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setValidationItems(data);
+        }
       } catch (err) {
         console.error('Error fetching validation queue:', err);
-        setError(err);
+        if (isMounted) {
+          setError(err);
+        }
       }
     };
 
     fetchValidationItems();
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, [refreshTrigger]);
 
   const validateItem = async (itemId, status) => {

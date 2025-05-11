@@ -11,6 +11,7 @@ import os
 import json
 import asyncio
 import logging
+import time
 from datetime import datetime
 
 # Third-party imports
@@ -19,7 +20,6 @@ from flask_cors import CORS
 
 # Local application imports
 from auth import require_auth
-from app_analytics import analytics_bp
 from config import ZARR_DIR, TEMP_DIR, LIDAR_DIR, REPORTS_DIR
 from services.tree_service import TreeService
 from services.validation_service import ValidationService
@@ -75,8 +75,104 @@ def create_app():
     # This allows cross-origin requests from the frontend
     CORS(app, supports_credentials=True)
 
-    # Register blueprints for modular functionality
-    app.register_blueprint(analytics_bp)
+    # Add endpoint for ML-based tree detection
+    @app.route('/api/detection/detect', methods=['POST'])
+    async def detect_trees_ml_endpoint():
+        """Detect trees using ML pipeline from map data - New endpoint for TreeAPI"""
+        try:
+            # Get request data
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({'error': 'No data provided'}), 400
+            
+            # Get map view info and job ID
+            map_view_info = data.get('map_view_info')
+            job_id = data.get('job_id', f"detection_{int(time.time())}")
+            
+            if not map_view_info:
+                return jsonify({'error': 'No map view info provided'}), 400
+            
+            # Log request data for debugging
+            logger.info(f"ML detection request received - job_id: {job_id}")
+            logger.info(f"Map view bounds: {map_view_info.get('viewData', {}).get('bounds')}")
+            
+            # Get detection service instance
+            from services.detection_service import DetectionService
+            detection_service = DetectionService()
+            
+            # Run detection
+            result = await detection_service.detect_trees_from_map_view(map_view_info, job_id)
+            
+            # Add success flag if there's no error
+            if 'error' not in result or not result['error']:
+                result['success'] = True
+            
+            # Log detection results
+            tree_count = len(result.get('trees', []))
+            ml_response_dir = result.get('ml_response_dir', '')
+            logger.info(f"ML detection completed for job {job_id} - found {tree_count} trees")
+            
+            if ml_response_dir:
+                logger.info(f"ML response stored at: {ml_response_dir}")
+            
+            # Return results with ml_response_dir for the frontend
+            return jsonify(result)
+        
+        except Exception as e:
+            logger.error(f"Error in ML tree detection API: {str(e)}", exc_info=True)
+            return jsonify({'error': str(e), 'job_id': job_id if 'job_id' in locals() else None}), 500
+            
+    @app.route('/api/detect-trees-ml', methods=['POST'])
+    def detect_trees_ml():
+        """Detect trees using ML pipeline from map data - Legacy endpoint"""
+        try:
+            # Get request data
+            request_data = request.json or {}
+            map_view_info = request_data.get('map_view_info', {})
+            job_id = request_data.get('job_id', f"ml_{int(datetime.now().timestamp())}")
+            
+            if not map_view_info:
+                return jsonify({
+                    "success": False,
+                    "message": "Map view information is required",
+                    "timestamp": datetime.now().isoformat()
+                }), 400
+            
+            # Log request data for debugging
+            logger.info(f"ML detection request received - job_id: {job_id}")
+            logger.info(f"Map view bounds: {map_view_info.get('viewData', {}).get('bounds')}")
+            
+            # Import the detection service
+            from services.detection_service import DetectionService
+            detection_service = DetectionService()
+            
+            # Run detection in an async context
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            detection_result = loop.run_until_complete(
+                detection_service.detect_trees_from_map_view(map_view_info, job_id)
+            )
+            loop.close()
+            
+            # Add success flag if there's no error
+            if 'error' not in detection_result or not detection_result['error']:
+                detection_result['success'] = True
+            
+            # Log detection results
+            tree_count = len(detection_result.get('trees', []))
+            logger.info(f"ML detection completed for job {job_id} - found {tree_count} trees")
+            
+            # Return complete detection result
+            return jsonify(detection_result)
+            
+        except Exception as e:
+            logging.error(f"Error detecting trees with ML: {str(e)}", exc_info=True)
+            return jsonify({
+                "success": False,
+                "message": f"Detection error: {str(e)}",
+                "timestamp": datetime.now().isoformat()
+            }), 500
     
     # Initialize async services (database and Gemini AI)
     async def init_services(app):
@@ -717,6 +813,36 @@ def create_app():
                         gemini_response_dir = os.path.join(detection_dir, "gemini_response") 
                         os.makedirs(gemini_response_dir, exist_ok=True)
                         response_txt_path = os.path.join(gemini_response_dir, "response.txt")
+                        
+                        # Save the satellite image if available in map_view_info or map_image
+                        if map_image and map_image.startswith('data:image'):
+                            try:
+                                # Extract the base64 data
+                                image_data = map_image.split(',')[1]
+                                image_bytes = base64.b64decode(image_data)
+                                
+                                # Save the image
+                                satellite_image_path = os.path.join(gemini_response_dir, "satellite_image.jpg")
+                                with open(satellite_image_path, 'wb') as f:
+                                    f.write(image_bytes)
+                                    
+                                logger.info(f"Saved satellite image to {satellite_image_path}")
+                            except Exception as image_err:
+                                logger.error(f"Failed to save satellite image: {image_err}")
+                        elif map_view_info and map_view_info.get('viewData', {}).get('imageUrl', '').startswith('data:image'):
+                            try:
+                                # Extract the base64 data from map_view_info
+                                image_data = map_view_info['viewData']['imageUrl'].split(',')[1]
+                                image_bytes = base64.b64decode(image_data)
+                                
+                                # Save the image
+                                satellite_image_path = os.path.join(gemini_response_dir, "satellite_image.jpg")
+                                with open(satellite_image_path, 'wb') as f:
+                                    f.write(image_bytes)
+                                    
+                                logger.info(f"Saved satellite image from map_view_info to {satellite_image_path}")
+                            except Exception as image_err:
+                                logger.error(f"Failed to save satellite image from map_view_info: {image_err}")
 
                         logger.info(f"Wrote raw Gemini API response to {response_txt_path}")
                         logger.info(f"Successfully processed detection with Gemini - detected {detection_result.get('tree_count', 0)} trees")
@@ -745,6 +871,36 @@ def create_app():
                         gemini_response_dir = os.path.join(detection_dir, "gemini_response") 
                         os.makedirs(gemini_response_dir, exist_ok=True)
                         response_txt_path = os.path.join(gemini_response_dir, "response.txt")
+                        
+                        # Save the satellite image if available in map_view_info or map_image
+                        if map_image and map_image.startswith('data:image'):
+                            try:
+                                # Extract the base64 data
+                                image_data = map_image.split(',')[1]
+                                image_bytes = base64.b64decode(image_data)
+                                
+                                # Save the image
+                                satellite_image_path = os.path.join(gemini_response_dir, "satellite_image.jpg")
+                                with open(satellite_image_path, 'wb') as f:
+                                    f.write(image_bytes)
+                                    
+                                logger.info(f"Saved satellite image to {satellite_image_path}")
+                            except Exception as image_err:
+                                logger.error(f"Failed to save satellite image: {image_err}")
+                        elif map_view_info and map_view_info.get('viewData', {}).get('imageUrl', '').startswith('data:image'):
+                            try:
+                                # Extract the base64 data from map_view_info
+                                image_data = map_view_info['viewData']['imageUrl'].split(',')[1]
+                                image_bytes = base64.b64decode(image_data)
+                                
+                                # Save the image
+                                satellite_image_path = os.path.join(gemini_response_dir, "satellite_image.jpg")
+                                with open(satellite_image_path, 'wb') as f:
+                                    f.write(image_bytes)
+                                    
+                                logger.info(f"Saved satellite image from map_view_info to {satellite_image_path}")
+                            except Exception as image_err:
+                                logger.error(f"Failed to save satellite image from map_view_info: {image_err}")
                         
                         logger.info(f"Wrote raw Gemini API response to {response_txt_path}")
                             
@@ -863,6 +1019,10 @@ def create_app():
                                 
                                 logger.info(f"Added missing data to tree {i}: {tree}")
                     
+                    # Check for satellite image
+                    satellite_image_path = os.path.join(job_dir, "gemini_response", "satellite_image.jpg")
+                    has_satellite_image = os.path.exists(satellite_image_path)
+                    
                     # Create result object with tree data
                     result = {
                         "job_id": job_id,
@@ -873,7 +1033,10 @@ def create_app():
                         "trees": trees,  # Include actual tree data
                         "completed_at": temp_results.get('timestamp', datetime.now().isoformat()),
                         "includes_bounding_boxes": job_metadata.get("include_bounding_boxes", True),
-                        "coordinates": job_metadata.get("coordinates", {})
+                        "coordinates": job_metadata.get("coordinates", {}),
+                        "has_satellite_image": has_satellite_image,
+                        "satellite_image_path": satellite_image_path if has_satellite_image else None,
+                        "map_view_info": job_metadata.get("map_view_info", {})
                     }
                     
                     return jsonify(result)
@@ -946,6 +1109,29 @@ def create_app():
                 mimetype='application/pdf'
             )
         except Exception as e:
+            return jsonify({"error": str(e)}), 500
+            
+    # Route to serve satellite images
+    @app.route('/api/temp/<job_id>/satellite_image.jpg', methods=['GET'])
+    def serve_satellite_image(job_id):
+        """Serve the satellite image for a specific job"""
+        try:
+            # Set the path to the satellite image
+            image_path = os.path.join(TEMP_DIR, job_id, "gemini_response", "satellite_image.jpg")
+            
+            # Check if the file exists
+            if not os.path.exists(image_path):
+                logger.warning(f"Satellite image not found at {image_path}")
+                return jsonify({"error": "Satellite image not found"}), 404
+                
+            # Serve the file
+            return send_from_directory(
+                os.path.dirname(image_path),
+                os.path.basename(image_path),
+                mimetype='image/jpeg'
+            )
+        except Exception as e:
+            logger.error(f"Error serving satellite image: {str(e)}")
             return jsonify({"error": str(e)}), 500
             
     # Gemini API integration for tree detection and satellite imagery

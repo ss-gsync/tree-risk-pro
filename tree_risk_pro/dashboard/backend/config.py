@@ -24,7 +24,7 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1', 't')
 
 # API Configuration
-API_VERSION = '0.2.0'
+API_VERSION = '0.2.1'
 DEFAULT_RESPONSE_LIMIT = 100
 
 # Generic function to get API keys from environment or .env file
@@ -55,11 +55,14 @@ def get_api_key(env_var_name, env_file_prefix=None):
 
 # API configuration
 GOOGLE_MAPS_API_KEY = get_api_key('GOOGLE_MAPS_API_KEY', 'VITE_')
+# Get Gemini API key using our existing function
 GEMINI_API_KEY = get_api_key('GEMINI_API_KEY', 'VITE_')
-GEMINI_API_URL = os.environ.get('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1')
+GEMINI_API_URL = os.environ.get('GEMINI_API_URL', 'https://generativelanguage.googleapis.com/v1beta')
+
+# IMPORTANT: Always use gemini-2.0-flash (never change to other models)
 GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')  # The most current stable model for image and text
 
-# Gemini integration configuration
-# ALWAYS use Gemini for tree detection without ML pipeline fallback
-USE_GEMINI = True  # Force Gemini integration as the ONLY detection method
-USE_ML_PIPELINE = False  # Disable ML pipeline completely
+# Configuration for detection methods
+# ML pipeline is the primary detection method, Gemini for analytics only
+USE_GEMINI = False  # Gemini only used for analytics, not for detection
+USE_ML_PIPELINE = True  # Enable ML pipeline for tree detection

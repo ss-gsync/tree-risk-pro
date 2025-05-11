@@ -97,3 +97,36 @@ export const flagTree = async (treeId, flagData) => {
     throw error;
   }
 };
+
+/**
+ * Detect trees from map data using ML pipeline
+ * @param {Object} mapViewInfo - Information about the current map view
+ * @returns {Promise<Object>} - Detected trees data
+ */
+export const detectTreesFromMapData = async (mapViewInfo) => {
+  try {
+    // Create a unique job ID for this detection task
+    const jobId = `ml_detect_${Date.now()}`;
+    
+    // Call the backend ML detection endpoint
+    const response = await fetch(`${API_BASE_URL}/api/detection/detect`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        map_view_info: mapViewInfo,
+        job_id: jobId
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Tree detection failed: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error detecting trees with ML pipeline:', error);
+    throw error;
+  }
+};

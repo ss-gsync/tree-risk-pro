@@ -17,7 +17,7 @@ Our production server is deployed at: **https://34.125.1.171/**
 
 Beta v0.2.1 includes these key improvements:
 - Fixed Components/Detection sidebar functionality
-- Improved ML overlay with proper opacity control
+- Improved ML overlay with persistent opacity settings and click-through functionality
 - Enhanced OBJECT DETECTION badge visibility with correct z-index
 - Added subtle borders to Analysis section buttons
 - Improved sidebar panel management and event handling
@@ -26,6 +26,10 @@ Beta v0.2.1 includes these key improvements:
 - Implemented validation reports linking via S2 cells
 - Enhanced Object Report view with linked validation reports
 - Added new API endpoints for S2 cell-based report management
+- Added gradient background and subtle grid pattern to ML overlay
+- Improved header collapse state detection for UI elements
+- Enhanced DOM cleanup to prevent ghost elements
+- Fixed performance issues when switching between detection modes
 
 ## Beta v0.2 Release Highlights
 
@@ -76,13 +80,27 @@ Beta v0.2 included these improvements:
 1. **Code Freeze and Final Testing**
    - Freeze code changes to the main branch
    - Perform final UI testing on all modified components:
-     - Verify ML overlay functionality with opacity changes
+     - Verify ML overlay functionality with opacity changes:
+       - Test persistence of opacity settings across page reloads
+       - Verify click-through functionality for marker interaction
+       - Check gradient background and grid pattern rendering
      - Confirm all buttons in Analysis section have correct subtle borders
-     - Test sidebar panel closing/opening sequences
-     - Ensure Components/Detection sidebar works correctly
-     - Test S2 cell integration in Reports Overview
-     - Validate linking between area reports and validation reports
-     - Verify S2 cell-based report querying functionality
+     - Test sidebar panel closing/opening sequences:
+       - Verify smooth transitions between panels
+       - Test header collapse state detection
+       - Ensure proper cleanup of DOM elements
+     - Test Components/Detection panel functionality:
+       - Verify OBJECT DETECTION badge positioning with correct z-index
+       - Test panel opening/closing with Analytics panel
+       - Check badge visibility against different map backgrounds
+     - Test S2 cell integration:
+       - Verify area reports display S2 region indicators
+       - Test linking between validation reports and area reports
+       - Check validation report querying by S2 cell
+     - Test performance optimizations:
+       - Verify smooth switching between detection modes
+       - Test map container resizing during sidebar transitions
+       - Ensure no ghost elements remain after panel closures
 
 2. **Update Version**
    ```bash

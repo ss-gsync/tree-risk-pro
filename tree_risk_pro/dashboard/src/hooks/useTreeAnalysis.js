@@ -2,12 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import { TreeService } from '../services/api/apiService';
+import { analyzeTreeWithGemini } from '../services/api/geminiService';
 
 export const useTreeAnalysis = (treeId) => {
   const [treeData, setTreeData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   useEffect(() => {
     const fetchTreeData = async () => {
@@ -63,6 +66,31 @@ export const useTreeAnalysis = (treeId) => {
     }
   };
 
+  // Function to analyze tree using Gemini AI
+  const analyzeTree = async () => {
+    if (!treeData) return null;
+
+    try {
+      setIsAnalyzing(true);
+      setError(null);
+      
+      const result = await analyzeTreeWithGemini(treeData);
+      
+      if (result.success) {
+        setAnalysisResult(result);
+        return result;
+      } else {
+        throw new Error(result.message || 'Analysis failed');
+      }
+    } catch (err) {
+      console.error('Error analyzing tree with Gemini:', err);
+      setError(err.message || 'Failed to analyze tree');
+      throw err;
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   // Generate mock growth data for development purposes
   const generateMockGrowthData = () => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -77,6 +105,9 @@ export const useTreeAnalysis = (treeId) => {
     isLoading, 
     error,
     updateTreeAssessment,
-    isUpdating
+    isUpdating,
+    analyzeTree,
+    analysisResult,
+    isAnalyzing
   };
 };

@@ -4,24 +4,31 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '../ui/card';
 import { Button } from '../ui/button';
 import { Label } from '../ui/label';
-import { Input } from '../ui/input';
-import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Tree, Brain, Sparkles, RefreshCw, AlertTriangle, ArrowLeft } from 'lucide-react';
-import { analyzeTreeWithGemini } from '../../services/api/geminiService';
+import { Tree, Brain, Sparkles, RefreshCw, AlertTriangle, ArrowLeft, Map } from 'lucide-react';
+import { useTreeAnalysis } from '../../hooks/useTreeAnalysis';
+import { TreeService } from '../../services/api/apiService';
 
 const GeminiTreeAnalysis = ({ onBack }) => {
   const [selectedTreeId, setSelectedTreeId] = useState('');
   const [treeOptions, setTreeOptions] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [analysisResult, setAnalysisResult] = useState(null);
   const [isGeminiEnabled, setIsGeminiEnabled] = useState(false);
+  const [isLoadingTrees, setIsLoadingTrees] = useState(false);
   
-  // Load tree options from localStorage or mock data
+  // Use the custom hook for tree analysis
+  const { 
+    treeData, 
+    isLoading: isLoadingTreeData, 
+    analyzeTree, 
+    analysisResult, 
+    isAnalyzing, 
+    error: analysisError 
+  } = useTreeAnalysis(selectedTreeId);
+  
+  // Load tree options and check if Gemini is enabled
   useEffect(() => {
-    // Check if Gemini is enabled
+    // Check if Gemini is enabled from settings
     try {
       const settings = JSON.parse(localStorage.getItem('treeRiskDashboardSettings') || '{}');
       setIsGeminiEnabled(settings.useGeminiForTreeDetection === true);
@@ -29,74 +36,53 @@ const GeminiTreeAnalysis = ({ onBack }) => {
       console.error('Error loading settings:', e);
     }
     
-    // Load tree options
-    const mockTreeOptions = [
-      { id: 'tree_001', name: 'Oak Tree (123 Main St)' },
-      { id: 'tree_002', name: 'Pine Tree (456 Elm Ave)' },
-      { id: 'tree_003', name: 'Maple Tree (789 Oak Dr)' },
-      { id: 'tree_004', name: 'Cedar Tree (321 Willow Ln)' },
-      { id: 'tree_005', name: 'Birch Tree (654 Maple St)' },
-    ];
-    setTreeOptions(mockTreeOptions);
+    // Load tree data from API
+    const loadTrees = async () => {
+      setIsLoadingTrees(true);
+      try {
+        // Try to fetch tree data from API
+        const trees = await TreeService.getAllTrees();
+        if (trees && trees.length > 0) {
+          setTreeOptions(trees.map(tree => ({
+            id: tree.id,
+            name: `${tree.species || 'Unknown'} Tree (${tree.id})`
+          })));
+        } else {
+          console.warn('No trees returned from API');
+          setTreeOptions([]);
+        }
+      } catch (error) {
+        console.error('Error loading trees:', error);
+        setTreeOptions([]);
+        // Show error in UI if needed
+      } finally {
+        setIsLoadingTrees(false);
+      }
+    };
+    
+    loadTrees();
   }, []);
   
   const handleAnalyzeTree = async () => {
-    if (!selectedTreeId) {
-      setError('Please select a tree to analyze');
-      return;
-    }
-    
-    setIsLoading(true);
-    setError(null);
-    
+    if (!selectedTreeId) return;
     try {
-      // Find the selected tree in options
-      const selectedTree = treeOptions.find(t => t.id === selectedTreeId);
-      
-      // Mock tree data for analysis
-      const treeData = {
-        id: selectedTree.id,
-        species: selectedTree.name.split(' ')[0], // Extract species from name
-        height: Math.floor(Math.random() * 30) + 10, // Random height between 10-40m
-        canopy_width: Math.floor(Math.random() * 10) + 5, // Random width between 5-15m
-        risk_level: ['low', 'medium', 'high'][Math.floor(Math.random() * 3)],
-        risk_factors: [
-          { factor: 'Proximity to structure', level: 'medium', distance: '8m' },
-          { factor: 'Deadwood', level: 'low', description: 'Minor deadwood in crown' },
-          { factor: 'Root health', level: 'medium', description: 'Some root compression' }
-        ],
-        assessment_history: [
-          { date: '2023-05-15', condition: 'good', notes: 'Annual inspection' },
-          { date: '2023-11-10', condition: 'fair', notes: 'Storm damage assessment' }
-        ],
-        distance_to_structure: Math.floor(Math.random() * 15) + 3, // Random distance between 3-18m
-        property_type: ['Residential', 'Commercial', 'Public Park'][Math.floor(Math.random() * 3)]
-      };
-      
-      // Call Gemini API for analysis
-      const result = await analyzeTreeWithGemini(treeData);
-      
-      if (result.success) {
-        setAnalysisResult(result);
-      } else {
-        setError(result.message || 'Failed to analyze tree');
-      }
-    } catch (err) {
-      setError(`Analysis error: ${err.message}`);
-    } finally {
-      setIsLoading(false);
+      await analyzeTree();
+    } catch (error) {
+      // Error handling is done inside the hook
+      console.error('Analysis failed:', error);
     }
   };
   
   const handleSelectTree = (value) => {
     setSelectedTreeId(value);
-    setAnalysisResult(null); // Clear previous results
-    setError(null);
   };
   
   const handleBack = () => {
     if (onBack) onBack();
   };
+  
+  const isLoading = isLoadingTrees || isLoadingTreeData || isAnalyzing;
+  const error = analysisError;
   
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -152,13 +138,13 @@ const GeminiTreeAnalysis = ({ onBack }) => {
             </div>
           </div>
         </CardContent>
-        <CardFooter>
+        <CardFooter className="flex flex-col space-y-2">
           <Button 
             onClick={handleAnalyzeTree} 
             disabled={isLoading || !selectedTreeId || !isGeminiEnabled}
             className="w-full"
           >
-            {isLoading ? (
+            {isAnalyzing ? (
               <>
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
                 Analyzing...
@@ -169,6 +155,19 @@ const GeminiTreeAnalysis = ({ onBack }) => {
                 Analyze with Gemini AI
               </>
             )}
+          </Button>
+          
+          <Button
+            variant="outline"
+            disabled={isLoading || !selectedTreeId || !isGeminiEnabled}
+            className="w-full"
+            onClick={() => {
+              // This would open the map view with this tree highlighted
+              if (onBack) onBack('map', selectedTreeId);
+            }}
+          >
+            <Map className="h-4 w-4 mr-2" />
+            View on Map
           </Button>
         </CardFooter>
       </Card>
@@ -187,15 +186,63 @@ const GeminiTreeAnalysis = ({ onBack }) => {
         </Card>
       )}
       
+      {treeData && !analysisResult && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Tree className="h-5 w-5 mr-2 text-green-600" />
+              Tree Information
+            </CardTitle>
+            <CardDescription>
+              Basic information about the selected tree
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm font-medium text-gray-500">ID</p>
+                <p>{treeData.id}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Species</p>
+                <p>{treeData.species || 'Unknown'}</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Height</p>
+                <p>{treeData.height || 'Unknown'} m</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Canopy Width</p>
+                <p>{treeData.canopy_width || 'Unknown'} m</p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Risk Level</p>
+                <p className={`font-medium ${
+                  treeData.risk_level === 'high' ? 'text-red-600' : 
+                  treeData.risk_level === 'medium' ? 'text-amber-600' : 
+                  'text-green-600'
+                }`}>
+                  {treeData.risk_level ? treeData.risk_level.charAt(0).toUpperCase() + treeData.risk_level.slice(1) : 'Unknown'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-gray-500">Distance to Structure</p>
+                <p>{treeData.distance_to_structure || 'Unknown'} m</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+      
       {analysisResult && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center">
               <Tree className="h-5 w-5 mr-2 text-green-600" />
-              Tree Analysis Results
+              AI-Powered Tree Analysis Results
             </CardTitle>
             <CardDescription>
-              AI-powered risk assessment and recommendations
+              Comprehensive risk assessment generated by Gemini AI
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -211,7 +258,7 @@ const GeminiTreeAnalysis = ({ onBack }) => {
                 <div className="bg-blue-50 p-4 rounded-md">
                   <h3 className="font-medium text-blue-700 mb-2">Risk Analysis</h3>
                   <div className="text-blue-800 whitespace-pre-line">
-                    {analysisResult.structured_analysis.risk_analysis || 'No analysis available'}
+                    {analysisResult.structured_analysis?.risk_analysis || 'No analysis available'}
                   </div>
                 </div>
               </TabsContent>
@@ -220,7 +267,7 @@ const GeminiTreeAnalysis = ({ onBack }) => {
                 <div className="bg-green-50 p-4 rounded-md">
                   <h3 className="font-medium text-green-700 mb-2">Recommendations</h3>
                   <div className="text-green-800 whitespace-pre-line">
-                    {analysisResult.structured_analysis.recommendations || 'No recommendations available'}
+                    {analysisResult.structured_analysis?.recommendations || 'No recommendations available'}
                   </div>
                 </div>
               </TabsContent>
@@ -229,7 +276,7 @@ const GeminiTreeAnalysis = ({ onBack }) => {
                 <div className="bg-amber-50 p-4 rounded-md">
                   <h3 className="font-medium text-amber-700 mb-2">Future Concerns</h3>
                   <div className="text-amber-800 whitespace-pre-line">
-                    {analysisResult.structured_analysis.future_concerns || 'No future concerns identified'}
+                    {analysisResult.structured_analysis?.future_concerns || 'No future concerns identified'}
                   </div>
                 </div>
               </TabsContent>
@@ -238,7 +285,7 @@ const GeminiTreeAnalysis = ({ onBack }) => {
                 <div className="bg-purple-50 p-4 rounded-md">
                   <h3 className="font-medium text-purple-700 mb-2">Comparison with Similar Trees</h3>
                   <div className="text-purple-800 whitespace-pre-line">
-                    {analysisResult.structured_analysis.comparison || 'No comparison data available'}
+                    {analysisResult.structured_analysis?.comparison || 'No comparison data available'}
                   </div>
                 </div>
               </TabsContent>
@@ -248,8 +295,8 @@ const GeminiTreeAnalysis = ({ onBack }) => {
             <p className="text-xs text-gray-500">
               Analysis generated by Gemini AI at {new Date(analysisResult.timestamp).toLocaleString()}
             </p>
-            <Button variant="outline" size="sm" onClick={() => setAnalysisResult(null)}>
-              Clear Results
+            <Button variant="outline" size="sm" onClick={() => analyzeTree()}>
+              Refresh Analysis
             </Button>
           </CardFooter>
         </Card>

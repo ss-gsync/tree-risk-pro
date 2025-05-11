@@ -1,11 +1,10 @@
-"""
-Gemini Service
--------------
+"""Gemini Service.
+
 Integrates with Google's Gemini API for advanced analytics on tree risk assessment data.
 This service handles ONLY Gemini API calls.
 
-This service is exclusively for Gemini API interactions and should not reference or 
-interact with the ML pipeline in any way. Any tree detection or analysis is performed
+This service is exclusively for Gemini API interactions and should not reference or
+interact with the ML pipeline in any way. Any tree detection and analysis is performed
 solely through Gemini API, not local ML models.
 """
 
@@ -17,8 +16,16 @@ import base64
 import logging
 import aiohttp
 import asyncio
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List
 from datetime import datetime
+
+# Import config - support both module and direct imports
+try:
+    # When imported as module (from parent directory)
+    from config import TEMP_DIR, GEMINI_API_KEY, GEMINI_API_URL, GEMINI_MODEL
+except ImportError:
+    # When running from tree_risk_pro root
+    from dashboard.backend.config import TEMP_DIR, GEMINI_API_KEY, GEMINI_API_URL, GEMINI_MODEL
 
 # Try to import PIL for image processing
 try:
@@ -62,12 +69,38 @@ class GeminiService:
                                         If None, loads config from environment/defaults.
                                         Defaults to None.
         """
+        # Use the API key directly from config.py - don't reload or transform it
+        self.api_key = GEMINI_API_KEY
+        # For consistency, load other settings through the config method
         self.config = self._load_config(config_path)
-        self.api_key = self.config['gemini']['api_key']
+        # Store the base API URL - actual URL with version will be constructed when needed
         self.api_url = self.config['gemini']['api_url']
-        self.model = self.config['gemini']['model']
+        self.model = self.config['gemini']['model'] 
+        # Determine the API version based on model name
+        # Gemini 2.0 requires v1beta endpoint
+        self.api_version = "v1beta" if "2.0" in self.model else "v1"
         self.session = None
         self.is_initialized = False
+        
+        # Log important configuration details (without sensitive information)
+        logger.info(f"Initializing GeminiService with model: {self.model}")
+        logger.info(f"Using API version: {self.api_version} for Gemini API")
+        
+        # Set the base API URL with the correct version
+        self.api_base_url = f"https://generativelanguage.googleapis.com/{self.api_version}"
+    
+    def _get_gemini_url(self, endpoint: str) -> str:
+        """
+        Get a properly formatted Gemini API URL for the given endpoint.
+        
+        Args:
+            endpoint (str): The endpoint to access (e.g., 'models/gemini-2.0-flash:generateContent')
+            
+        Returns:
+            str: The complete URL with API version, endpoint, and API key
+        """
+        # Always use self.api_key which is already loaded from config during initialization
+        return f"https://generativelanguage.googleapis.com/{self.api_version}/{endpoint}?key={self.api_key}"
 
     async def initialize(self) -> bool:
         """
@@ -89,7 +122,7 @@ class GeminiService:
                 
             # Log initialization details for debugging
             logger.info(f"Initializing Gemini service with API key: {'*' * 10}")
-            logger.info(f"Gemini API URL: {self.api_url}")
+            logger.info(f"Gemini API URL: {self.api_base_url}")
             logger.info(f"Gemini model: {self.model}")
             
             # Initialize as ready without testing connections
@@ -160,9 +193,14 @@ class GeminiService:
                     "text": f"\nContext: {json.dumps(context)}"
                 })
             
-            # Add API key to URL
-            url = f"{self.api_url}/models/{self.model}:generateContent?key={self.api_key}"
-            logger.info(f"Using Gemini API URL: {url.replace(self.api_key, '****')}")
+            # Use the helper method for consistent URL formatting
+            url = self._get_gemini_url(f"models/{self.model}:generateContent")
+            # Log with masked API key - but keep the URL structure intact for debugging
+            # Replace just the actual key value, not the entire key parameter
+            key_param = f"key={self.api_key}"
+            masked_param = f"key=****"
+            masked_url = url.replace(key_param, masked_param)
+            logger.info(f"Using Gemini API URL: {masked_url}")
             
             # Create a new session for this request
             session = aiohttp.ClientSession()
@@ -172,6 +210,15 @@ class GeminiService:
                 if response.status != 200:
                     error_text = await response.text()
                     logger.error(f"Gemini API error: Status {response.status}, Response: {error_text}")
+                    
+                    # Log detailed error for easier debugging
+                    try:
+                        error_json = json.loads(error_text)
+                        if "error" in error_json:
+                            logger.error(f"Gemini API error details: {json.dumps(error_json['error'], indent=2)}")
+                    except (json.JSONDecodeError, KeyError):
+                        pass
+                        
                     return {
                         "success": False,
                         "message": f"API error: {response.status}",
@@ -484,8 +531,10 @@ class GeminiService:
                     payload["contents"][0]["parts"][0]["text"] += context_text
                 
                 # Add API key to URL
-                url = f"{self.api_url}/models/gemini-2.0-flash:generateContent?key={self.api_key}"
-                logger.info(f"Using Gemini API URL: {url.replace(self.api_key, '****')}")
+                url = self._get_gemini_url(f"models/{self.model}:generateContent")
+                # Log with masked API key
+                masked_url = url.replace(GEMINI_API_KEY, "****")
+                logger.info(f"Using Gemini API URL: {masked_url}")
                 
                 # Make the request with proper timeout handling
                 async with session.post(url, json=payload, timeout=60) as response:
@@ -648,6 +697,9 @@ class GeminiService:
                         # Save error information
                         if job_id:
                             try:
+                                # Import json here to ensure it's in scope
+                                import json
+                                
                                 # Create the response directory
                                 gemini_response_dir = os.path.join('/ttt/data/temp', job_id, 'gemini_response')
                                 os.makedirs(gemini_response_dir, exist_ok=True)
@@ -657,7 +709,7 @@ class GeminiService:
                                     "message": "Tree detection failed using Gemini API",
                                     "reason": "Satellite imagery could not be processed",
                                     "timestamp": datetime.now().timestamp(),
-                                    "error": str(e)
+                                    "error": "Tile processing failed"
                                 }
                                 
                                 with open(os.path.join(gemini_response_dir, 'error_info.json'), 'w') as f:
@@ -686,6 +738,9 @@ class GeminiService:
                     # Save error information
                     if job_id:
                         try:
+                            # Import json here to ensure it's in scope
+                            import json
+                            
                             # Create the response directory
                             gemini_response_dir = os.path.join('/ttt/data/temp', job_id, 'gemini_response')
                             os.makedirs(gemini_response_dir, exist_ok=True)
@@ -708,20 +763,21 @@ class GeminiService:
                     # Save some debug information and a sample satellite image for the response directory
                     if job_id:
                         try:
+                            # Import json to ensure it's in scope
+                            import json
+                            
                             # Create the response directory
                             gemini_response_dir = os.path.join('/ttt/data/temp', job_id, 'gemini_response')
                             os.makedirs(gemini_response_dir, exist_ok=True)
                             
                             # Save fallback explanation 
                             fallback_explanation = {
-                                "message": "Using fallback sample tree data",
+                                "message": "Could not process satellite imagery",
                                 "reason": "Satellite imagery could not be retrieved or processed",
                                 "timestamp": datetime.now().isoformat(),
                                 "center": view_data.get('center'),
                                 "bounds": view_data.get('bounds'),
                                 "zoom": view_data.get('zoom'),
-                                "tree_count": len(sample_trees),
-                                "sample_trees": sample_trees[:2],  # Just include a few examples
                                 "error": str(e)
                             }
                             
@@ -920,10 +976,16 @@ class GeminiService:
                                             Instructions:
                                             1. Identify all trees visible in this satellite image
                                             2. For each tree, provide:
-                                               - Estimated position (x,y coordinates in the image)
+                                               - Estimated position (x,y coordinates in the image where [0,0] is top-left corner and [1,1] is bottom-right corner)
                                                - Approximate height (5-35m range)
                                                - Species (if identifiable)
                                                - Potential risk factors based on location
+                                            
+                                            IMPORTANT: When specifying tree positions, ALWAYS use normalized coordinates where:
+                                            - [0,0] is the TOP-LEFT corner of the image
+                                            - [1,1] is the BOTTOM-RIGHT corner of the image
+                                            
+                                            For example, a tree in the center would be at position [0.5, 0.5].
                                             
                                             Return a JSON array of trees with their properties.
                                             """
@@ -956,88 +1018,126 @@ class GeminiService:
                                                 }
                                             }
                                             
-                                            # Make the direct API call to Gemini
-                                            url = f"{self.api_url}/models/gemini-2.0-flash:generateContent?key={self.api_key}"
+                                            # For Gemini 2.0 models, we directly send inline_data
+                                            # This is simpler and more reliable for our use case
                                             
-                                            async with session.post(url, json=payload, timeout=60) as gemini_response:
+                                            # Save the image for logging purposes
+                                            job_dir = os.path.join(TEMP_DIR, job_id)
+                                            os.makedirs(job_dir, exist_ok=True)
+                                            temp_img_path = os.path.join(job_dir, "satellite_img.jpg")
+                                            with open(temp_img_path, 'wb') as f:
+                                                f.write(base64.b64decode(base64_image))
+                                            
+                                            # Use our standard URL construction method with centralized API key handling
+                                            generate_url = self._get_gemini_url(f"models/{self.model}:generateContent")
+                                            logger.info(f"Using consistent API key format for vision API calls")
+                                            
+                                            # Create payload with inline image data (no Files API needed)
+                                            vision_payload = {
+                                                "contents": [
+                                                    {
+                                                        "parts": [
+                                                            {
+                                                                "text": tree_detection_prompt
+                                                            },
+                                                            {
+                                                                "inline_data": {
+                                                                    "mime_type": "image/jpeg",
+                                                                    "data": base64_image
+                                                                }
+                                                            }
+                                                        ]
+                                                    }
+                                                ],
+                                                "generationConfig": payload["generationConfig"]
+                                            }
+                                                    
+                                            # Make the API call with inline image data
+                                            async with session.post(generate_url, json=vision_payload, timeout=60) as gemini_response:
                                                 if gemini_response.status == 200:
                                                     gemini_result = await gemini_response.json()
                                                     logger.info("Successfully received response from Gemini API")
                                                     
-                                                    # Save the response for debugging
-                                                    if job_id:
-                                                        gemini_response_dir = os.path.join('/ttt/data/temp', job_id, 'gemini_response')
-                                                        os.makedirs(gemini_response_dir, exist_ok=True)
-                                                        
-                                                        # Save API response
-                                                        response_file = os.path.join(gemini_response_dir, 'response.txt')
-                                                        with open(response_file, 'w') as f:
-                                                            f.write(str(gemini_result))
-                                                        logger.info(f"Saved Gemini response to {response_file}")
-                                                        
-                                                        # Save request payload (without API key)
-                                                        safe_payload = payload.copy()
-                                                        request_file = os.path.join(gemini_response_dir, 'request.json')
-                                                        with open(request_file, 'w') as f:
-                                                            f.write(json.dumps(safe_payload, indent=2))
-                                                        logger.info(f"Saved request payload to {request_file}")
-                                                        
-                                                        # Save image data (if available)
-                                                        if 'data:image/' in image_url_or_base64:
-                                                            try:
-                                                                # Extract base64 data after the comma
-                                                                base64_data = image_url_or_base64.split(',')[1]
-                                                                image_data = base64.b64decode(base64_data)
-                                                                image_file = os.path.join(gemini_response_dir, 'satellite_image.jpg')
-                                                                with open(image_file, 'wb') as f:
-                                                                    f.write(image_data)
-                                                                logger.info(f"Saved satellite image to {image_file}")
-                                                            except Exception as img_err:
-                                                                logger.error(f"Failed to save image: {img_err}")
-                                                    
-                                                    # Try to extract tree data from the response
-                                                    try:
-                                                        response_text = gemini_result["candidates"][0]["content"]["parts"][0]["text"]
-                                                        
-                                                        # Try to parse JSON from the response
-                                                        import re
-                                                        import json
-                                                        
-                                                        # Look for JSON arrays in the response
-                                                        json_match = re.search(r'\[\s*{.*}\s*\]', response_text, re.DOTALL)
-                                                        if json_match:
-                                                            try:
-                                                                trees_data = json.loads(json_match.group(0))
-                                                                
-                                                                # Process the trees data to add missing fields and convert to our format
-                                                                processed_trees = self._process_gemini_trees(trees_data, center, bounds, job_id)
-                                                                
-                                                                logger.info(f"Successfully extracted {len(processed_trees)} trees from Gemini response")
-                                                                return {
-                                                                    "success": True,
-                                                                    "job_id": job_id,
-                                                                    "status": "complete",
-                                                                    "timestamp": datetime.now().isoformat(),
-                                                                    "tree_count": len(processed_trees),
-                                                                    "trees": processed_trees,
-                                                                    "message": f"Successfully detected {len(processed_trees)} trees using Gemini API",
-                                                                    "detection_source": "gemini_vision",
-                                                                    "using_coordinates": True,
-                                                                    "mapType": mapType,
-                                                                    "center": center,
-                                                                    "zoom": zoom
-                                                                }
-                                                            except json.JSONDecodeError:
-                                                                logger.error("Failed to parse JSON from Gemini response")
-                                                        
-                                                        # If JSON parsing failed, fall back to our sample trees
-                                                        logger.warning("Could not extract tree data from Gemini response, using fallback data")
-                                                    except (KeyError, IndexError) as e:
-                                                        logger.error(f"Error extracting text from Gemini response: {e}")
+                                                    # Log will be saved after the try/except block
                                                 else:
-                                                    logger.error(f"Error from Gemini API: status {gemini_response.status}")
-                                        else:
-                                            logger.error(f"Failed to fetch satellite imagery: status {response.status}")
+                                                    error_text = await gemini_response.text()
+                                                    logger.error(f"Error from Gemini API: status {gemini_response.status}, Response: {error_text}")
+                                                    
+                                                    # Parse and log JSON error details if available
+                                                    try:
+                                                        error_json = json.loads(error_text)
+                                                        if "error" in error_json:
+                                                            logger.error(f"Gemini API error details: {json.dumps(error_json['error'], indent=2)}")
+                                                    except (json.JSONDecodeError, KeyError):
+                                                        pass
+                                                        
+                                                    return {
+                                                        "success": False,
+                                                        "message": f"Gemini API error: {gemini_response.status}",
+                                                        "error_details": error_text,
+                                                        "timestamp": datetime.now().isoformat()
+                                                    }
+                                                
+                                            # Save the response for debugging
+                                            if job_id and 'gemini_result' in locals():
+                                                gemini_response_dir = os.path.join(job_dir, 'gemini_response')
+                                                os.makedirs(gemini_response_dir, exist_ok=True)
+                                                
+                                                # Save API response as JSON
+                                                response_file = os.path.join(gemini_response_dir, 'response.json')
+                                                with open(response_file, 'w') as f:
+                                                    json.dump(gemini_result, f, indent=2)
+                                                logger.info(f"Saved Gemini response to {response_file}")
+                                                
+                                                # Save request payload (without API key)
+                                                vision_payload_copy = vision_payload.copy()
+                                                request_file = os.path.join(gemini_response_dir, 'request.json')
+                                                with open(request_file, 'w') as f:
+                                                    json.dump(vision_payload_copy, f, indent=2)
+                                                logger.info(f"Saved request payload to {request_file}")
+                                                
+                                                # Image was already saved to temp_img_path earlier
+                                            
+                                            # Process successful Gemini response
+                                            if 'gemini_result' in locals():
+                                                try:
+                                                    response_text = gemini_result["candidates"][0]["content"]["parts"][0]["text"]
+                                                    
+                                                    # Try to parse JSON from the response
+                                                    import re
+                                                    
+                                                    # Look for JSON arrays in the response
+                                                    json_match = re.search(r'\[\s*{.*}\s*\]', response_text, re.DOTALL)
+                                                    if json_match:
+                                                        try:
+                                                            trees_data = json.loads(json_match.group(0))
+                                                            
+                                                            # Process the trees data to add missing fields and convert to our format
+                                                            processed_trees = self._process_gemini_trees(trees_data, center, bounds, job_id)
+                                                            
+                                                            logger.info(f"Successfully extracted {len(processed_trees)} trees from Gemini response")
+                                                            return {
+                                                                "success": True,
+                                                                "job_id": job_id,
+                                                                "status": "complete",
+                                                                "timestamp": datetime.now().isoformat(),
+                                                                "tree_count": len(processed_trees),
+                                                                "trees": processed_trees,
+                                                                "message": f"Successfully detected {len(processed_trees)} trees using Gemini API",
+                                                                "detection_source": "gemini_vision",
+                                                                "using_coordinates": True,
+                                                                "mapType": mapType,
+                                                                "center": center,
+                                                                "zoom": zoom
+                                                            }
+                                                        except json.JSONDecodeError:
+                                                            logger.error("Failed to parse JSON from Gemini response")
+                                                    
+                                                    # If JSON parsing failed, fall back to our sample trees
+                                                    logger.warning("Could not extract tree data from Gemini response, using fallback data")
+                                                except (KeyError, IndexError) as e:
+                                                    logger.error(f"Error extracting text from Gemini response: {e}")
+                                            # Note: When no gemini_result is available, errors are already logged in previous blocks
                             
                             except Exception as e:
                                 logger.error(f"Error during satellite imagery processing: {e}")
@@ -1126,36 +1226,46 @@ class GeminiService:
                     
                     # Create detailed prompt for tree detection with image
                     prompt_text = f"""
-                    You are an object recognition system analyzing a satellite/aerial image.
-                    
-                    Your task is to detect trees in this image and return their details in a structured JSON format.
-                    
-                    Instructions:
-                    1. Look at the aerial image carefully
-                    2. Identify EVERY tree visible in the image
-                    3. Even if the image is unclear, try to identify any potential trees
-                    4. Create a JSON array containing all detected trees
-                    
-                    For each tree:
-                    - Assign a unique ID ("tree_1", "tree_2", etc.)
-                    - Determine its geographic coordinates within these bounds: {bounds}
-                    - Estimate height in meters (typically 5-25m)
-                    - Classify species if possible (common trees: Oak, Pine, Maple, Cedar, Elm)
-                    - Assign risk level (low, medium, high) based on size, location, and proximity to structures
-                    
-                    JSON format for each tree:
-                    {{
+                    I need you to identify all individual trees in this satellite/map image. Looking at the image, perform these steps:
+
+                    1. Identify EVERY single tree in the image, focusing on:
+                       - Individual trees throughout the entire image
+                       - Trees near buildings, houses, and infrastructure 
+                       - Trees in residential yards, along streets, and in parks
+                       - Trees near power lines and other utilities
+
+                    2. CRITICAL POSITION INSTRUCTIONS - READ CAREFULLY:
+                       For each tree, provide an [x, y] position. The coordinate system is:
+                       - [0,0] = TOP-LEFT corner of the image
+                       - [1,1] = BOTTOM-RIGHT corner of the image
+                       - x increases from left to right (0→1)
+                       - y increases from top to bottom (0→1)
+                       
+                       For example, a tree in the exact center would be at [0.5, 0.5].
+                       A tree in the top-right corner would be at [1.0, 0.0].
+                       A tree in the bottom-left corner would be at [0.0, 1.0].
+
+                    3. For each tree you identify, provide ONLY this information in a JSON format:
+                       - "id": unique identifier (e.g., "tree_1", "tree_2")
+                       - "position": [x, y] - The tree's position following the coordinate system above
+                       - "height": estimate in meters (typical range 5-35m)
+                       - "species": best guess of tree species or "Unknown" if not clear
+                       - "risk_level": "low", "medium", or "high" based on location near structures
+
+                    Format your output EXACTLY as shown below - a raw JSON array:
+                    [{{
                       "id": "tree_1",
-                      "location": [longitude, latitude],
-                      "height": 15.2,
+                      "position": [0.25, 0.65],
+                      "height": 12.5,
                       "species": "Oak",
                       "risk_level": "medium"
-                    }}
-                    
-                    IMPORTANT: Return ONLY a raw JSON array without explanations, markdown formatting, or code blocks.
-                    Example: [{{"id":"tree_1","location":[-97.123, 32.456],"height":18.5,"species":"Oak","risk_level":"medium"}}, ...]
-                    
-                    If absolutely no trees are visible, return an empty array: []
+                    }}, 
+                    ...more trees...]
+
+                    IMPORTANT:
+                    - Return ONLY the raw JSON array without any explanation, markdown formatting, or code blocks
+                    - Coordinates must be normalized from 0-1 within the image
+                    - If no trees are visible, return an empty array: []
                     """
                 else:
                     # Use the text-only prompt prepared earlier
@@ -1204,8 +1314,10 @@ class GeminiService:
                 }
                 
                 # Add API key to URL
-                url = f"{self.api_url}/models/gemini-2.0-flash:generateContent?key={self.api_key}"
-                logger.info(f"Using Gemini API URL: {url.replace(self.api_key, '****')}")
+                url = self._get_gemini_url(f"models/{self.model}:generateContent")
+                # Log with masked API key
+                masked_url = url.replace(GEMINI_API_KEY, "****")
+                logger.info(f"Using Gemini API URL: {masked_url}")
                 
                 # Make the request with proper timeout handling
                 async with session.post(url, json=payload, timeout=60) as response:
@@ -1223,16 +1335,35 @@ class GeminiService:
                             f.write(response)
                         logger.info(f"Saved raw HTTP response to {response_file}")
                     
-                    # Now continue with normal processing
-                    if response.status != 200:
-                        logger.error(f"Gemini API error: Status {response.status}, Response: {response}")
+                    # Now continue with normal processing - note that response is already a text string at this point
+                    try:
+                        # Try to parse response as JSON to check status
+                        json_response = json.loads(response)
+                        
+                        if "error" in json_response:
+                            error_details = json.dumps(json_response.get("error", {}))
+                            logger.error(f"Gemini API error: Response: {error_details}")
+                            
+                            return {
+                                "success": False,
+                                "job_id": job_id,
+                                "status": "error",
+                                "message": f"Gemini API error: {json_response.get('error', {}).get('status', 'UNKNOWN_ERROR')}",
+                                "error_details": error_details,
+                                "timestamp": datetime.now().isoformat(),
+                                "tree_count": 0,
+                                "trees": []
+                            }
+                    except json.JSONDecodeError:
+                        # Not a JSON response or some other error
+                        logger.error(f"Gemini API error: Unable to parse response as JSON: {response[:200]}...")
                         
                         return {
                             "success": False,
                             "job_id": job_id,
                             "status": "error",
-                            "message": f"Gemini API error: {response.status}",
-                            "error_details": error_text,
+                            "message": "Gemini API returned invalid response",
+                            "error_details": response[:500],
                             "timestamp": datetime.now().isoformat(),
                             "tree_count": 0,
                             "trees": []
@@ -1424,8 +1555,7 @@ class GeminiService:
             Dict: Configuration dictionary with all Gemini API settings
                   including api_key, api_url, model, and timeout parameters.
         """
-        # Import config from main config file
-        from config import GEMINI_API_KEY, GEMINI_API_URL, GEMINI_MODEL
+        # We already imported these at the module level, so just use them directly
         
         # Load environment variables 
         import os
@@ -1438,8 +1568,10 @@ class GeminiService:
         # Use gemini-2.0-flash for improved performance and multimodal support
         env_model = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
         
-        # Prioritize environment variables first, then config.py values
-        api_key = env_api_key or GEMINI_API_KEY or ""
+        # Get the API key directly from config.py - no manipulation
+        api_key = GEMINI_API_KEY
+        # Debug the key to verify it's being loaded correctly
+        logger.info(f"API key from config - type: {type(api_key)}, length: {len(api_key)}")
         
         # Log API key presence (not the actual key)
         logger.info(f"Gemini API key available: {bool(api_key)}")
@@ -1447,8 +1579,8 @@ class GeminiService:
         default_config = {
             "gemini": {
                 "api_key": api_key,
-                "api_url": env_api_url or GEMINI_API_URL,
-                "model": env_model or GEMINI_MODEL,
+                "api_url": GEMINI_API_URL,
+                "model": GEMINI_MODEL,
                 "max_retries": 3,
                 "timeout_seconds": 30
             }
@@ -1467,11 +1599,12 @@ class GeminiService:
         # Log configuration (without API key for security)
         safe_config = {**default_config}
         if safe_config["gemini"]["api_key"]:
-            safe_config["gemini"]["api_key"] = (
-                "****" + safe_config["gemini"]["api_key"][-4:] 
-                if len(safe_config["gemini"]["api_key"]) > 4 
-                else "****"
-            )
+            # Just mask most of the API key but keep first 4 and last 4 characters
+            full_key = safe_config["gemini"]["api_key"]
+            if len(full_key) > 8:
+                safe_config["gemini"]["api_key"] = full_key[:4] + "****" + full_key[-4:]
+            else:
+                safe_config["gemini"]["api_key"] = "****"
         logger.info(f"Loaded Gemini configuration: {safe_config}")
         
         return default_config
@@ -1647,17 +1780,12 @@ class GeminiService:
                 if successful_tiles < total_tiles * 0.5:  # Less than 50% success
                     logger.warning(f"Too many missing tiles ({total_tiles-successful_tiles}/{total_tiles}), result may be incomplete")
             
-            # Save the composite image for debugging
-            composite_path = os.path.join('/ttt/data/temp', job_id, 'composite_map.jpg')
-            composite_image.save(composite_path, 'JPEG', quality=95)
-            logger.info(f"Saved composite map image to {composite_path}")
-            
-            # Also save a copy in the gemini_response folder for easier access
+            # Save the composite image in the gemini_response folder
             gemini_response_dir = os.path.join('/ttt/data/temp', job_id, 'gemini_response')
             os.makedirs(gemini_response_dir, exist_ok=True)
-            gemini_composite_path = os.path.join(gemini_response_dir, 'composite_map.jpg')
-            composite_image.save(gemini_composite_path, 'JPEG', quality=95)
-            logger.info(f"Also saved composite map image to {gemini_composite_path}")
+            composite_path = os.path.join(gemini_response_dir, 'composite_map.jpg')
+            composite_image.save(composite_path, 'JPEG', quality=95)
+            logger.info(f"Saved composite map image to {composite_path}")
             
             # Convert composite image to base64 for Gemini API
             buffered = io.BytesIO()
@@ -1666,45 +1794,36 @@ class GeminiService:
             
             # Create prompt for Gemini
             tree_detection_prompt = f"""
-            I need you to identify and analyze trees from this satellite/map image. Looking at the image, perform these steps:
+            I need you to identify all individual trees in this satellite/map image. Looking at the image, perform these steps:
 
-            1. Carefully scan the entire image for all trees. Pay special attention to: 
-               - Dark green circular/oval shapes which are tree canopies
-               - Trees that cast shadows (especially in developed areas)
-               - Groups of trees in forests or woodlands
-               - Individual trees in yards, parks, and along streets
+            1. Identify EVERY single tree in the image, focusing on:
+               - Individual trees throughout the entire image
+               - Trees near buildings, houses, and infrastructure 
+               - Trees in residential yards, along streets, and in parks
+               - Trees near power lines and other utilities
+               - Any tree that could potentially impact human structures
             
-            2. For each tree you identify, provide this information in a specific JSON format:
-               - "position": [x, y] - The tree's position as coordinates from 0-1 (with 0,0 at top-left and 1,1 at bottom-right)
-               - "height": estimate in meters (typical range 5-35m)
-               - "species": best guess of tree species or "Unknown" if not clear
-               - "risk_level": "low", "medium", or "high" based on proximity to structures
-               - "risk_factors": brief notes on why a tree might pose risks (optional)
+            2. For each tree you identify, provide this information:
+               - box_2d: [x1, y1, x2, y2] - bounding box coordinates
+               - label: description with position, height and species
             
-            3. Analyze risk factors such as:
-               - Trees very close to buildings or power lines
-               - Trees overhanging structures
-               - Trees that appear dead or damaged
-               - Trees on steep slopes
-               - Very tall trees near structures
-            
-            IMPORTANT: Return ONLY a properly formatted JSON array of tree objects. Example format:
+            IMPORTANT: The label MUST follow this EXACT format: "the tree at [x,y] with height=H and species=S" 
+            where x,y are coordinates from 0-1 (with 0,0 at top-left and 1,1 at bottom-right), 
+            H is height in meters, and S is the species.
+
+            Return ONLY a properly formatted JSON array of objects. Example format:
+            ```
             [
-              {
-                "position": [0.45, 0.32],
-                "height": 15,
-                "species": "Oak",
-                "risk_level": "medium",
-                "risk_factors": ["Close to house", "Overhanging roof"]
-              },
-              {
-                "position": [0.78, 0.65],
-                "height": 22,
-                "species": "Pine",
-                "risk_level": "high",
-                "risk_factors": ["Very tall", "Close to power line"]
-              }
+              {{
+                "box_2d": [11, 8, 26, 20],
+                "label": "the tree at [0.018,0.014] with height=10 and species=Unknown"
+              }},
+              {{
+                "box_2d": [5, 40, 20, 52],
+                "label": "the tree at [0.046,0.011] with height=10 and species=Oak"
+              }}
             ]
+            ```
             """
             
             # Prepare the Gemini API request with multimodal content
@@ -1733,7 +1852,8 @@ class GeminiService:
             }
             
             # Make the direct API call to Gemini
-            url = f"{self.api_url}/models/gemini-2.0-flash:generateContent?key={self.api_key}"
+            # Use gemini-2.0-flash for best multimodal performance
+            url = self._get_gemini_url(f"models/{self.model}:generateContent")
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload, timeout=60) as gemini_response:
@@ -1743,6 +1863,9 @@ class GeminiService:
                     # Save the raw response for debugging regardless of status
                     gemini_response_dir = os.path.join('/ttt/data/temp', job_id, 'gemini_response')
                     os.makedirs(gemini_response_dir, exist_ok=True)
+                    
+                    # Import json here to ensure it's in scope
+                    import json
                     
                     # Save API response
                     response_file = os.path.join(gemini_response_dir, 'tile_response.txt')
@@ -1798,7 +1921,12 @@ class GeminiService:
                             
                             if json_match:
                                 try:
-                                    trees_data = json.loads(json_match.group(0))
+                                    # Extract the matched text and load it as JSON
+                                    json_text = json_match.group(0)
+                                    # Clean up any potential formatting issues
+                                    json_text = json_text.replace("'", '"')
+                                    # Parse the JSON
+                                    trees_data = json.loads(json_text)
                                     
                                     # Process the trees data to add missing fields and convert to our format
                                     # For tiles, we need to adjust coordinates from image space (0-1) to geo coordinates
@@ -1934,14 +2062,62 @@ class GeminiService:
                                 "debug_info": "Check your API key and quota. The response format may have changed."
                             }
                     else:
-                        logger.error(f"Error from Gemini API: status {gemini_response.status}")
-                        return {"success": False}
+                        logger.error(f"Error from Gemini API: status {gemini_response.status}, Response: {response_text[:500]}")
                         
-        except Exception as e:
-            logger.error(f"Error in map tiles processing: {e}")
+                        # Try to parse the error if it's in JSON format
+                        try:
+                            error_details = json.loads(response_text)
+                            logger.error(f"Gemini API error details: {json.dumps(error_details, indent=2)}")
+                        except json.JSONDecodeError:
+                            logger.error(f"Could not parse error response as JSON")
+                        
+                        # Handle quota errors specifically
+                        if gemini_response.status == 400 and "quota" in response_text.lower():
+                            logger.error("Possible quota exceeded or rate limit issue with Gemini API")
+                        
+                        # Return error instead of using fallback data
+                        return {
+                            "success": False,
+                            "job_id": job_id,
+                            "status": "error",
+                            "timestamp": datetime.now().isoformat(),
+                            "message": f"Gemini API error: {gemini_response.status}",
+                            "error_details": response_text[:200],
+                            "center": center,
+                            "zoom": zoom
+                        }
+                        
+        except Exception as processing_error:
+            logger.error(f"Error in map tiles processing: {processing_error}")
             import traceback
+            import json  # Explicitly import json here to ensure it's in scope
             logger.error(f"Traceback: {traceback.format_exc()}")
-            return {"success": False}
+            
+            # Create the response directory for error info
+            try:
+                gemini_response_dir = os.path.join('/ttt/data/temp', job_id, 'gemini_response')
+                os.makedirs(gemini_response_dir, exist_ok=True)
+                
+                # Save error information
+                error_info = {
+                    "message": "Tree detection failed using Gemini API",
+                    "reason": "Satellite imagery could not be processed",
+                    "timestamp": datetime.now().timestamp(),
+                    "error": str(processing_error)
+                }
+                
+                with open(os.path.join(gemini_response_dir, 'error_info.json'), 'w') as f:
+                    f.write(json.dumps(error_info, indent=2))
+                
+                logger.info(f"Saved error information to {gemini_response_dir}/error_info.json")
+            except Exception as save_err:
+                logger.error(f"Failed to save error information: {save_err}")
+            
+            return {
+                "success": False,
+                "message": "Error processing satellite imagery",
+                "error_details": str(processing_error)
+            }
     
     def _process_tile_trees(self, trees_data, min_tile_x, min_tile_y, x_tiles, y_tiles, zoom, job_id):
         """Process tree data returned from Gemini API for map tiles
@@ -2096,6 +2272,16 @@ class GeminiService:
         Returns:
             List of processed tree objects in our format
         """
+        # Check if we're using the new format with box_2d and label
+        if trees_data and isinstance(trees_data[0], dict) and 'label' in trees_data[0]:
+            # Process using the new box_label format
+            return self._process_gemini_box_label_trees(trees_data, bounds, job_id)
+            
+        # Check if we're using the format with position, height, and species
+        if trees_data and isinstance(trees_data[0], dict) and 'position' in trees_data[0] and isinstance(trees_data[0]['position'], list):
+            # Process using the position-based format
+            return self._process_gemini_position_trees(trees_data, bounds, job_id)
+        
         processed_trees = []
         
         # Get bounds dimensions
@@ -2133,9 +2319,22 @@ class GeminiService:
                 # Convert position to location
                 # This assumes position is in image coordinates (0-1) and needs to be mapped to geo coordinates
                 x, y = tree['position'][0], tree['position'][1]
-                # Map x,y to lng,lat based on bounds
-                lng = sw_lng + x * lng_span
-                lat = sw_lat + (1 - y) * lat_span  # y is inverted in image coordinates
+                # Debug the coordinate transformation
+                logger.info(f"Converting Gemini position [x={x}, y={y}] to geo coordinates")
+                logger.info(f"Map bounds: SW=[{sw_lng}, {sw_lat}], NE=[{ne_lng}, {ne_lat}]")
+                
+                # Map x,y to lng,lat based on bounds with proper inversion for image coordinates
+                # Gemini returns coordinates with [0,0] at top-left, [1,1] at bottom-right
+                # Map coordinates have [sw_lng, sw_lat] at bottom-left, [ne_lng, ne_lat] at top-right
+                
+                # Transform x to longitude (left-right is the same orientation in both systems)
+                lng = sw_lng + (x * lng_span)
+                
+                # Transform y to latitude (top-down in image vs bottom-up in geo)
+                # Need to invert the y-axis: as y increases in image coords, latitude decreases
+                lat = ne_lat - (y * lat_span)
+                
+                logger.info(f"Transformed to geo coordinates: [{lng}, {lat}]")
                 processed_tree['location'] = [lng, lat]
             elif 'coordinates' in tree and isinstance(tree['coordinates'], list) and len(tree['coordinates']) >= 2:
                 # Direct coordinates as [lng, lat]
@@ -2211,6 +2410,157 @@ class GeminiService:
                     processed_tree['risk_factors'] = []
             else:
                 processed_tree['risk_factors'] = []
+            
+            processed_trees.append(processed_tree)
+        
+        return processed_trees
+        
+    def _process_gemini_position_trees(self, trees_data, bounds, job_id):
+        """Process tree data in the position format
+        
+        This function handles the format with position, height, and species fields
+        
+        Args:
+            trees_data: List of tree objects with position, height, and species from Gemini
+            bounds: Map bounds [[sw_lng, sw_lat], [ne_lng, ne_lat]]
+            job_id: The job ID for tracking
+            
+        Returns:
+            List of processed tree objects in our format
+        """
+        processed_trees = []
+        
+        # Set up bounds for coordinate transformation
+        sw_lng, sw_lat = bounds[0]
+        ne_lng, ne_lat = bounds[1]
+        lng_span = ne_lng - sw_lng
+        lat_span = ne_lat - sw_lat
+        
+        logger.info(f"Processing {len(trees_data)} trees with position format, bounds: SW=[{sw_lng}, {sw_lat}], NE=[{ne_lng}, {ne_lat}]")
+        
+        for i, tree in enumerate(trees_data):
+            # Extract position coordinates (x,y in 0-1 range)
+            position = tree.get('position', [0.5, 0.5])
+            x = position[0]
+            y = position[1]
+            
+            # Extract other tree properties
+            height = tree.get('height', 10)
+            species = tree.get('species', 'Unknown')
+            
+            # Debug the coordinate transformation
+            logger.info(f"Converting Gemini position [x={x}, y={y}] to geo coordinates")
+            
+            # Transform x to longitude (left-right is the same orientation in both systems)
+            lng = sw_lng + (x * lng_span)
+            
+            # Transform y to latitude (top-down in image vs bottom-up in geo)
+            # Need to invert the y-axis: as y increases in image coords, latitude decreases
+            lat = ne_lat - (y * lat_span)
+            
+            logger.info(f"Transformed to geo coordinates: [{lng}, {lat}]")
+            
+            # Create the processed tree object
+            processed_tree = {
+                "id": f"{job_id}_tree_{i}",
+                "location": [lng, lat],
+                "height": height,
+                "species": species if species != "Unknown" else "Unknown Species",
+                "risk_level": "medium",  # Default risk level
+                "risk_factors": [],  # Default empty risk factors
+                "confidence": 0.85
+            }
+            
+            processed_trees.append(processed_tree)
+        
+        return processed_trees
+    
+    def _process_gemini_box_label_trees(self, trees_data, bounds, job_id):
+        """Process tree data in the box_2d and label format
+        
+        This function parses trees where each tree has a box_2d and label property,
+        with the label in the format: "the tree at [x,y] with height=H and species=S"
+        
+        Args:
+            trees_data: List of tree objects with box_2d and label from Gemini
+            bounds: Map bounds [[sw_lng, sw_lat], [ne_lng, ne_lat]]
+            job_id: The job ID for tracking
+            
+        Returns:
+            List of processed tree objects in our format
+        """
+        import re
+        
+        processed_trees = []
+        
+        # Pattern to match tree position, height, and species in label
+        label_pattern = r'the tree at \[(\d+\.?\d*),\s*(\d+\.?\d*)\] with height=(\d+\.?\d*) and species=(\w+)'
+        
+        # Risk mapping for standardizing risk level terms
+        risk_mapping = {
+            'high': 'high',
+            'severe': 'high',
+            'extreme': 'high',
+            'medium': 'medium',
+            'moderate': 'medium',
+            'low': 'low',
+            'minimal': 'low',
+        }
+        
+        # Set up bounds for coordinate transformation
+        sw_lng, sw_lat = bounds[0]
+        ne_lng, ne_lat = bounds[1]
+        lng_span = ne_lng - sw_lng
+        lat_span = ne_lat - sw_lat
+        
+        logger.info(f"Processing {len(trees_data)} trees with bounds: SW=[{sw_lng}, {sw_lat}], NE=[{ne_lng}, {ne_lat}]")
+        
+        for i, tree in enumerate(trees_data):
+            # Default values
+            processed_tree = {
+                "id": f"{job_id}_tree_{i}",
+                "confidence": 0.85
+            }
+            
+            # Parse the label to extract position, height, and species
+            label = tree.get('label', '')
+            label_match = re.search(label_pattern, label)
+            
+            if label_match:
+                x = float(label_match.group(1))
+                y = float(label_match.group(2))
+                height = float(label_match.group(3))
+                species = label_match.group(4)
+                
+                # Debug the coordinate transformation
+                logger.info(f"Converting Gemini position [x={x}, y={y}] to geo coordinates")
+                logger.info(f"Map bounds: SW=[{sw_lng}, {sw_lat}], NE=[{ne_lng}, {ne_lat}]")
+                
+                # Transform x to longitude (left-right is the same orientation in both systems)
+                lng = sw_lng + (x * lng_span)
+                
+                # Transform y to latitude (top-down in image vs bottom-up in geo)
+                # Need to invert the y-axis: as y increases in image coords, latitude decreases
+                lat = ne_lat - (y * lat_span)
+                
+                logger.info(f"Transformed to geo coordinates: [{lng}, {lat}]")
+                
+                # Add processed data to the tree
+                processed_tree.update({
+                    "location": [lng, lat],
+                    "height": height,
+                    "species": species if species != "Unknown" else "Unknown Species",
+                    "risk_level": "medium",  # Default risk level
+                    "risk_factors": []  # Default empty risk factors
+                })
+                
+                # If we have a bounding box, add it
+                if 'box_2d' in tree and isinstance(tree['box_2d'], list) and len(tree['box_2d']) == 4:
+                    processed_tree['bbox'] = tree['box_2d']
+            else:
+                # Fallback for trees without proper label format
+                logger.warning(f"Tree {i} has label that doesn't match expected format: {label}")
+                continue
             
             processed_trees.append(processed_tree)
         

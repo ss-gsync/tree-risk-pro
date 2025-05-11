@@ -8,7 +8,7 @@ import { useAuth } from '../../../auth/AuthContext';
 
 const Header = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const { logout } = useAuth();
   
   const toggleDropdown = () => {

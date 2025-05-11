@@ -2,20 +2,34 @@
 
 import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle, lazy, Suspense } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
+import { ErrorBoundary } from '../../../App';
 import { Card, CardContent } from '@/components/ui/card';
 import { setMapView, setSelectedFeature } from '../../../features/map/mapSlice';
 import { useGoogleMapsApi } from '../../../hooks/useGoogleMapsApi';
 import { store } from '../../../store';
 import { TreeService, PropertyService, DetectionService } from '../../../services/api/apiService';
-import Map3DToggle from './Map3DToggle';
-import TreeValidationMode from './TreeValidationMode';
+// Map3DToggle has been moved to MapControls
+import DetectionMode from './DetectionMode';
 
 // Import 3D viewer components lazily for better performance
 const CesiumViewer = lazy(() => import('./CesiumViewer'));
 const GoogleMaps3DViewer = lazy(() => import('./GoogleMaps3DViewer'));
 
 
-const MapView = forwardRef(({ onDataLoaded }, ref) => {
+const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
+  // Override the local header collapsed state if headerState is provided
+  useEffect(() => {
+    if (headerState !== undefined) {
+      setHeaderCollapsed(headerState);
+      
+      // Dispatch header collapse event for sidebar components to pick up
+      window.dispatchEvent(new CustomEvent('headerCollapse', {
+        detail: { 
+          collapsed: headerState
+        }
+      }));
+    }
+  }, [headerState]);
   const mapContainer = useRef(null);
   const map = useRef(null);
   const cesiumViewerRef = useRef(null);
@@ -85,8 +99,8 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
                 map.current.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
                 console.log("Updating to HYBRID mode based on settings change");
               } else {
-                map.current.setMapTypeId(window.google.maps.MapTypeId.SATELLITE);
-                console.log("Updating to SATELLITE mode based on settings change");
+                map.current.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
+                console.log("Updating to HYBRID mode (no labels) based on settings change");
               }
             }
           }
@@ -111,6 +125,7 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
   const [validationData, setValidationData] = useState(null);
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
   const [detectedTrees, setDetectedTrees] = useState([]);
+  const [headerCollapsed, setHeaderCollapsed] = useState(true); // Track header state
   
   // Get map3DApi setting from localStorage or use default
   const [map3DApi, setMap3DApi] = useState(() => {
@@ -145,11 +160,11 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
         center: { lat: center[1], lng: center[0] },
         zoom: zoom || 13,
         mapId: import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || "",
-        disableDefaultUI: false,
-        zoomControl: true,
-        mapTypeControl: true,
+        disableDefaultUI: true, // Disable all default UI controls
+        zoomControl: true, // Selectively enable only the controls we want
+        mapTypeControl: false, // Disable Map/Satellite buttons 
         scaleControl: true,
-        streetViewControl: true,
+        streetViewControl: false, // Disable street view
         rotateControl: true,
         fullscreenControl: true,
         tilt: mapTilt,
@@ -200,14 +215,34 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
     } catch (e) {}
   };
   
-  // Set up background rendering to keep map ready
+  // IMPORTANT: ALWAYS enforce HYBRID view to make sure labels appear
   useEffect(() => {
-    if (is3DMode && map.current) {
-      // When in 3D mode, periodically refresh the map in the background
-      const interval = setInterval(preRenderMapTiles, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [is3DMode, isLoaded]);
+    // Set up interval that forces HYBRID view for satellite
+    const interval = setInterval(() => {
+      try {
+        if (window.google && window.google.maps && map.current) {
+          // Force resize
+          window.google.maps.event.trigger(map.current, 'resize');
+          
+          // Get current map type
+          const currentMapType = map.current.getMapTypeId();
+          
+          // ALWAYS ENFORCE HYBRID for labels - critical fix
+          if (localStorage.getItem('currentMapType') === 'hybrid' || 
+              window.currentMapType === 'hybrid') {
+            if (currentMapType !== window.google.maps.MapTypeId.HYBRID) {
+              console.log("FORCING HYBRID mode for labels");
+              map.current.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    }, 1000); // Higher frequency to ensure labels appear
+    
+    return () => clearInterval(interval);
+  }, [isLoaded]);
   
   useEffect(() => {
     // Only initialize the map if it doesn't exist yet and Google Maps is loaded
@@ -232,32 +267,91 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
           setIs3DSupported(false);
         }
         
-        // Determine initial map type from settings
-        const mapTypeId = settings.defaultMapType.toUpperCase();
-        const initialMapType = window.google.maps.MapTypeId[mapTypeId] || 
-                              window.google.maps.MapTypeId.ROADMAP;
+        // Always use hybrid view regardless of settings or saved preferences
+        console.log("Initializing map with FORCED HYBRID view, 3D mode:", is3DMode);
         
-        console.log("Initializing map with type:", mapTypeId, "3D mode:", is3DMode);
+        // Force hybrid view in localStorage to ensure consistency
+        try {
+          // Store current map type directly to localStorage with explicit HYBRID value
+          localStorage.setItem('currentMapType', 'hybrid');
+          
+          // Create global flags to ensure hybrid view
+          window.FORCE_MAP_VIEW = 'hybrid';
+          window.currentMapType = 'hybrid';
+          
+          // Explicitly tell Google Maps API to use HYBRID mode
+          if (window.google && window.google.maps) {
+            const HYBRID = window.google.maps.MapTypeId.HYBRID;
+            console.log("Explicitly setting global HYBRID preference");
+          }
+          
+          // Update settings if they exist
+          const savedSettings = localStorage.getItem('treeRiskDashboardSettings');
+          if (savedSettings) {
+            try {
+              const settings = JSON.parse(savedSettings);
+              if (settings) {
+                // Ensure hybrid view settings are set
+                settings.defaultMapType = 'hybrid';
+                settings.mapTypeId = 'hybrid';
+                
+                // Explicitly ensure labels are enabled for hybrid view
+                settings.mapSettings = settings.mapSettings || {};
+                settings.mapSettings.showLabels = true;
+                
+                localStorage.setItem('treeRiskDashboardSettings', JSON.stringify(settings));
+                
+                // Broadcast the settings update with forceApply flag
+                window.dispatchEvent(new CustomEvent('settingsUpdated', {
+                  detail: { 
+                    settings: settings,
+                    source: 'mapInit',
+                    forceApply: true
+                  }
+                }));
+              }
+            } catch (e) {
+              console.error("Error parsing settings JSON:", e);
+              
+              // Create new settings if parsing failed
+              const defaultSettings = { 
+                defaultMapType: 'hybrid', 
+                mapTypeId: 'hybrid',
+                mapSettings: { showLabels: true } 
+              };
+              localStorage.setItem('treeRiskDashboardSettings', JSON.stringify(defaultSettings));
+            }
+          } else {
+            // Create new settings if none exist
+            const defaultSettings = { 
+              defaultMapType: 'hybrid', 
+              mapTypeId: 'hybrid',
+              mapSettings: { showLabels: true } 
+            };
+            localStorage.setItem('treeRiskDashboardSettings', JSON.stringify(defaultSettings));
+          }
+        } catch (e) {
+          console.error("Error saving hybrid view preference:", e);
+        }
         
-        // Create map with fallbacks for errors
+        // Create map - ALWAYS FORCE HYBRID VIEW AT INITIALIZATION
         map.current = new window.google.maps.Map(mapContainer.current, {
           center: validCenter,
           zoom: zoom || 13,
-          mapTypeId: initialMapType,
+          mapTypeId: window.google.maps.MapTypeId.HYBRID, // ALWAYS USE HYBRID
           mapId: mapId, // Map ID from environment variables
-          disableDefaultUI: false,
-          zoomControl: true,
-          mapTypeControl: true,
+          disableDefaultUI: false, // Enable default UI temporarily to ensure styles load
+          zoomControl: true, // Selectively enable only the controls we want
+          mapTypeControl: false, // DISABLE DEFAULT CONTROLS TO AVOID CONFLICTS
           scaleControl: true,
-          streetViewControl: true,
+          streetViewControl: false, // Disable street view
           rotateControl: true,
           fullscreenControl: true,
           // 3D settings (support depends on API version and browser)
           tilt: is3DMode ? 45 : 0, // Initial tilt for 3D mode
           heading: 0,
-          // Enable 3D building layer in the map
-          // Keep UI controls minimal so we can add our own
-          mapTypeControlOptions: {
+          // No longer needed as we've disabled mapTypeControl
+          /*mapTypeControlOptions: {
             mapTypeIds: [
               google.maps.MapTypeId.ROADMAP,
               google.maps.MapTypeId.SATELLITE,
@@ -266,9 +360,8 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
             ],
             position: google.maps.ControlPosition.TOP_LEFT,
             style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR
-          },
+          },*/
           // Custom controls
-          mapTypes: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
           fullscreenControlOptions: {
             position: google.maps.ControlPosition.TOP_RIGHT
           }
@@ -320,7 +413,7 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
         console.log("Map successfully initialized with 3D support:", webGLSupported);
       } catch (error) {
         console.error("Error initializing map:", error);
-        setLoadError(error);
+        // Don't try to set loadError since it's from the useGoogleMapsApi hook
       }
 
       // Handle map movement to update Redux store
@@ -389,6 +482,113 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
     }
   }, [center, zoom, isLoaded]);
 
+  // Add event listeners for marker placement and location markers
+  useEffect(() => {
+    // Event handler for adding a marker with address at the current location
+    const handleAddLocationMarker = (event) => {
+      if (!map.current || !isLoaded || !window.google) return;
+      
+      try {
+        const { position, address } = event.detail;
+        const [lng, lat] = position;
+        
+        console.log(`Adding location marker at [${lng}, ${lat}] with address: ${address}`);
+        
+        // Remove all existing markers first
+        markersRef.current.forEach(item => {
+          if (item.setMap) {
+            item.setMap(null);
+          }
+        });
+        
+        // Clear the markers array
+        markersRef.current = [];
+        
+        // Create a marker at the specified location
+        const marker = new window.google.maps.Marker({
+          position: { lat, lng },
+          map: map.current,
+          animation: window.google.maps.Animation.DROP,
+          title: address || `Location [${lat.toFixed(6)}, ${lng.toFixed(6)}]`
+        });
+        
+        // Add an info window with the address if available
+        if (address) {
+          const infoWindow = new window.google.maps.InfoWindow({
+            content: `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 8px;">
+              <p style="margin: 0; font-weight: 500;">${address}</p>
+              <p style="margin: 4px 0 0; font-size: 12px; color: #666;">
+                [${lat.toFixed(6)}, ${lng.toFixed(6)}]
+              </p>
+            </div>`
+          });
+          
+          // Open the info window
+          infoWindow.open(map.current, marker);
+          
+          // Add event listener to open info window when marker is clicked
+          marker.addListener('click', () => {
+            infoWindow.open(map.current, marker);
+          });
+          
+          // Add info window to markers array
+          markersRef.current.push(infoWindow);
+        }
+        
+        // Add marker to markers array
+        markersRef.current.push(marker);
+        
+      } catch (error) {
+        console.error('Error adding location marker:', error);
+      }
+    };
+    
+    // Simple event handler for adding a center marker (without address)
+    const handleAddCenterMarker = (event) => {
+      if (!map.current || !isLoaded || !window.google) return;
+      
+      try {
+        const { position } = event.detail;
+        const [lng, lat] = position;
+        
+        console.log(`Adding center marker at [${lng}, ${lat}]`);
+        
+        // Remove all existing markers first
+        markersRef.current.forEach(item => {
+          if (item.setMap) {
+            item.setMap(null);
+          }
+        });
+        
+        // Clear the markers array
+        markersRef.current = [];
+        
+        // Create a marker at the specified location
+        const marker = new window.google.maps.Marker({
+          position: { lat, lng },
+          map: map.current,
+          animation: window.google.maps.Animation.DROP
+        });
+        
+        // Add marker to markers array
+        markersRef.current.push(marker);
+        
+      } catch (error) {
+        console.error('Error adding center marker:', error);
+      }
+    };
+    
+    // Add event listeners
+    window.addEventListener('addLocationMarker', handleAddLocationMarker);
+    window.addEventListener('addCenterMarker', handleAddCenterMarker);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('addLocationMarker', handleAddLocationMarker);
+      window.removeEventListener('addCenterMarker', handleAddCenterMarker);
+    };
+  }, [isLoaded, map.current]);
+  
   // Listen for events to change map type
   useEffect(() => {
     const handleSetMapTypeId = (event) => {
@@ -417,9 +617,9 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
                 map.current.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
                 console.log("Using HYBRID mode for satellite with labels");
               } else {
-                // Use SATELLITE which doesn't include labels
-                map.current.setMapTypeId(window.google.maps.MapTypeId.SATELLITE);
-                console.log("Using SATELLITE mode without labels");
+                // Always use HYBRID even when labels disabled to maintain consistency
+                map.current.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
+                console.log("Using HYBRID mode (labels preference ignored)");
               }
             } else if (mapTypeId === 'roadmap') {
               map.current.setMapTypeId(window.google.maps.MapTypeId.ROADMAP);
@@ -449,43 +649,19 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
     };
   }, [isLoaded, settings]);
 
-  // Handle different basemap types if needed
+  // Completely remove auto map type switching - let the toggle button handle it directly
   useEffect(() => {
+    // We're purposely NOT implementing any automatic map type switching here
+    // This is because it was conflicting with the direct toggle button control
+    
     if (map.current && isLoaded && activeBasemap) {
-      switch (activeBasemap) {
-        case 'satellite':
-          // Check if we should show labels in satellite view
-          const showLabels = settings.mapSettings?.showLabels !== false;
-          if (showLabels) {
-            // Use HYBRID which includes labels
-            map.current.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
-            console.log("Using HYBRID mode for satellite with labels");
-          } else {
-            // Use SATELLITE which doesn't include labels
-            map.current.setMapTypeId(window.google.maps.MapTypeId.SATELLITE);
-            console.log("Using SATELLITE mode without labels");
-          }
-          break;
-        case 'roadmap':
-          map.current.setMapTypeId(window.google.maps.MapTypeId.ROADMAP);
-          break;
-        case 'terrain':
-          map.current.setMapTypeId(window.google.maps.MapTypeId.TERRAIN);
-          break;
-        case 'hybrid':
-          map.current.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
-          break;
-        default:
-          // Default satellite view should also respect the labels setting
-          const showLabelsDefault = settings.mapSettings?.showLabels !== false;
-          if (showLabelsDefault) {
-            map.current.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
-          } else {
-            map.current.setMapTypeId(window.google.maps.MapTypeId.SATELLITE);
-          }
-      }
+      console.log(`BasemapEffect - Active basemap changed to: ${activeBasemap}`);
+      // ONLY do a resize, but let the user's direct choice control the map view
+      setTimeout(() => {
+        window.google.maps.event.trigger(map.current, 'resize');
+      }, 100);
     }
-  }, [activeBasemap, isLoaded, settings]);
+  }, [activeBasemap, isLoaded]);
 
   // Function to toggle 3D mode - simplified approach with 2D map always visible
   const toggle3DMode = () => {
@@ -513,8 +689,27 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
             zoom: position.zoom
           }));
           
-          // Immediately set map to satellite but DON'T set tilt yet (to avoid built-in 3D)
-          map.current.setMapTypeId(google.maps.MapTypeId.SATELLITE);
+          // Use the current map type or default to HYBRID when entering 3D
+          const currentMapType = localStorage.getItem('currentMapType') || 'hybrid';
+          console.log(`Preserving current map type when entering 3D: ${currentMapType}`);
+          
+          // Convert to Google Maps type
+          let googleMapType;
+          switch (currentMapType) {
+            case 'map':
+              googleMapType = google.maps.MapTypeId.ROADMAP;
+              break;
+            case 'satellite':
+              googleMapType = google.maps.MapTypeId.SATELLITE;
+              break;
+            case 'hybrid':
+            default:
+              googleMapType = google.maps.MapTypeId.HYBRID;
+              break;
+          }
+          
+          // Set the map type
+          map.current.setMapTypeId(googleMapType);
           
           // Keep tilt at 0 to avoid triggering Google Maps' built-in 3D mode
           map.current.setTilt(0);
@@ -544,12 +739,21 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
         
         // Reset map appearance for 2D viewing
         if (map.current) {
-          // Return to normal map type
-          if (activeBasemap) {
-            map.current.setMapTypeId(google.maps.MapTypeId[activeBasemap.toUpperCase()]);
-          } else {
+          // Return to last selected map type or default to HYBRID
+          const savedMapType = localStorage.getItem('currentMapType') || 'hybrid';
+          console.log(`Restoring saved map type from 3D to 2D: ${savedMapType}`);
+          
+          if (savedMapType === 'map') {
             map.current.setMapTypeId(google.maps.MapTypeId.ROADMAP);
+          } else if (savedMapType === 'satellite') {
+            map.current.setMapTypeId(google.maps.MapTypeId.SATELLITE);
+          } else {
+            // Default to hybrid
+            map.current.setMapTypeId(google.maps.MapTypeId.HYBRID);
           }
+          
+          // Also set the global state to match
+          window.currentMapType = savedMapType;
           
           // Reset tilt to 0 for 2D view
           map.current.setTilt(0);
@@ -940,6 +1144,13 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
         }
       }
       
+      // Debug window.google.maps availability to ensure the API is properly loaded
+      console.log("Google Maps API availability check:", {
+        googleDefined: typeof window.google !== 'undefined',
+        mapsApiDefined: window.google && typeof window.google.maps !== 'undefined',
+        markerAvailable: window.google && window.google.maps && typeof window.google.maps.Marker !== 'undefined'
+      });
+      
       // For each tree, create a rectangle and marker with distinctive styling
       const newMarkers = [];
       
@@ -999,6 +1210,7 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
             position: { lat, lng },
             map: mapInstance,
             title: `${tree.species || 'Unknown Tree'} - ${tree.height || 'Unknown'}m`,
+            draggable: true, // Make all markers draggable for repositioning
             icon: {
               path: markerShape,
               fillColor: markerColor,
@@ -1006,7 +1218,11 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
               strokeColor: strokeColor,
               strokeWeight: strokeWeight,
               scale: markerScale
-            }
+            },
+            clickable: true,
+            raiseOnDrag: true, // Raise above other markers when dragging
+            optimized: false, // Disable marker optimization for better interaction
+            zIndex: 100 // Ensure marker appears above overlay (overlay z-index is 5)
           });
           
           // For AI-detected trees, add a distinctive bounding box
@@ -1030,7 +1246,7 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
               fillOpacity: 0.08,
               map: mapInstance,
               clickable: true,
-              draggable: false
+              draggable: true // Make the rectangle draggable too
             });
             
             // Add click listener to rectangle
@@ -1038,7 +1254,34 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
               handleMarkerClick(marker, tree, markerColor, source);
             });
             
-            // Store rectangle
+            // Add drag end listener to rectangle
+            rectangle.addListener('bounds_changed', () => {
+              try {
+                // Get the center of the rectangle
+                const bounds = rectangle.getBounds();
+                const center = bounds.getCenter();
+                const newLat = center.lat();
+                const newLng = center.lng();
+                
+                // Update marker position
+                marker.setPosition({ lat: newLat, lng: newLng });
+                
+                // Update the tree location
+                tree.location = [newLng, newLat];
+                
+                // Dispatch event for DetectionMode component
+                window.dispatchEvent(new CustomEvent('treeRepositioned', {
+                  detail: { tree, source, newLocation: [newLng, newLat] }
+                }));
+              } catch (error) {
+                console.error("Error handling rectangle drag:", error);
+              }
+            });
+            
+            // Store reference to rectangle in tree object
+            tree.rectangle = rectangle;
+            
+            // Store rectangle in markers array
             newMarkers.push(rectangle);
           }
           
@@ -1047,7 +1290,71 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
             handleMarkerClick(marker, tree, markerColor, source);
           });
           
-          // Store marker
+          // Simplified dragstart event
+          marker.addListener('dragstart', () => {
+            console.log("Marker drag started");
+            // Make sure marker stays on top during drag
+            marker.setZIndex(200); // Higher z-index during drag, but still manageable
+          });
+          
+          // Add drag end event to update tree location
+          marker.addListener('dragend', (event) => {
+            const newLat = event.latLng.lat();
+            const newLng = event.latLng.lng();
+            
+            // Update tree location in the tree data
+            tree.location = [newLng, newLat];
+            
+            // Update marker position
+            marker.setPosition({ lat: newLat, lng: newLng });
+            
+            // Update bounding box position if it exists
+            if (source === 'ai' && rectangle) {
+              const boxSize = tree.height ? tree.height / 200 : 0.0001;
+              const bounds = {
+                north: newLat + boxSize,
+                south: newLat - boxSize,
+                east: newLng + boxSize,
+                west: newLng - boxSize
+              };
+              rectangle.setBounds(bounds);
+            }
+            
+            // Dispatch an event to notify the UI that a tree was repositioned
+            window.dispatchEvent(new CustomEvent('treeRepositioned', {
+              detail: { tree, source, newLocation: [newLng, newLat] }
+            }));
+            
+            // Show notification
+            const notification = document.createElement('div');
+            notification.className = 'tree-repositioned-notification';
+            notification.style.position = 'absolute';
+            notification.style.top = '70px';
+            notification.style.left = '50%';
+            notification.style.transform = 'translateX(-50%)';
+            notification.style.backgroundColor = 'rgba(59, 130, 246, 0.9)';
+            notification.style.color = 'white';
+            notification.style.padding = '8px 16px';
+            notification.style.borderRadius = '4px';
+            notification.style.zIndex = '1000';
+            notification.style.fontSize = '14px';
+            notification.style.fontWeight = '500';
+            notification.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+            notification.textContent = 'Object position updated';
+            document.body.appendChild(notification);
+            
+            // Remove notification after 1.5 seconds
+            setTimeout(() => {
+              if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+              }
+            }, 1500);
+          });
+          
+          // Store reference to marker in tree object 
+          tree.marker = marker;
+          
+          // Store marker in markers array
           newMarkers.push(marker);
           
         } catch (error) {
@@ -1162,10 +1469,32 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
         return;
       }
       
+      // If header state is provided in the event, update our local state
+      if (event.detail.headerCollapsed !== undefined) {
+        console.log("Updating header state from validation mode event:", event.detail.headerCollapsed);
+        setHeaderCollapsed(event.detail.headerCollapsed);
+        
+        // Also dispatch the event for other components
+        window.dispatchEvent(new CustomEvent('headerCollapse', {
+          detail: { 
+            collapsed: event.detail.headerCollapsed
+          }
+        }));
+      }
+      
       // Check for initialDetectionOnly flag - just open the sidebar without running detection
       if (event.detail.initialDetectionOnly) {
         console.log("Entering detection mode without triggering tree detection");
+        
+        // IMPORTANT: Set validation mode first thing
         setIsValidationMode(true);
+        
+        // Force detection mode state to be visible
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('setDetectionModeState', {
+            detail: { active: true }
+          }));
+        }, 10);
         
         // Initialize with empty data since we'll run detection later
         setDetectedTrees([]);
@@ -1174,7 +1503,10 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
           mode: 'detection',
           treeCount: 0,
           source: 'sidebar',
-          useSatelliteImagery: true
+          useSatelliteImagery: true,
+          // Include header state in validation data
+          headerCollapsed: event.detail.headerCollapsed !== undefined ? 
+            event.detail.headerCollapsed : headerCollapsed
         });
         return;
       }
@@ -1381,6 +1713,24 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
       const clearExisting = event?.detail?.clearExisting === true;
       const requestedTab = event?.detail?.tab; // Get the requested tab if any
       
+      // IMPORTANT: First ensure that any existing Detection sidebar is properly closed
+      setIsValidationMode(false); // First set state to false to fully remove Detection component
+      
+      // Also force close using the event - this will trigger internal cleanup
+      window.dispatchEvent(new CustomEvent('forceCloseObjectDetection', {
+        detail: { 
+          source: 'feature_selection', 
+          forceRemove: true 
+        }
+      }));
+      
+      // Reset map container width to prevent grey areas
+      const mapContainer = document.querySelector('#map-container');
+      if (mapContainer) {
+        // Reset right property to zero to allow the Database sidebar to set its own width
+        mapContainer.style.right = '0px';
+      }
+      
       // If clearExisting is set, ensure we clear any existing validation data
       if (clearExisting) {
         console.log("Clearing existing validation data");
@@ -1388,8 +1738,11 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
         setValidationData(null);
       }
       
-      // Set validation mode with the right context
-      setIsValidationMode(true);
+      // Short delay before setting validation mode again to ensure clean state
+      setTimeout(() => {
+        // Set validation mode with the right context
+        setIsValidationMode(true);
+      }, 100);
       
       // Fetch available trees or use previously detected trees
       const availableTrees = detectedTrees.length > 0 && !clearExisting ? 
@@ -1523,6 +1876,25 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
       console.log(`TreeValidationMode sidebar toggle: ${isCollapsed ? 'collapsed' : 'expanded'} (source: ${source})`);
       setIsRightSidebarCollapsed(isCollapsed);
       
+      // Update map container margins based on sidebar state
+      const mapContainer = document.getElementById('map-container');
+      if (mapContainer) {
+        if (isCollapsed) {
+          mapContainer.style.right = '0';
+        } else {
+          mapContainer.style.right = '384px';
+        }
+      }
+      
+      // Notify the map via rightPanelToggle for responsive layout
+      window.dispatchEvent(new CustomEvent('rightPanelToggle', {
+        detail: {
+          isOpen: !isCollapsed,
+          panelWidth: 384,
+          panelType: 'validation'
+        }
+      }));
+      
       // Resize the map
       handleMapResize(isCollapsed);
     };
@@ -1542,11 +1914,240 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
     };
     
     // Handle explicit exit validation mode
-    const handleExitValidationMode = () => {
-      console.log("Explicitly exiting validation mode");
+    const handleExitValidationMode = (event) => {
+      const source = event?.detail?.source || 'unknown';
+      const forceRemove = event?.detail?.forceRemove === true;
+      const target = event?.detail?.target || 'unknown';
+      
+      console.log("Explicitly exiting validation mode from source:", source, "target:", target, "with forceRemove:", forceRemove);
+      
+      // ALWAYS do a complete cleanup
       setIsValidationMode(false);
       setValidationData(null);
       setDetectedTrees([]);
+      
+      // Always reset map container width to prevent visual artifacts
+      const mapContainer = document.getElementById('map-container');
+      if (mapContainer) {
+        mapContainer.style.right = '0px';
+      }
+      
+      // Force sidebar close by dispatching event directly to DetectionMode component
+      window.dispatchEvent(new CustomEvent('setDetectionModeState', {
+        detail: { active: false, forceCollapse: true }
+      }));
+      
+      // Dispatch an event to notify other components
+      window.dispatchEvent(new CustomEvent('validationModeExited', {
+        detail: { source, target, forceRemove: true }
+      }));
+      
+      // Force resize to ensure proper rendering after cleanup
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+        if (map.current && window.google && window.google.maps) {
+          window.google.maps.event.trigger(map.current, 'resize');
+        }
+      }, 50);
+    };
+    
+    // Common function to run ML-based object detection 
+    const runObjectDetection = async (mode) => {
+      try {
+        console.log(`Tree ${mode} requested - Using ML pipeline`);
+        
+        // Verify ref and captureCurrentView are available
+        if (!ref.current || !ref.current.captureCurrentView) {
+          throw new Error("Map reference is not available");
+        }
+        
+        // Capture current map view
+        const mapViewInfo = await ref.current.captureCurrentView();
+        
+        // Create a unique job ID for this detection task
+        const jobId = `ml_${mode}_${Date.now()}`;
+        console.log(`Created job ID: ${jobId} for ${mode} task`);
+        
+        // Add mode-specific parameters to the map view info
+        const requestParams = {
+          ...mapViewInfo
+        };
+        
+        // Add mode-specific flags
+        if (mode === 'segmentation') {
+          requestParams.segmentation_mode = true;
+        }
+        
+        // Import the API service
+        const { detectTreesFromMapData } = await import('../../../services/api/treeApi');
+        
+        // Show loading indicator
+        const loadingToast = document.createElement('div');
+        loadingToast.className = 'loading-indicator-toast';
+        loadingToast.style.position = 'absolute';
+        loadingToast.style.top = '70px';
+        loadingToast.style.left = '50%';
+        loadingToast.style.transform = 'translateX(-50%)';
+        loadingToast.style.backgroundColor = 'rgba(59, 130, 246, 0.9)';
+        loadingToast.style.color = 'white';
+        loadingToast.style.padding = '8px 16px';
+        loadingToast.style.borderRadius = '4px';
+        loadingToast.style.zIndex = '9999';
+        loadingToast.style.fontSize = '14px';
+        loadingToast.style.fontWeight = '500';
+        loadingToast.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+        loadingToast.textContent = `Running ${mode} using ML pipeline...`;
+        document.body.appendChild(loadingToast);
+        
+        try {
+          // Run the ML detection via API
+          const result = await detectTreesFromMapData({
+            map_view_info: requestParams,
+            job_id: jobId
+          });
+          
+          // Remove loading indicator
+          if (loadingToast.parentNode) {
+            loadingToast.parentNode.removeChild(loadingToast);
+          }
+          
+          // Show success notification
+          const successToast = document.createElement('div');
+          successToast.className = 'success-toast';
+          successToast.style.position = 'absolute';
+          successToast.style.top = '70px';
+          successToast.style.left = '50%';
+          successToast.style.transform = 'translateX(-50%)';
+          successToast.style.backgroundColor = 'rgba(34, 197, 94, 0.9)';
+          successToast.style.color = 'white';
+          successToast.style.padding = '8px 16px';
+          successToast.style.borderRadius = '4px';
+          successToast.style.zIndex = '9999';
+          successToast.style.fontSize = '14px';
+          successToast.style.fontWeight = '500';
+          successToast.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)';
+          
+          const treeCount = result.trees?.length || 0;
+          successToast.textContent = `${mode.charAt(0).toUpperCase() + mode.slice(1)} complete: Found ${treeCount} trees`;
+          document.body.appendChild(successToast);
+          
+          // Remove notification after 2.5 seconds
+          setTimeout(() => {
+            if (successToast.parentNode) {
+              successToast.parentNode.removeChild(successToast);
+            }
+          }, 2500);
+          
+          // Create a custom event to handle the results
+          window.dispatchEvent(new CustomEvent('treeDetectionResult', {
+            detail: {
+              jobId: result.job_id,
+              status: result.error ? 'error' : 'complete',
+              trees: result.trees || [],
+              message: result.error || "",
+              ml_response_dir: result.ml_response_dir || "",
+              mode: mode
+            }
+          }));
+          
+          // Enter validation mode with the detected trees
+          window.dispatchEvent(new CustomEvent('enterTreeValidationMode', {
+            detail: {
+              detectionJobId: result.job_id,
+              trees: result.trees || [],
+              treeCount: treeCount,
+              source: 'ml_pipeline',
+              mode: mode
+            }
+          }));
+          
+          return result;
+        } catch (error) {
+          // Remove loading indicator in case of error
+          if (loadingToast.parentNode) {
+            loadingToast.parentNode.removeChild(loadingToast);
+          }
+          throw error;
+        }
+      } catch (error) {
+        console.error(`Error running ${mode}:`, error);
+        alert(`Error in ${mode}: ${error.message}`);
+        return null;
+      }
+    };
+    
+    // Handler for ML tree detection request from the Detection button
+    const handleRequestTreeDetection = async (event) => {
+      console.log("Handling tree detection request from source:", event?.detail?.source || 'unknown');
+      
+      try {
+        // First make sure validation mode is activated to show the debug indicator and sidebar
+        setIsValidationMode(true);
+        
+        // Apply header state from event if provided
+        if (event?.detail?.headerCollapsed !== undefined) {
+          setHeaderCollapsed(event.detail.headerCollapsed);
+          
+          // Also dispatch event for other components
+          window.dispatchEvent(new CustomEvent('headerCollapse', {
+            detail: { collapsed: event.detail.headerCollapsed }
+          }));
+        }
+        
+        // Make sure map container is adjusted for sidebar
+        const mapContainer = document.getElementById('map-container');
+        if (mapContainer) {
+          mapContainer.style.right = '384px';
+          
+          // Directly add "detection-sidebar" visible class 
+          // to force sidebar visibility if not present
+          const existingSidebar = document.querySelector('.detection-sidebar');
+          if (!existingSidebar) {
+            console.log("Creating detection sidebar container");
+            const sidebarContainer = document.createElement('div');
+            sidebarContainer.className = 'detection-sidebar';
+            sidebarContainer.style.position = 'fixed';
+            sidebarContainer.style.top = headerCollapsed ? '40px' : '64px';
+            sidebarContainer.style.right = '0';
+            sidebarContainer.style.width = '384px';
+            sidebarContainer.style.bottom = '0';
+            sidebarContainer.style.background = 'white';
+            sidebarContainer.style.zIndex = '100';
+            sidebarContainer.style.boxShadow = '-2px 0 5px rgba(0,0,0,0.1)';
+            sidebarContainer.style.overflow = 'auto';
+            sidebarContainer.style.transition = 'all 0.3s ease';
+            document.body.appendChild(sidebarContainer);
+          }
+        }
+        
+        // Ensure the detection mode state is set to active, even if the component isn't mounted yet
+        window.dispatchEvent(new CustomEvent('setDetectionModeState', {
+          detail: { active: true }
+        }));
+        
+        // Initialize with data to make sidebar visible
+        setValidationData({
+          jobId: 'pending_detection',
+          mode: 'detection',
+          treeCount: 0,
+          source: 'sidebar',
+          useSatelliteImagery: true,
+          headerCollapsed: event?.detail?.headerCollapsed !== undefined ? 
+            event.detail.headerCollapsed : headerCollapsed
+        });
+        
+        // Then run the actual detection
+        await runObjectDetection('detection');
+      } catch (error) {
+        console.error("Error in handleRequestTreeDetection:", error);
+        // Still try to run detection even if UI setup fails
+        await runObjectDetection('detection');
+      }
+    };
+    
+    // Handler for ML tree segmentation request from the Segmentation button
+    const handleRequestSegmentation = async (event) => {
+      await runObjectDetection('segmentation');
     };
     
     window.addEventListener('exitValidationMode', handleExitValidationMode);
@@ -1556,8 +2157,248 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
     window.addEventListener('openFeatureSelection', handleOpenFeatureSelection);
     window.addEventListener('validationSidebarToggle', handleValidationSidebarToggle);
     window.addEventListener('validationQueueToggle', handleValidationQueueToggle);
+    window.addEventListener('requestTreeDetection', handleRequestTreeDetection);
+    window.addEventListener('requestSegmentation', handleRequestSegmentation);
+    
+    // Improved sidebar responsiveness with robust resize handling
+    const handleLeftSidebarToggle = (event) => {
+      const { collapsed } = event.detail;
+      console.log("Left sidebar toggle event received:", collapsed);
+      
+      // Store current map center and zoom BEFORE container size changes
+      let savedCenter, savedZoom;
+      try {
+        if (map.current && map.current.getCenter && map.current.getZoom) {
+          savedCenter = map.current.getCenter();
+          savedZoom = map.current.getZoom();
+          console.log("Saved map position before resize:", savedCenter.toString(), "zoom:", savedZoom);
+        }
+      } catch (e) {
+        console.error("Error saving map position:", e);
+      }
+      
+      // Update map container position with animated transition
+      const mapContainer = document.getElementById('map-container');
+      if (mapContainer) {
+        const sidebarWidth = collapsed ? 40 : 256;
+        
+        // Hide map while repositioning to prevent flashing
+        mapContainer.style.visibility = 'hidden';
+        
+        // Check for any existing right panels to maintain proper sizing
+        const rightPanel = document.querySelector('.detection-sidebar, .feature-selection-sidebar, .tree-inventory-sidebar, .validation-sidebar');
+        const rightPanelWidth = rightPanel ? rightPanel.getBoundingClientRect().width : 0;
+        
+        // Apply CSS with more comprehensive styling
+        mapContainer.style.cssText = `
+          position: absolute !important;
+          top: 0 !important;
+          bottom: 0 !important;
+          transition: right 0.3s ease-out, left 0.3s ease-out !important;
+          left: ${collapsed ? '40px' : '256px'} !important;
+          right: ${rightPanelWidth > 0 ? `${rightPanelWidth}px` : '0'} !important;
+          width: auto !important;
+          height: 100% !important;
+          visibility: hidden !important;
+          z-index: 5 !important;
+        `;
+        
+        // Schedule multiple resize events during and after the CSS transition
+        const resizePoints = [50, 100, 200, 300, 400, 500];
+        
+        // Create a sequence of resize events
+        resizePoints.forEach(delay => {
+          setTimeout(() => {
+            try {
+              // Force resize through multiple mechanisms
+              window.dispatchEvent(new Event('resize'));
+              
+              if (map.current && window.google && window.google.maps) {
+                // Trigger Google Maps internal resize
+                window.google.maps.event.trigger(map.current, 'resize');
+                
+                // Restore original center if we have one
+                if (savedCenter && map.current.setCenter) {
+                  map.current.setCenter(savedCenter);
+                  if (savedZoom) map.current.setZoom(savedZoom);
+                }
+                
+                // Make map visible at the final resize point
+                if (delay === 300) {
+                  mapContainer.style.visibility = 'visible';
+                  console.log(`Map container made visible after ${delay}ms resize`);
+                }
+              }
+            } catch (e) {
+              console.error(`Error in resize sequence at ${delay}ms:`, e);
+            }
+          }, delay);
+        });
+      }
+    };
+    
+    // Enhanced right panel toggle handler with improved resize sequence
+    const handleRightPanelToggle = (event) => {
+      const { isOpen, panelWidth = 384, panelType = 'unknown' } = event.detail;
+      console.log(`Right panel toggle: ${isOpen ? 'open' : 'closed'}, type: ${panelType}, width: ${panelWidth}px`);
+      
+      // Store map state before size changes
+      let savedCenter, savedZoom;
+      try {
+        if (map.current && map.current.getCenter && map.current.getZoom) {
+          savedCenter = map.current.getCenter();
+          savedZoom = map.current.getZoom();
+        }
+      } catch (e) {
+        console.error("Error saving map state:", e);
+      }
+      
+      // Get current left position to maintain it during right panel changes
+      const mapContainer = document.getElementById('map-container');
+      if (mapContainer) {
+        // Determine left position based on sidebar collapsed state
+        const sidebarElement = document.querySelector('[class*="sidebar"]');
+        const isSidebarCollapsed = sidebarElement && sidebarElement.classList.contains('collapsed');
+        const leftPosition = isSidebarCollapsed ? '40px' : '256px';
+        
+        // Hide map while repositioning to prevent flashing
+        mapContainer.style.visibility = 'hidden';
+        
+        // Get the current left sidebar state
+        const leftSidebar = document.querySelector('.sidebar, [class*="sidebar"]');
+        const leftOffset = leftSidebar ? 
+          (leftSidebar.classList.contains('collapsed') ? '40px' : '256px') : 
+          '0';
+          
+        // Apply comprehensive styling that respects both sidebars
+        mapContainer.style.cssText = `
+          position: absolute !important;
+          top: 0 !important;
+          bottom: 0 !important;
+          transition: right 0.3s ease-out, left 0.3s ease-out !important;
+          left: ${leftOffset} !important;
+          right: ${isOpen ? `${panelWidth}px` : '0'} !important;
+          width: auto !important;
+          height: 100% !important;
+          visibility: hidden !important;
+          z-index: 5 !important;
+        `;
+        
+        // Comprehensive resize sequence with position restoration
+        const resizeTimes = [10, 50, 150, 250, 350, 450, 550];
+        
+        // Execute resize sequence
+        resizeTimes.forEach(delay => {
+          setTimeout(() => {
+            try {
+              // Window resize first
+              window.dispatchEvent(new Event('resize'));
+              
+              if (map.current && window.google && window.google.maps) {
+                // Google Maps resize trigger
+                window.google.maps.event.trigger(map.current, 'resize');
+                
+                // Restore position
+                if (savedCenter && map.current.setCenter) {
+                  map.current.setCenter(savedCenter);
+                  if (savedZoom) map.current.setZoom(savedZoom);
+                }
+                
+                // Show map at 350ms which should be mid-sequence
+                if (delay === 350) {
+                  mapContainer.style.visibility = 'visible';
+                  console.log(`Map container revealed after right panel toggle (${delay}ms)`);
+                }
+              }
+            } catch (e) {
+              console.error(`Error in right panel resize at ${delay}ms:`, e);
+            }
+          }, delay);
+        });
+      }
+    };
+    
+    // Register responsive layout event listeners
+    window.addEventListener('leftSidebarToggle', handleLeftSidebarToggle);
+    window.addEventListener('rightPanelToggle', handleRightPanelToggle);
+    
+    // Create proper cleanup function
+    const originalRemoveListeners = () => {
+      window.removeEventListener('leftSidebarToggle', handleLeftSidebarToggle);
+      window.removeEventListener('rightPanelToggle', handleRightPanelToggle);
+    };
+    
+    // Initialize responsive layout based on current sidebar state
+    setTimeout(() => {
+      try {
+        const sidebarElement = document.querySelector('[class*="sidebar"]');
+        const isSidebarCollapsed = sidebarElement && (
+          sidebarElement.classList.contains('collapsed') || 
+          sidebarElement.getBoundingClientRect().width < 100
+        );
+        
+        // Apply initial positioning based on sidebar state
+        const mapContainer = document.getElementById('map-container');
+        if (mapContainer) {
+          // Check for active right panels
+          const rightPanel = document.querySelector('.detection-sidebar, .feature-selection-sidebar, .tree-inventory-sidebar, .validation-sidebar');
+          const rightPanelWidth = rightPanel ? rightPanel.getBoundingClientRect().width : 0;
+          
+          // Get proper sidebar width measurements
+          const leftSidebar = document.querySelector('.sidebar, [class*="sidebar"]');
+          const leftOffset = leftSidebar ? 
+            (leftSidebar.classList.contains('collapsed') ? '41px' : '257px') : 
+            '0';
+          
+          // First hide map container while positioning is applied
+          mapContainer.style.visibility = 'hidden';
+          
+          // Apply comprehensive responsive styling with !important to override any other styles
+          mapContainer.style.cssText = `
+            position: absolute !important;
+            top: 0 !important;
+            bottom: 0 !important;
+            left: ${leftOffset} !important;
+            right: ${rightPanelWidth > 0 ? `${rightPanelWidth}px` : '0'} !important;
+            width: auto !important;
+            height: 100% !important;
+            z-index: 5 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            transition: left 0.3s ease-out, right 0.3s ease-out !important;
+            visibility: hidden !important;
+          `;
+          
+          console.log("Applied initial responsive layout for map container");
+          
+          // Log the current right sidebar state
+          if (rightPanelWidth > 0) {
+            console.log(`Map sized for right panel width: ${rightPanelWidth}px`);
+          }
+          
+          // Force an initial resize after styles are applied
+          setTimeout(() => {
+            // Resize the map
+            window.dispatchEvent(new Event('resize'));
+            if (map.current && window.google && window.google.maps) {
+              window.google.maps.event.trigger(map.current, 'resize');
+              console.log("Triggered initial map resize");
+            }
+            
+            // Show map after resize is complete
+            setTimeout(() => {
+              mapContainer.style.visibility = 'visible';
+              console.log("Map container now visible after resize");
+            }, 100);
+          }, 300);
+        }
+      } catch (e) {
+        console.error("Error initializing responsive layout:", e);
+      }
+    }, 200);
     
     return () => {
+      // Clean up all event listeners
       window.removeEventListener('exitValidationMode', handleExitValidationMode);
       window.removeEventListener('enterTreeValidationMode', handleEnterValidationMode);
       window.removeEventListener('captureMapViewForDetection', handleMapCapture);
@@ -1565,35 +2406,266 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
       window.removeEventListener('openFeatureSelection', handleOpenFeatureSelection);
       window.removeEventListener('validationSidebarToggle', handleValidationSidebarToggle);
       window.removeEventListener('validationQueueToggle', handleValidationQueueToggle);
+      window.removeEventListener('requestTreeDetection', handleRequestTreeDetection);
+      window.removeEventListener('requestSegmentation', handleRequestSegmentation);
+      window.removeEventListener('leftSidebarToggle', handleLeftSidebarToggle);
+      window.removeEventListener('rightPanelToggle', handleRightPanelToggle);
+      
+      // Clean up map type change listener
+      if (map.current && window.google && window.google.maps) {
+        window.google.maps.event.clearListeners(map.current, 'maptypeid_changed');
+      }
     };
   }, [isLoaded, map.current, is3DMode]);
 
-  // Exit validation mode
+  // Exit validation mode with comprehensive error handling and multi-stage cleanup
   const handleExitValidationMode = (event) => {
-    // Get the source of the exit request if available
-    const source = event?.detail?.source || 'unknown';
-    const target = event?.detail?.target || 'unknown';
-    const clearExisting = event?.detail?.clearExisting === true;
-    
-    console.log(`Exiting validation mode from source: ${source}, target: ${target}, clearExisting: ${clearExisting}`);
-    
-    // For Imagery button, always fully reset validation mode
-    if (target === 'imagery' || clearExisting || source === 'unknown') {
+    try {
+      // Get the source of the exit request if available
+      const source = event?.detail?.source || 'unknown';
+      const target = event?.detail?.target || 'unknown';
+      const clearExisting = event?.detail?.clearExisting === true;
+      const forceRemove = event?.detail?.forceRemove === true;
+      
+      console.log(`Exiting validation mode from source: ${source}, target: ${target}, clearExisting: ${clearExisting}, forceRemove: ${forceRemove}`);
+      
+      // Notify any detection-related components that cleanup is happening
+      try {
+        window.dispatchEvent(new CustomEvent('validationModeCleanup', {
+          detail: { initiated: true, source }
+        }));
+      } catch (e) {
+        console.error("Error dispatching validationModeCleanup event:", e);
+      }
+      
+      // ALWAYS do a complete cleanup of component
       setIsValidationMode(false);
       setValidationData(null);
       setDetectedTrees([]);
       
-      // Refresh map markers
-      const refreshEvent = new CustomEvent('refreshMapMarkers');
-      window.dispatchEvent(refreshEvent);
+      // Always reset map container width to prevent visual artifacts
+      try {
+        const mapContainer = document.getElementById('map-container');
+        if (mapContainer) {
+          mapContainer.style.right = '0px';
+        }
+      } catch (e) {
+        console.error("Error resetting map container width:", e);
+      }
       
-      console.log("Full exit - clearing all validation data for Imagery view");
-    } else {
-      // For transitions between modes, just update the validation mode 
-      // without clearing detected trees data
-      setIsValidationMode(false);
+      // PHASE 1: Hide all elements first before attempting removal
       
-      console.log("Partial exit - keeping detected trees data for mode switch");
+      // Function to safely apply styles to elements
+      const safelyApplyHidingStyles = (element) => {
+        if (!element || !document.body.contains(element)) return false;
+        try {
+          element.style.display = 'none';
+          element.style.visibility = 'hidden';
+          element.style.opacity = '0';
+          element.style.pointerEvents = 'none';
+          element.style.width = '0px';
+          element.style.zIndex = '-1';
+          return true;
+        } catch (err) {
+          console.error("Error applying hiding styles:", err);
+          return false;
+        }
+      };
+      
+      // Function to safely remove an element after a delay
+      const safelyRemoveElementAfterDelay = (element, delayMs, label) => {
+        if (!element || !document.body.contains(element)) return;
+        
+        setTimeout(() => {
+          try {
+            if (element.parentNode && document.body.contains(element)) {
+              element.parentNode.removeChild(element);
+              console.log(`Successfully removed ${label}`);
+            }
+          } catch (e) {
+            console.error(`Error removing ${label}:`, e);
+            // Last resort - try to hide it completely if removal fails
+            try {
+              element.style.display = 'none !important';
+              element.style.visibility = 'hidden !important';
+              element.style.opacity = '0 !important';
+              element.style.pointerEvents = 'none !important';
+              element.style.width = '0px !important';
+              element.style.height = '0px !important';
+              element.style.position = 'absolute !important';
+              element.style.zIndex = '-9999 !important';
+              element.style.overflow = 'hidden !important';
+              element.style.clip = 'rect(0,0,0,0) !important';
+            } catch (e2) {}
+          }
+        }, delayMs);
+      };
+      
+      // Clean up detection sidebars - multiple selectors for robustness
+      try {
+        const sidebarSelectors = [
+          '.detection-sidebar', 
+          '#detection-sidebar',
+          '.detection-sidebar-container',
+          '#detection-sidebar-container',
+          '[class*="detection-sidebar"]',
+          '[id*="detection-sidebar"]'
+        ];
+        
+        const sidebarQuery = sidebarSelectors.join(', ');
+        const existingSidebars = document.querySelectorAll(sidebarQuery);
+        
+        console.log(`Found ${existingSidebars.length} detection sidebars to clean up`);
+        
+        existingSidebars.forEach((sidebar, index) => {
+          if (sidebar && document.body.contains(sidebar)) {
+            // Mark for complete removal
+            sidebar.classList.add('detection-sidebar-removed');
+            console.log(`Hiding sidebar ${index + 1}/${existingSidebars.length}`);
+            
+            // First hide it with CSS
+            if (safelyApplyHidingStyles(sidebar)) {
+              // Then remove from DOM with gradual delay to prevent simultaneous DOM operations
+              safelyRemoveElementAfterDelay(sidebar, 100 + (index * 50), `detection sidebar ${index + 1}`);
+            }
+          }
+        });
+      } catch (e) {
+        console.error("Error in sidebar cleanup:", e);
+      }
+      
+      // Also clean detection container if it exists - try multiple selectors
+      try {
+        const containerSelectors = [
+          '#detection-mode-container',
+          '.detection-mode-container',
+          '[id*="detection-mode"]',
+          '[class*="detection-mode"]'
+        ];
+        
+        containerSelectors.forEach(selector => {
+          const containers = document.querySelectorAll(selector);
+          containers.forEach((container, index) => {
+            if (container && document.body.contains(container)) {
+              safelyApplyHidingStyles(container);
+              safelyRemoveElementAfterDelay(container, 150 + (index * 50), `detection container ${selector}`);
+            }
+          });
+        });
+      } catch (e) {
+        console.error("Error cleaning detection containers:", e);
+      }
+      
+      // Clean up detection badges with multiple selectors
+      try {
+        const badgeSelectors = [
+          '#detection-debug', 
+          '.detection-debug', 
+          '[id*="detection-debug"]',
+          '[class*="detection-badge"]',
+          '[id*="detection-badge"]',
+          '[class*="object-detection"]',
+          '[id*="object-detection"]'
+        ];
+        
+        const badgeQuery = badgeSelectors.join(', ');
+        const detectionBadges = document.querySelectorAll(badgeQuery);
+        
+        console.log(`Found ${detectionBadges.length} detection badges to remove`);
+        
+        detectionBadges.forEach((badge, index) => {
+          if (badge && document.body.contains(badge)) {
+            // Hide it first
+            safelyApplyHidingStyles(badge);
+            // Remove with staggered timing
+            safelyRemoveElementAfterDelay(badge, 200 + (index * 50), `detection badge ${index + 1}`);
+          }
+        });
+      } catch (e) {
+        console.error("Error in detection badge cleanup:", e);
+      }
+      
+      // Clean up all ML overlays using multiple selectors
+      try {
+        const overlaySelectors = [
+          '#ml-detection-overlay', 
+          '.ml-detection-overlay', 
+          '[id*="ml-detection"]',
+          '[class*="ml-detection"]',
+          '[id*="ml-overlay"]',
+          '[class*="ml-overlay"]',
+          '[id*="detection-overlay"]',
+          '[class*="detection-overlay"]'
+        ];
+        
+        const overlayQuery = overlaySelectors.join(', ');
+        const overlays = document.querySelectorAll(overlayQuery);
+        
+        console.log(`Found ${overlays.length} ML overlays to remove`);
+        
+        overlays.forEach((overlay, index) => {
+          if (overlay && document.body.contains(overlay)) {
+            // Hide it first
+            safelyApplyHidingStyles(overlay);
+            // Remove with staggered timing
+            safelyRemoveElementAfterDelay(overlay, 250 + (index * 50), `ML overlay ${index + 1}`);
+          }
+        });
+      } catch (e) {
+        console.error("Error in ML overlay cleanup:", e);
+      }
+      
+      // PHASE 2: Additional cleanup for any remaining elements using multiple techniques
+      
+      // 1. Wait 300ms to let the initial removal operations complete
+      setTimeout(() => {
+        try {
+          // 2. Try another round of removals with more aggressive selectors
+          const allDetectionElements = document.querySelectorAll('[id*="detection"], [class*="detection"]');
+          allDetectionElements.forEach(element => {
+            if (element && document.body.contains(element)) {
+              try {
+                safelyApplyHidingStyles(element);
+                safelyRemoveElementAfterDelay(element, 100, "remaining detection element");
+              } catch (e) {}
+            }
+          });
+          
+          // 3. Dispatch a cleanup completion event
+          window.dispatchEvent(new CustomEvent('validationModeCleanupComplete', {
+            detail: { success: true }
+          }));
+          
+          // 4. Refresh map markers to ensure clean state
+          window.dispatchEvent(new CustomEvent('refreshMapMarkers'));
+          
+          // 5. Force resize to ensure proper rendering after cleanup
+          window.dispatchEvent(new Event('resize'));
+          if (map.current && window.google && window.google.maps) {
+            window.google.maps.event.trigger(map.current, 'resize');
+          }
+          
+          // 6. Run another resize after a bit longer delay to ensure everything has settled
+          setTimeout(() => {
+            window.dispatchEvent(new Event('resize'));
+          }, 300);
+          
+        } catch (e) {
+          console.error("Error in phase 2 cleanup:", e);
+        }
+      }, 300);
+      
+      console.log("Full exit - cleared all validation data and reset container size");
+    } catch (error) {
+      console.error("Critical error in handleExitValidationMode:", error);
+      // Emergency fallback - try to reset state variables anyway
+      try {
+        setIsValidationMode(false);
+        setValidationData(null);
+        setDetectedTrees([]);
+      } catch (e) {
+        console.error("Failed to reset state in emergency fallback:", e);
+      }
     }
   };
   
@@ -1659,6 +2731,11 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
     
     // Update selected feature in Redux store
     dispatch(setSelectedFeature(tree));
+    
+    // Dispatch an event to notify DetectionMode about the selection
+    window.dispatchEvent(new CustomEvent('treeSelected', {
+      detail: { tree }
+    }));
   };
   
   // Handle saving validated trees
@@ -1718,23 +2795,51 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
       }, 150); // Delay resize to let transitions complete
     };
     
+    // Handler for header collapse/expand events
+    const handleHeaderCollapse = (event) => {
+      setHeaderCollapsed(event.detail.collapsed);
+    };
+    
     // Add event listeners for sidebar toggles
     window.addEventListener('validationQueueToggle', handleResize);
     window.addEventListener('validationSidebarToggle', handleResize);
     window.addEventListener('leftSidebarToggle', handleResize);
+    window.addEventListener('headerCollapse', handleHeaderCollapse);
     
     // Also listen for window resize events
     window.addEventListener('resize', handleResize);
     
-    // Set up ResizeObserver to monitor map container size changes
+    // Set up ResizeObserver to monitor map container and header size changes
     const resizeObserver = new ResizeObserver(entries => {
       handleResize();
+      
+      // Also update all sidebar positions based on current header state
+      // This ensures sidebars don't overlap the header when it resizes
+      const sidebarElements = document.querySelectorAll('[id$="-sidebar"]');
+      const header = document.querySelector('header');
+      const headerHeight = header ? header.offsetHeight : 64;
+      
+      sidebarElements.forEach(sidebar => {
+        if (sidebar) {
+          try {
+            sidebar.style.top = `${headerHeight}px`;
+          } catch (e) {
+            console.warn("Could not update sidebar position:", e);
+          }
+        }
+      });
     });
     
     // Observe the map container for size changes
     const mapContainer = document.getElementById('map-container');
     if (mapContainer) {
       resizeObserver.observe(mapContainer);
+    }
+    
+    // Also observe the header for size changes
+    const header = document.querySelector('header');
+    if (header) {
+      resizeObserver.observe(header);
     }
     
     // Initial resize after component mounts
@@ -1746,12 +2851,20 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
       window.removeEventListener('validationQueueToggle', handleResize);
       window.removeEventListener('validationSidebarToggle', handleResize);
       window.removeEventListener('leftSidebarToggle', handleResize);
+      window.removeEventListener('headerCollapse', handleHeaderCollapse);
       window.removeEventListener('resize', handleResize);
       
       // Disconnect resize observer
       if (mapContainer) {
         resizeObserver.unobserve(mapContainer);
       }
+      
+      // Also unobserve header
+      const header = document.querySelector('header');
+      if (header) {
+        resizeObserver.unobserve(header);
+      }
+      
       resizeObserver.disconnect();
     };
   }, []);
@@ -1790,64 +2903,116 @@ const MapView = forwardRef(({ onDataLoaded }, ref) => {
   }, []);
 
   return (
-    <div className={`relative w-full h-full transition-all duration-300`}>
-      {/* Google Maps Container - padding changes when sidebar is visible */}
-      <div 
-        ref={mapContainer}
-        className={`w-full h-full transition-all duration-300 ${is3DMode ? 'hidden' : 'block'}`}
-        style={{ 
-          position: 'absolute', 
-          top: 0, 
-          right: 0, 
-          bottom: 0, 
-          left: 0 
-        }}
-      ></div>
-      
-      {/* Removed the background overlay as it wasn't enhancing visibility */}
-      
-      {/* 3D View Toggle has been moved to the sidebar to avoid duplication */}
-      
-      {/* 3D Viewer based on selected API */}
-      {is3DMode && (
-        <Suspense fallback={<div className="w-full h-full flex items-center justify-center">Loading 3D View...</div>}>
-          <div className="w-full h-full transition-all duration-300" style={{ 
+    <ErrorBoundary componentName="MapContainer">
+      <div className="relative w-full h-full" id="map-wrapper">
+        {/* Google Maps Container with explicit positioning relative to visible sidebars */}
+        <div 
+          ref={mapContainer}
+          id="map-container"
+          className={`transition-all duration-300 ${is3DMode ? 'hidden' : 'block'}`}
+          style={{ 
             position: 'absolute', 
             top: 0, 
             right: 0, 
             bottom: 0, 
             left: 0 
-          }}>
-            {map3DApi === 'cesium' ? (
-              <CesiumViewer 
-                ref={cesiumViewerRef}
-                center={center}
-                zoom={zoom}
-                apiKey={apiKey}
+          }}
+        ></div>
+        
+        {/* Removed the background overlay as it wasn't enhancing visibility */}
+        
+        {/* 3D View Toggle has been moved to the sidebar to avoid duplication */}
+        
+        {/* 3D Viewer based on selected API */}
+        {is3DMode && (
+          <Suspense fallback={<div className="w-full h-full flex items-center justify-center">Loading 3D View...</div>}>
+            <div id="map-3d-container" className="w-full h-full transition-all duration-300" style={{ 
+              position: 'absolute', 
+              top: 0, 
+              right: 0, 
+              bottom: 0, 
+              left: 0,
+              zIndex: 10 // Ensure 3D view appears above 2D map
+            }}>
+              {map3DApi === 'cesium' ? (
+                <CesiumViewer 
+                  ref={cesiumViewerRef}
+                  center={center}
+                  zoom={zoom}
+                  apiKey={apiKey}
+                />
+              ) : (
+                <GoogleMaps3DViewer
+                  ref={googleMaps3DViewerRef}
+                  apiKey={apiKey}
+                  center={center}
+                  zoom={zoom}
+                />
+              )}
+            </div>
+          </Suspense>
+        )}
+        
+        {/* Tree Detection Mode and UI Elements */}
+        {isValidationMode && (
+          <ErrorBoundary componentName="ValidationModeFragment">
+            <>
+              {/* DetectionMode component renders the main sidebar */}
+              <ErrorBoundary componentName="DetectionMode">
+                <DetectionMode
+                  key={`detection-${Date.now()}`} /* Force re-render on each open */
+                  mapRef={map}
+                  validationData={validationData}
+                  detectedTrees={detectedTrees}
+                  onExitValidation={handleExitValidationMode}
+                  onSaveTrees={handleSaveValidatedTrees}
+                  // Pass header state
+                  headerCollapsed={headerCollapsed}
+                />
+              </ErrorBoundary>
+              
+              {/* Object Detection Badge in upper-right corner */}
+              <div 
+                id="detection-debug" 
+                style={{
+                  display: 'block', 
+                  position: 'fixed', 
+                  top: headerCollapsed ? '45px' : '69px', 
+                  right: '389px', 
+                  background: 'rgba(0,128,255,0.7)', 
+                  zIndex: 200, 
+                  padding: '4px 10px', 
+                  fontSize: '14px', 
+                  color: 'white',
+                  fontWeight: 'bold',
+                  borderBottomLeftRadius: '4px',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                }}
+              >
+                OBJECT DETECTION
+              </div>
+              
+              {/* Backup sidebar container to ensure visibility */}
+              <div 
+                className="detection-sidebar-container"
+                style={{
+                  position: 'fixed',
+                  top: headerCollapsed ? '40px' : '64px',
+                  right: '0',
+                  width: '384px',
+                  bottom: '0',
+                  background: 'white',
+                  zIndex: '50',
+                  boxShadow: '-2px 0 5px rgba(0,0,0,0.1)',
+                  pointerEvents: 'auto'
+                }}
               />
-            ) : (
-              <GoogleMaps3DViewer
-                ref={googleMaps3DViewerRef}
-                apiKey={apiKey}
-                center={center}
-                zoom={zoom}
-              />
-            )}
-          </div>
-        </Suspense>
-      )}
-      
-      {/* Tree Validation Mode */}
-      {isValidationMode && (
-        <TreeValidationMode
-          mapRef={map}
-          validationData={validationData}
-          detectedTrees={detectedTrees}
-          onExitValidation={handleExitValidationMode}
-          onSaveTrees={handleSaveValidatedTrees}
-        />
-      )}
-    </div>
+            </>
+          </ErrorBoundary>
+        )}
+        
+      </div>
+    </ErrorBoundary>
   );
 });
 

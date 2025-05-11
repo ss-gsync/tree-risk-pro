@@ -23,7 +23,7 @@ const SettingsPanel = () => {
       map3DApi: 'cesium',         // 'cesium' or 'javascript'
       defaultView: '2d',          // '2d' or '3d'
       theme: 'light',             // 'light' or 'dark'
-      defaultMapType: 'roadmap',  // 'roadmap', 'satellite', 'hybrid', 'terrain'
+      defaultMapType: 'hybrid',  // 'roadmap', 'satellite', 'hybrid', 'terrain'
       showHighRiskByDefault: false, // Whether to filter to high risk trees by default
       mapSettings: {
         showTerrain: false,       // Show terrain in 3D view
@@ -158,6 +158,11 @@ const SettingsPanel = () => {
     // Trigger a storage event to notify other components of all setting changes
     window.dispatchEvent(new Event('storage'));
     
+    // Also dispatch a custom event for components that aren't listening for storage events
+    window.dispatchEvent(new CustomEvent('settingsUpdated', {
+      detail: { settings: settings }
+    }));
+    
     setIsChanged(false);
   };
   
@@ -173,7 +178,7 @@ const SettingsPanel = () => {
       map3DApi: 'cesium',
       defaultView: '2d',
       theme: 'light',
-      defaultMapType: 'roadmap',
+      defaultMapType: 'hybrid',
       showHighRiskByDefault: false,
       mapSettings: {
         showTerrain: false,
@@ -343,23 +348,13 @@ const SettingsPanel = () => {
                 type="checkbox"
                 id="showLabels"
                 name="mapSettings.showLabels"
-                checked={settings.mapSettings?.showLabels !== false}
-                onChange={(e) => {
-                  // Update the setting
-                  setSettings(prev => ({
-                    ...prev,
-                    mapSettings: {
-                      ...prev.mapSettings,
-                      showLabels: e.target.checked
-                    }
-                  }));
-                  
-                  // Flag that changes have been made
-                  setIsChanged(true);
-                }}
+                checked={true} 
+                disabled={true}
                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <Label htmlFor="showLabels" className="cursor-pointer">Show labels in satellite view</Label>
+              <Label htmlFor="showLabels" className="cursor-pointer text-gray-500">
+                Show labels in satellite view (Always enabled with Hybrid view)
+              </Label>
             </div>
             
             <div className="flex items-center space-x-2 mt-2">
@@ -410,125 +405,224 @@ const SettingsPanel = () => {
       
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Gemini AI Settings</CardTitle>
+          <CardTitle className="flex items-center">
+            <svg className="h-5 w-5 mr-2 text-purple-600" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 16c-3.31 0-6-2.69-6-6s2.69-6 6-6 6 2.69 6 6-2.69 6-6 6z"/>
+              <path d="M12 8v4l3 3"/>
+            </svg>
+            Gemini AI Settings
+          </CardTitle>
           <CardDescription>
-            Configure tree detection parameters
+            Configure tree detection and analysis with Google's Gemini AI
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="geminiSettings.detectionThreshold">Detection Threshold ({settings.geminiSettings?.detectionThreshold || 0.7})</Label>
-            <input
-              type="range"
-              id="geminiSettings.detectionThreshold"
-              name="geminiSettings.detectionThreshold"
-              min="0.1"
-              max="0.9"
-              step="0.1"
-              value={settings.geminiSettings?.detectionThreshold || 0.7}
-              onChange={(e) => {
-                const value = parseFloat(e.target.value);
-                setSettings(prev => ({
-                  ...prev,
-                  geminiSettings: {
-                    ...prev.geminiSettings,
-                    detectionThreshold: value
-                  }
-                }));
-                setIsChanged(true);
-              }}
-              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-            />
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>0.1 (More trees, less confidence)</span>
-              <span>0.9 (Fewer trees, more confidence)</span>
+          <div className="bg-purple-50 p-4 rounded-md mb-4">
+            <div className="flex items-start">
+              <svg className="h-5 w-5 mr-2 text-purple-600 mt-0.5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+              </svg>
+              <div>
+                <p className="font-medium text-purple-700">About Gemini AI Integration</p>
+                <p className="text-sm text-purple-600 mt-1">
+                  Gemini AI can automatically detect trees from satellite imagery and provide detailed risk analysis. Enable these features to enhance your Tree Risk Pro experience with AI-powered intelligence.
+                </p>
+              </div>
             </div>
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="geminiSettings.maxTrees">Maximum Tree Count</Label>
-            <input
-              type="number"
-              id="geminiSettings.maxTrees"
-              name="geminiSettings.maxTrees"
-              min="5"
-              max="50"
-              value={settings.geminiSettings?.maxTrees || 20}
-              onChange={(e) => {
-                const value = parseInt(e.target.value);
-                setSettings(prev => ({
-                  ...prev,
-                  geminiSettings: {
-                    ...prev.geminiSettings,
-                    maxTrees: value
-                  }
-                }));
-                setIsChanged(true);
-              }}
-              className="w-full p-2 bg-white text-gray-800 border border-gray-200 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            />
-            <p className="text-sm text-gray-500">
-              Maximum number of trees to detect in a single analysis (5-50)
-            </p>
+          {/* Main toggle switches for Gemini features */}
+          <div className="bg-white p-4 rounded-md border border-gray-100 space-y-3">
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="gemini.useGeminiForAnalytics"
+                name="gemini.useGeminiForAnalytics"
+                checked={settings.gemini?.useGeminiForAnalytics === true}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setSettings(prev => ({
+                    ...prev,
+                    gemini: {
+                      ...prev.gemini,
+                      useGeminiForAnalytics: checked
+                    }
+                  }));
+                  setIsChanged(true);
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <Label htmlFor="gemini.useGeminiForAnalytics" className="cursor-pointer font-medium">Enable Gemini AI for tree analytics</Label>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="gemini.useMLPipelineForTreeDetection"
+                name="gemini.useMLPipelineForTreeDetection"
+                checked={settings.gemini?.useMLPipelineForTreeDetection === true}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setSettings(prev => ({
+                    ...prev,
+                    gemini: {
+                      ...prev.gemini,
+                      useMLPipelineForTreeDetection: checked
+                    }
+                  }));
+                  setIsChanged(true);
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+              />
+              <Label htmlFor="gemini.useMLPipelineForTreeDetection" className="cursor-pointer font-medium">Enable ML Pipeline for tree detection</Label>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="gemini.useGeminiForAnalysis"
+                name="gemini.useGeminiForAnalysis"
+                checked={settings.gemini?.useGeminiForAnalysis === true}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setSettings(prev => ({
+                    ...prev,
+                    gemini: {
+                      ...prev.gemini,
+                      useGeminiForAnalysis: checked
+                    }
+                  }));
+                  setIsChanged(true);
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <Label htmlFor="gemini.useGeminiForAnalysis" className="cursor-pointer font-medium">Enable Gemini AI for tree risk analysis</Label>
+            </div>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <input
-              type="checkbox"
-              id="geminiSettings.includeRiskAnalysis"
-              name="geminiSettings.includeRiskAnalysis"
-              checked={settings.geminiSettings?.includeRiskAnalysis !== false}
-              onChange={(e) => {
-                const checked = e.target.checked;
-                setSettings(prev => ({
-                  ...prev,
-                  geminiSettings: {
-                    ...prev.geminiSettings,
-                    includeRiskAnalysis: checked
-                  }
-                }));
-                setIsChanged(true);
-              }}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <Label htmlFor="geminiSettings.includeRiskAnalysis" className="cursor-pointer">Include risk analysis in detection</Label>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="geminiSettings.detailLevel">Detail Level</Label>
-            <select
-              id="geminiSettings.detailLevel"
-              name="geminiSettings.detailLevel"
-              value={settings.geminiSettings?.detailLevel || 'high'}
-              onChange={(e) => {
-                const value = e.target.value;
-                setSettings(prev => ({
-                  ...prev,
-                  geminiSettings: {
-                    ...prev.geminiSettings,
-                    detailLevel: value
-                  }
-                }));
-                setIsChanged(true);
-              }}
-              className="w-full p-2 bg-white text-gray-800 border border-gray-200 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            >
-              <option value="low">Low (Faster, less detailed)</option>
-              <option value="medium">Medium (Balanced)</option>
-              <option value="high">High (Slower, more detailed)</option>
-            </select>
-          </div>
-          
-          <div className="flex items-center space-x-2 pt-2">
-            <input
-              type="checkbox"
-              id="autoSaveDetectionResults"
-              name="autoSaveDetectionResults"
-              checked={settings.autoSaveDetectionResults !== false}
-              onChange={handleChange}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <Label htmlFor="autoSaveDetectionResults" className="cursor-pointer">Automatically save detection results</Label>
+          {/* Detailed configuration settings */}
+          <div className={`space-y-4 pt-2 ${settings.gemini?.useGeminiForTreeDetection ? 'opacity-100' : 'opacity-50'}`}>
+            <h4 className="text-sm font-medium text-gray-700 mt-2 pt-2 border-t border-gray-100">Detection Configuration</h4>
+            
+            <div className="space-y-2">
+              <Label htmlFor="geminiSettings.detectionThreshold">Detection Confidence Threshold: {settings.geminiSettings?.detectionThreshold || 0.7}</Label>
+              <input
+                type="range"
+                id="geminiSettings.detectionThreshold"
+                name="geminiSettings.detectionThreshold"
+                min="0.1"
+                max="0.9"
+                step="0.1"
+                value={settings.geminiSettings?.detectionThreshold || 0.7}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  setSettings(prev => ({
+                    ...prev,
+                    geminiSettings: {
+                      ...prev.geminiSettings,
+                      detectionThreshold: value
+                    }
+                  }));
+                  setIsChanged(true);
+                }}
+                className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                disabled={!settings.gemini?.useGeminiForTreeDetection}
+              />
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>0.1 (More trees, less confidence)</span>
+                <span>0.9 (Fewer trees, more confidence)</span>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="geminiSettings.maxTrees">Maximum Trees Per Detection</Label>
+              <input
+                type="number"
+                id="geminiSettings.maxTrees"
+                name="geminiSettings.maxTrees"
+                min="5"
+                max="50"
+                value={settings.geminiSettings?.maxTrees || 20}
+                onChange={(e) => {
+                  const value = parseInt(e.target.value);
+                  setSettings(prev => ({
+                    ...prev,
+                    geminiSettings: {
+                      ...prev.geminiSettings,
+                      maxTrees: value
+                    }
+                  }));
+                  setIsChanged(true);
+                }}
+                className="w-full p-2 bg-white text-gray-800 border border-gray-200 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                disabled={!settings.gemini?.useGeminiForTreeDetection}
+              />
+              <p className="text-sm text-gray-500">
+                Maximum number of trees to detect in a single analysis (5-50)
+              </p>
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <input
+                type="checkbox"
+                id="geminiSettings.includeRiskAnalysis"
+                name="geminiSettings.includeRiskAnalysis"
+                checked={settings.geminiSettings?.includeRiskAnalysis !== false}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setSettings(prev => ({
+                    ...prev,
+                    geminiSettings: {
+                      ...prev.geminiSettings,
+                      includeRiskAnalysis: checked
+                    }
+                  }));
+                  setIsChanged(true);
+                }}
+                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                disabled={!settings.gemini?.useGeminiForTreeDetection}
+              />
+              <Label htmlFor="geminiSettings.includeRiskAnalysis" className="cursor-pointer">Include preliminary risk analysis during detection</Label>
+            </div>
+            
+            <div className="space-y-2">
+              <Label htmlFor="geminiSettings.detailLevel">Detail Level</Label>
+              <select
+                id="geminiSettings.detailLevel"
+                name="geminiSettings.detailLevel"
+                value={settings.geminiSettings?.detailLevel || 'high'}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setSettings(prev => ({
+                    ...prev,
+                    geminiSettings: {
+                      ...prev.geminiSettings,
+                      detailLevel: value
+                    }
+                  }));
+                  setIsChanged(true);
+                }}
+                className="w-full p-2 bg-white text-gray-800 border border-gray-200 rounded-md focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                disabled={!settings.gemini?.useGeminiForTreeDetection}
+              >
+                <option value="low">Low (Faster, less detailed)</option>
+                <option value="medium">Medium (Balanced)</option>
+                <option value="high">High (Slower, more detailed)</option>
+              </select>
+            </div>
+            
+            <div className="flex items-center space-x-2 pt-2">
+              <input
+                type="checkbox"
+                id="autoSaveDetectionResults"
+                name="autoSaveDetectionResults"
+                checked={settings.autoSaveDetectionResults !== false}
+                onChange={handleChange}
+                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                disabled={!settings.gemini?.useGeminiForTreeDetection}
+              />
+              <Label htmlFor="autoSaveDetectionResults" className="cursor-pointer">Automatically save detection results</Label>
+            </div>
           </div>
         </CardContent>
       </Card>
