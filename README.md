@@ -1,4 +1,4 @@
-# Tree Risk Pro - v0.2.0
+# Tree Risk Pro - v0.2.1
 
 A comprehensive platform for assessing tree risks using LiDAR data, aerial imagery, and Gemini AI.
 
@@ -6,7 +6,38 @@ A comprehensive platform for assessing tree risks using LiDAR data, aerial image
 
 Tree Risk Pro is designed for arborists and property managers to visualize, analyze, and validate tree health and risk factors. This platform combines advanced LiDAR processing, machine learning, and AI-powered insights to provide accurate tree risk assessments.
 
-## v0.2.0 Highlights
+## Project Components
+
+This repository consists of these main components:
+
+1. **[Dashboard](/tree_risk_pro/dashboard)** - The web-based UI for visualization and analysis
+2. **[Pipeline](/tree_risk_pro/pipeline)** - Data processing pipeline for LiDAR and imagery
+3. **[Server](/tree_risk_pro/server)** - Backend services for data storage and retrieval
+
+## Latest Release: v0.2.1 (2025-05-11)
+
+### New Features
+- S2 geospatial indexing with Zarr store integration
+- Validation reports linking to area reports via S2 cells
+- New API endpoints for S2 cell-based report management
+- Enhanced Object Report view with linked validation reports
+- Improved ML overlay with persistent opacity settings
+
+### UI Improvements
+- Fixed Components/Detection sidebar functionality
+- Enhanced OBJECT DETECTION badge visibility with proper z-index
+- Improved sidebar panel management with event-based coordination
+- Added subtle borders to Analysis section buttons
+- Better header collapse state detection for UI positioning
+- DOM cleanup improvements to prevent ghost elements
+
+### Performance Enhancements
+- Click-through functionality for ML overlay to improve marker interaction
+- Smoother transitions between detection modes
+- Better map container resizing during sidebar transitions
+- Enhanced error handling for DOM operations
+
+## Previous Release: v0.2.0 (2025-04-26)
 
 ### UI Improvements
 - Better header layout with consistent spacing
@@ -26,9 +57,13 @@ Tree Risk Pro is designed for arborists and property managers to visualize, anal
 - Enhanced error handling
 - Improved state management
 
-🔒 **Access Information**: Our production instance at https://34.125.120.78 uses basic authentication with credentials: Username: `TestAdmin`, Password: `trp345!`. See [DEPLOYMENT.md](./DEPLOYMENT.md) for setup instructions.
+## Access Information
 
-## Project Architecture
+Our production instance at https://34.125.120.78 uses basic authentication:
+- Username: `TestAdmin`
+- Password: `trp345!`
+
+See [DEPLOYMENT.md](/tree_risk_pro/dashboard/DEPLOYMENT.md) for detailed setup instructions.
 
 This project uses a modern stack with:
 

@@ -1,6 +1,10 @@
-# Tree Risk Pro Dashboard - Deployment Guide (v0.2.0)
+# Tree Risk Pro - Deployment Guide (v0.2.1)
 
-This guide provides instructions for deploying the Tree Risk Pro Dashboard on our Google Cloud Platform (GCP) instance.
+> This is the master deployment guide for the entire Tree Risk Pro project.
+> For component-specific deployment guides, see:
+> - [Dashboard Deployment Guide](/tree_risk_pro/dashboard/DEPLOYMENT.md)
+
+This guide provides instructions for deploying the Tree Risk Pro system on our Google Cloud Platform (GCP) instance.
 
 ## Deployment Summary
 
@@ -10,14 +14,15 @@ Our production server is deployed at: **https://34.125.120.78/**
 - Username: `TestAdmin`
 - Password: `trp345!`
 
-## v0.2.0 Release Highlights
+## v0.2.1 Release Deployment Notes
 
-v0.2.0 includes these key improvements:
-- UI refinements in header and sidebar navigation
-- Renamed "Save to Database" to "Save for Review" for clarity
-- Fixed 3D map state preservation between views
-- Added visual separator lines in sidebars
-- Added thorough code documentation
+v0.2.1 includes these key improvements requiring deployment attention:
+- S2 geospatial indexing with Zarr store integration
+- New API endpoints for S2 cell-based report management
+- ML overlay with persistent opacity settings
+- Enhanced DOM handling requiring proper browser caching settings
+- Fixed Components/Detection sidebar functionality
+- Performance improvements for transitions between modes
 - Improved backend security
 - Streamlined GCP deployment process
 
