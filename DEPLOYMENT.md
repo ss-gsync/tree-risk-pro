@@ -52,7 +52,30 @@ v0.2.1 includes these key improvements requiring deployment attention:
 
 ## Deployment Process
 
-### 1. Clone the Repository
+### 1. Kill Existing Processes
+
+Before deployment, ensure all existing processes are properly terminated:
+
+```bash
+# Stop the systemd service if it exists
+sudo systemctl stop dashboard-backend
+
+# Kill any Python processes related to the application
+sudo pkill -f "python.*app.py"
+sudo pkill -f "gunicorn.*app:app"
+
+# Kill any Node.js processes that might be running the server
+sudo pkill -f "node.*server.js" 
+
+# Kill any processes running on the server ports
+sudo fuser -k 5000/tcp  # For the Flask backend
+sudo fuser -k 5173/tcp  # For the Vite dev server
+
+# Verify all processes are stopped
+ps aux | grep -E "(python.*app|gunicorn|node.*server)"
+```
+
+### 2. Clone the Repository
 
 ```bash
 # Clone the repository
@@ -60,7 +83,7 @@ git clone https://github.com/your-org/tree-risk-pro.git ~/tree-risk-pro
 cd ~/tree-risk-pro
 ```
 
-### 2. Configure Environment
+### 3. Configure Environment
 
 Create environment files with your API keys:
 
@@ -96,7 +119,7 @@ Alternatively, you can use our setup script with production flag:
 # Then edit both .env files to update API keys
 ```
 
-### 3. Build Frontend
+### 4. Build Frontend
 
 ```bash
 # Install dependencies and build
@@ -105,7 +128,7 @@ npm install
 npm run build
 ```
 
-### 4. Setup Deployment Directory
+### 5. Setup Deployment Directory
 
 ```bash
 # Clear previous deployment to prevent any cached or old files
@@ -131,7 +154,7 @@ sudo chmod -R 755 /opt/dashboard/backend/data
 
 **IMPORTANT**: The step to clear previous deployment files is critical to ensure no cached or outdated files remain from previous versions.
 
-### 5. Install Backend Dependencies
+### 6. Install Backend Dependencies
 
 ```bash
 cd /opt/dashboard/backend
@@ -147,7 +170,7 @@ GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')
 EOF
 ```
 
-### 6. Configure Nginx
+### 7. Configure Nginx
 
 ```bash
 # Generate self-signed certificate if needed
@@ -208,7 +231,7 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-### 7. Create Systemd Service
+### 8. Create Systemd Service
 
 ```bash
 # First find the exact path to gunicorn in the Poetry environment
@@ -242,7 +265,7 @@ sudo systemctl enable dashboard-backend
 sudo systemctl restart dashboard-backend
 ```
 
-### 8. Verify Deployment
+### 9. Verify Deployment
 
 ```bash
 # Check backend status
@@ -263,9 +286,24 @@ After completing these steps, your Tree Risk Pro Dashboard should be accessible 
 
 If you're experiencing version display issues or cached content problems:
 
-1. **Stop all services**:
+1. **Stop all services and kill any related processes**:
    ```bash
+   # Stop the systemd service if it exists
    sudo systemctl stop dashboard-backend
+   
+   # Kill any Python processes related to the application
+   sudo pkill -f "python.*app.py"
+   sudo pkill -f "gunicorn.*app:app"
+   
+   # Kill any Node.js processes that might be running the server
+   sudo pkill -f "node.*server.js"
+   
+   # Kill any processes running on the server ports
+   sudo fuser -k 5000/tcp  # For the Flask backend
+   sudo fuser -k 5173/tcp  # For the Vite dev server
+   
+   # Verify all processes are stopped
+   ps aux | grep -E "(python.*app|gunicorn|node.*server)"
    ```
 
 2. **Create a fresh deployment directory**:
@@ -290,7 +328,7 @@ If you're experiencing version display issues or cached content problems:
    npm run build
    ```
 
-5. **Follow the deployment steps** from section 4 onwards.
+5. **Follow the deployment steps** from section 5 onwards.
 
 6. **Clear all browser caches completely** before testing.
 
