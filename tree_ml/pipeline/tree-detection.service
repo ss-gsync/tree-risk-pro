@@ -1,0 +1,25 @@
+[Unit]
+Description=Tree Detection Model Server
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/ttt/tree_ml
+ExecStart=/bin/bash /ttt/tree_ml/pipeline/run_model_server.sh
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+# Limit resource usage
+CPUWeight=90
+IOWeight=90
+MemoryHigh=8G
+MemoryMax=12G
+
+# Security settings
+ProtectSystem=full
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

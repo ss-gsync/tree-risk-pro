@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "tree_risk_pro"
-version = "0.2.1"
-description = "Tree Risk Assessment ML Platform"
-authors = ["Tree Risk Assessment Team"]
+name = "tree_ml"
+version = "0.2.3"
+description = "Tree ML Platform for Detection and Risk Assessment"
+authors = ["Tree ML Team"]
 readme = "README.md"
 package-mode = false
 
@@ -44,6 +44,9 @@ pynvml = "^12.0.0"
 asyncpg = "^0.30.0"
 google-cloud-bigquery = "^3.31.0"
 aiofiles = "^24.1.0"
+python-dotenv = "^1.1.0"
+transformers = "^4.52.3"
+uvicorn = "^0.34.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.4"
@@ -51,6 +54,8 @@ black = "^23.12.1"
 mypy = "^1.15.0"
 flake8 = "^6.1.0"
 isort = "^5.12.0"
+httpx = "0.24.1"
+python-multipart = "^0.0.20"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

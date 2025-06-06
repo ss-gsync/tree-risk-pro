@@ -1,0 +1,1610 @@
+// Detection Preview Component - Popup for ML Results
+import React, { useState, useEffect } from 'react';
+import * as ReactDOM from 'react-dom';
+import { 
+  BarChart, X, Check, Info, AlertTriangle, Eye, Layers, ChevronDown, 
+  Maximize2, Camera, FileBarChart2, CircleOff, CircleCheck,
+  Building, Zap, TreePine, Filter, Tag, MapPin
+} from 'lucide-react';
+
+/**
+ * Forward declaration of destroyDetectionPreview
+ * This ensures it's available before it's called
+ */
+function destroyDetectionPreview(collapseToButton = true) {
+  // Implementation will be replaced later
+  console.log('Forward declaration called');
+}
+
+/**
+ * DetectionPreview Component as Popup
+ * 
+ * A professional modal popup that shows ML detection results and allows
+ * users to view the detected objects on the map.
+ */
+const DetectionPopup = ({ data, onClose }) => {
+  // Check if this is a preliminary preview
+  const isPreliminary = data?._preliminary === true;
+  
+  // Debug logging for investigation
+  console.log('DETECTION PREVIEW: Rendering with data:', {
+    jobId: data?.job_id || data?._jobId,
+    preliminary: isPreliminary,
+    hasTrees: Array.isArray(data?.trees) && data.trees.length > 0,
+    hasImages: !!data?.visualizationImage || !!data?.satelliteImage
+  });
+  
+  // Determine tree risk categories with improved colors and styling
+  const treeCategories = {
+    healthy_tree: { color: '#16a34a', bgColor: '#dcfce7', label: 'Healthy Trees', icon: <TreePine size={14} /> },
+    hazardous_tree: { color: '#8b5cf6', bgColor: '#f3e8ff', label: 'Hazardous Trees', icon: <AlertTriangle size={14} /> },
+    dead_tree: { color: '#6b7280', bgColor: '#f3f4f6', label: 'Dead Trees', icon: <CircleOff size={14} /> },
+    low_canopy_tree: { color: '#0ea5e9', bgColor: '#e0f2fe', label: 'Low Canopy', icon: <TreePine size={14} /> },
+    pest_disease_tree: { color: '#84cc16', bgColor: '#ecfccb', label: 'Pest/Disease', icon: <AlertTriangle size={14} /> },
+    flood_prone_tree: { color: '#0891b2', bgColor: '#cffafe', label: 'Flood-Prone', icon: <AlertTriangle size={14} /> },
+    utility_conflict_tree: { color: '#3b82f6', bgColor: '#dbeafe', label: 'Utility Conflict', icon: <Zap size={14} /> },
+    structural_hazard_tree: { color: '#0d9488', bgColor: '#ccfbf1', label: 'Structural Hazard', icon: <AlertTriangle size={14} /> },
+    fire_risk_tree: { color: '#4f46e5', bgColor: '#e0e7ff', label: 'Fire Risk', icon: <AlertTriangle size={14} /> }
+  };
+  
+  // Initialize count objects
+  const categoryCounts = {};
+  Object.keys(treeCategories).forEach(category => {
+    categoryCounts[category] = 0;
+  });
+  
+  // Add "All Trees" as a valid category for counting uncategorized trees
+  categoryCounts.generic = 0;
+  
+  let totalTreeCount = 0;
+  
+  // Process trees array - the primary source of tree data
+  if (Array.isArray(data?.trees) && data.trees.length > 0) {
+    // Count trees by class/category if available
+    data.trees.forEach(tree => {
+      // Extract class/category from tree data
+      let treeClass = '';
+      let treeCategory = '';
+      
+      // Try to get class from different possible locations in the object
+      if (tree.class) {
+        treeClass = tree.class.toLowerCase();
+      } else if (tree.detection && tree.detection.class) {
+        treeClass = tree.detection.class.toLowerCase();
+      }
+      
+      // Try to get category if available
+      if (tree.category) {
+        treeCategory = tree.category.toLowerCase();
+      }
+      
+      // Normalize spaces to underscores for matching
+      const normalizedClass = treeClass.replace(/\s+/g, '_');
+      const normalizedCategory = treeCategory.replace(/\s+/g, '_');
+      
+      // Categorize trees based on class/category
+      let matchFound = false;
+      
+      // Define pattern matching rules for each category
+      const categoryPatterns = {
+        'hazardous_tree': ['hazardous'],
+        'dead_tree': ['dead'],
+        'healthy_tree': ['healthy'],
+        'low_canopy_tree': ['low_canopy', 'low_crown'],
+        'pest_disease_tree': ['pest', 'disease'],
+        'flood_prone_tree': ['flood'],
+        'utility_conflict_tree': ['utility', 'conflict'],
+        'structural_hazard_tree': ['structural', 'structure'],
+        'fire_risk_tree': ['fire']
+      };
+      
+      // Check for exact matches first
+      if (Object.keys(treeCategories).includes(normalizedClass)) {
+        categoryCounts[normalizedClass]++;
+        matchFound = true;
+      } else if (Object.keys(treeCategories).includes(normalizedCategory)) {
+        categoryCounts[normalizedCategory]++;
+        matchFound = true;
+      } else {
+        // Try pattern matching
+        for (const [category, patterns] of Object.entries(categoryPatterns)) {
+          for (const pattern of patterns) {
+            if (normalizedClass.includes(pattern) || normalizedCategory.includes(pattern)) {
+              categoryCounts[category]++;
+              matchFound = true;
+              break;
+            }
+          }
+          if (matchFound) break;
+        }
+      }
+      
+      // Any other kind of tree gets counted as generic
+      if (!matchFound) {
+        categoryCounts.generic++;
+      }
+      
+      // Increment total tree count regardless of category
+      totalTreeCount++;
+    });
+  }
+  
+  // Check if we have category-specific arrays in the data for backward compatibility
+  Object.keys(treeCategories).forEach(category => {
+    if (Array.isArray(data?.[category]) && data[category].length > 0) {
+      console.log(`DETECTION PREVIEW: Found specific ${category} array with ${data[category].length} items`);
+      categoryCounts[category] += data[category].length;
+      totalTreeCount += data[category].length;
+    }
+  });
+  
+  // Count other object types
+  const buildingCount = Array.isArray(data?.buildings) ? data.buildings.length : 0;
+  const powerLineCount = Array.isArray(data?.power_lines) ? data.power_lines.length : 0;
+  
+  // Calculate total objects
+  const totalCount = totalTreeCount + buildingCount + powerLineCount;
+  
+  // Set a flag to check if we have categories other than generic
+  const hasSpecificCategories = Object.entries(categoryCounts)
+    .filter(([key, count]) => key !== 'generic' && count > 0)
+    .length > 0;
+    
+  // Add job_id to any trees that don't have it for consistency
+  if (data?.job_id && Array.isArray(data?.trees)) {
+    data.trees.forEach(tree => {
+      if (!tree.job_id) tree.job_id = data.job_id;
+    });
+  }
+  
+  // Construct image paths for visualization
+  let visualizationImage = null;
+  let satelliteImage = null;
+  
+  // Get jobId from different possible sources
+  const jobId = data?.job_id || data?.metadata?.job_id || data?._jobId;
+  
+  // Build visualization paths - use direct paths to the files
+  if (jobId) {
+    // Direct path to the files - more reliable than API
+    visualizationImage = `/ttt/data/ml/detection_${jobId}/ml_response/combined_visualization.jpg`;
+    satelliteImage = `/ttt/data/ml/detection_${jobId}/satellite_${jobId.split('_')[1]}.jpg`;
+    
+    console.log("DETECTION PREVIEW: Using direct image paths:", {
+      visualizationImage,
+      satelliteImage,
+      jobId
+    });
+  }
+  
+  // UI state
+  const [activeCategory, setActiveCategory] = useState('all');
+  const [showLabels, setShowLabels] = useState(true);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [showFullImage, setShowFullImage] = useState(false);
+  const [activeTab, setActiveTab] = useState('categories'); // 'categories', 'stats', 'details'
+  
+  const [detectionFilters, setDetectionFilters] = useState({
+    trees: true,
+    buildings: true,
+    powerLines: true
+  });
+  
+  // Get confidence data if available - only use actual data, no defaults
+  let confidenceData = null;
+  
+  // Look for confidence data in various places in the object
+  if (data?.metadata?.confidence && typeof data.metadata.confidence === 'number') {
+    confidenceData = data.metadata.confidence;
+  } else if (data?.confidence_avg && typeof data.confidence_avg === 'number') {
+    confidenceData = data.confidence_avg;
+  } else if (Array.isArray(data?.trees) && data.trees.length > 0) {
+    // Calculate average confidence from trees array
+    let totalConfidence = 0;
+    let treeCount = 0;
+    
+    data.trees.forEach(tree => {
+      // Try to get confidence from tree object or its detection property
+      const treeConfidence = tree.confidence || (tree.detection && tree.detection.confidence);
+      if (treeConfidence && typeof treeConfidence === 'number') {
+        totalConfidence += treeConfidence;
+        treeCount++;
+      }
+    });
+    
+    if (treeCount > 0) {
+      confidenceData = totalConfidence / treeCount;
+    }
+  }
+  
+  const confidencePercent = confidenceData !== null ? Math.round(confidenceData * 100) : null;
+  
+  // Handle view on map click
+  const handleViewOnMap = () => {
+    // Construct filter based on active category
+    const filters = {
+      trees: activeCategory === 'all' || activeCategory === 'trees',
+      buildings: activeCategory === 'all' || activeCategory === 'buildings',
+      powerLines: activeCategory === 'all' || activeCategory === 'powerLines'
+    };
+    
+    // Update global filters for other components to use
+    window.detectionClasses = filters;
+    window.detectionShowLabels = showLabels;
+    
+    console.log('DETECTION PREVIEW: View on Map clicked, dispatching useCustomMarkerPlacement event with filters:', filters);
+    
+    // Use custom marker placement method with the tree data
+    window.dispatchEvent(new CustomEvent('useCustomMarkerPlacement', {
+      detail: { 
+        filters,
+        showLabels,
+        method: 'detection',
+        // Include tree data to ensure it's available to the handler
+        treeData: data?.trees || [],
+        // Include other tree categories
+        categoryData: {
+          healthy_tree: data?.healthy_tree || [],
+          hazardous_tree: data?.hazardous_tree || [],
+          dead_tree: data?.dead_tree || [],
+          pest_disease_tree: data?.pest_disease_tree || [],
+          low_canopy_tree: data?.low_canopy_tree || [],
+          utility_conflict_tree: data?.utility_conflict_tree || [],
+          structural_hazard_tree: data?.structural_hazard_tree || [],
+          fire_risk_tree: data?.fire_risk_tree || [],
+          flood_prone_tree: data?.flood_prone_tree || []
+        },
+        jobId: data?.job_id
+      }
+    }));
+    
+    // CRITICAL FIX: Also dispatch a specific event for MLOverlay component
+    // This will ensure the bounding boxes get rendered
+    console.log('DETECTION PREVIEW: Dispatching enterDetectionMode event to trigger MLOverlay rendering');
+    
+    // Explicitly ensure overlay visibility is set to true globally
+    window.detectionShowOverlay = true;
+    
+    // Create detection data with proper format
+    const detectionData = {
+      ...data,
+      job_id: data?.job_id,
+      // Ensure detections array exists - use ORIGINAL detection data not default values
+      detections: data?.detections || data?.trees?.map(tree => {
+        // Get the ACTUAL detection data from tree.detection if available
+        if (tree.detection) {
+          // Check for nested bbox array first
+          if (tree.detection.bbox && Array.isArray(tree.detection.bbox) && tree.detection.bbox.length === 4) {
+            console.log('DetectionPreview: Using nested detection.bbox for tree', tree.id || 'unknown');
+            return {
+              ...tree,
+              bbox: tree.detection.bbox,
+              class: tree.detection.class || 'healthy tree',
+              category: tree.detection.class?.toLowerCase().includes('utility') ? 'utility_conflict_tree' : 
+                       tree.detection.class?.toLowerCase().includes('hazard') ? 'hazardous_tree' :
+                       tree.detection.class?.toLowerCase().includes('dead') ? 'dead_tree' : 'healthy_tree',
+              confidence: tree.detection.confidence
+            };
+          }
+          // Check for nested box object
+          else if (tree.detection.box && typeof tree.detection.box === 'object') {
+            console.log('DetectionPreview: Converting nested detection.box to bbox for tree', tree.id || 'unknown');
+            return {
+              ...tree,
+              bbox: [
+                tree.detection.box.x,
+                tree.detection.box.y,
+                tree.detection.box.x + tree.detection.box.width,
+                tree.detection.box.y + tree.detection.box.height
+              ],
+              class: tree.detection.class || 'healthy tree',
+              category: tree.detection.class?.toLowerCase().includes('utility') ? 'utility_conflict_tree' : 
+                       tree.detection.class?.toLowerCase().includes('hazard') ? 'hazardous_tree' :
+                       tree.detection.class?.toLowerCase().includes('dead') ? 'dead_tree' : 'healthy_tree',
+              confidence: tree.detection.confidence
+            };
+          }
+        }
+        
+        // If no detection data, use tree data directly
+        return {
+          ...tree,
+          // Use ACTUAL bbox if available, otherwise check for box property
+          bbox: tree.bbox || (tree.box ? [
+            tree.box.x, tree.box.y, tree.box.x + tree.box.width, tree.box.y + tree.box.height
+          ] : [0.3, 0.3, 0.7, 0.7]), 
+          category: tree.category || 'healthy_tree'
+        };
+      }) || []
+    };
+    
+    // Store data in global variable for other components to access
+    window.mlDetectionData = detectionData;
+    
+    // IMPORTANT: Force overlay to be visible globally
+    window.detectionShowOverlay = true;
+    // Don't override opacity - respect user settings from the slider
+    
+    // Trigger overlay rendering through specific event AND directly
+    window.dispatchEvent(new CustomEvent('enterDetectionMode', {
+      detail: {
+        jobId: data?.job_id,
+        data: detectionData,
+        // CRITICAL: Explicitly set showOverlay to true and add other parameters
+        showOverlay: true,
+        forceVisible: true,
+        forceRenderBoxes: true
+        // Don't override opacity - respect user settings
+      }
+    }));
+    
+    // Direct rendering approach to ensure overlay is visible
+    // Check if MLOverlay's showDetectionOverlay function is available globally
+    if (typeof window.showDetectionOverlay === 'function') {
+      console.log('DETECTION PREVIEW: Using direct rendering with showDetectionOverlay');
+      try {
+        window.showDetectionOverlay(detectionData, {
+          // Use existing opacity setting,
+          jobId: data?.job_id,
+          forceRenderBoxes: true,
+          debug: true
+        });
+      } catch (e) {
+        console.error('Error using direct rendering method:', e);
+      }
+    }
+    
+    // Close the preview with small delay to ensure event is processed
+    setTimeout(() => {
+      if (typeof onClose === 'function') {
+        console.log('DETECTION PREVIEW: Closing preview after View on Map');
+        onClose();
+      }
+    }, 100);
+  };
+  
+  // Handle category change
+  const handleCategoryChange = (category) => {
+    setActiveCategory(category === activeCategory ? 'all' : category);
+  };
+  
+  // Handle escape key to close modal
+  useEffect(() => {
+    const handleEscKey = (event) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscKey);
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [onClose]);
+  
+  // Prevent popup from reappearing when user scrolls
+  useEffect(() => {
+    // Set a flag to indicate this preview is active
+    window._detectionPreviewActive = true;
+    
+    return () => {
+      // Clear the flag when component unmounts
+      window._detectionPreviewActive = false;
+    };
+  }, []);
+  
+  // Get detection time and processing metadata
+  const detectionTime = data?.timestamp 
+    ? new Date(data.timestamp).toLocaleString() 
+    : 'Unknown';
+  
+  const processingTime = data?.detection_time_seconds 
+    ? `${data.detection_time_seconds.toFixed(2)}s` 
+    : (data?.metadata?.processing_time ? `${data.metadata.processing_time.toFixed(2)}s` : 'Unknown');
+    
+  const modelType = data?.model_type || data?.metadata?.model || 'Standard Detection';
+  
+  // Retrieve coordinates if available
+  const coordinates = data?.metadata?.coordinates || 
+                     (data?.trees?.[0]?.location ? 
+                      `${data.trees[0].location[1].toFixed(6)}, ${data.trees[0].location[0].toFixed(6)}` : 
+                      'Not available');
+  
+  // Debug logging for troubleshooting
+  console.log('DETECTION PREVIEW: Rendering with data:', {
+    jobId: data?.job_id || data?._jobId || 'none',
+    isPreliminary: !!isPreliminary,
+    totalCount
+  });
+
+  // Even if there are no trees yet, we still want to show the preview in preliminary mode
+  if (!data) {
+    console.log('DETECTION PREVIEW: No data provided, returning null');
+    return null;
+  }
+  
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[9999] overflow-y-auto backdrop-blur-sm">
+      <div 
+        className="bg-white rounded-md shadow-xl w-full mx-4 md:mx-auto overflow-hidden flex flex-col transition-all duration-300" 
+        style={{ 
+          maxWidth: '900px', 
+          maxHeight: '90vh',
+          transform: 'scale(1)'
+        }}
+      >
+        {/* Header with title and close button - SLIMMER */}
+        <div className="flex justify-between items-center p-2.5 bg-slate-100 border-b border-slate-200 text-slate-800">
+          <div>
+            <h2 className="text-md font-bold flex items-center">
+              <BarChart size={16} className="mr-1.5 text-blue-600" />
+              Detection Results
+            </h2>
+            {isPreliminary && (
+              <div className="text-[10px] text-amber-600 mt-0.5 font-medium flex items-center">
+                <AlertTriangle size={10} className="mr-1" />
+                Preliminary results - full analysis in progress...
+              </div>
+            )}
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            {/* Tabs for different views */}
+            <div className="hidden md:flex bg-slate-200 rounded-sm p-0.5 mr-2">
+              <button
+                onClick={() => setActiveTab('categories')}
+                className={`px-3 py-0.5 text-xs font-medium rounded-sm transition-colors ${
+                  activeTab === 'categories' 
+                    ? 'bg-white text-blue-700 shadow-sm' 
+                    : 'text-slate-700 hover:text-slate-900'
+                }`}
+              >
+                Categories
+              </button>
+              <button
+                onClick={() => setActiveTab('stats')}
+                className={`px-3 py-0.5 text-xs font-medium rounded-sm transition-colors ${
+                  activeTab === 'stats' 
+                    ? 'bg-white text-blue-700 shadow-sm' 
+                    : 'text-slate-700 hover:text-slate-900'
+                }`}
+              >
+                Stats
+              </button>
+              <button
+                onClick={() => setActiveTab('details')}
+                className={`px-3 py-0.5 text-xs font-medium rounded-sm transition-colors ${
+                  activeTab === 'details' 
+                    ? 'bg-white text-blue-700 shadow-sm' 
+                    : 'text-slate-700 hover:text-slate-900'
+                }`}
+              >
+                Details
+              </button>
+            </div>
+            
+            <button 
+              onClick={onClose} 
+              className="p-1 rounded-sm hover:bg-slate-200 transition-colors focus:outline-none"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        
+        {/* Main content - two column layout for larger screens */}
+        <div className="p-4 overflow-y-auto">
+          {/* Stats summary banner */}
+          <div className="mb-3 p-2 bg-blue-50 border border-blue-100 rounded-md text-blue-800 flex items-center justify-between">
+            <div className="flex items-center">
+              <Info size={14} className="text-blue-500 mr-1.5 flex-shrink-0" />
+              <div className="text-sm">
+                <span className="font-bold">{totalCount}</span> objects detected
+                <span className="hidden md:inline"> in satellite view</span>
+                {isPreliminary && <span className="ml-1 text-amber-600 text-xs">(preliminary)</span>}
+              </div>
+            </div>
+            
+            <div className="flex space-x-1.5 text-[10px]">
+              <div className="flex items-center px-1.5 py-0.5 bg-white rounded-sm border border-blue-100">
+                <TreePine size={12} className="text-green-600 mr-1" />
+                <span className="font-medium">{totalTreeCount}</span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Mobile tabs for different views */}
+          <div className="flex md:hidden bg-slate-100 rounded-md p-1 mb-3">
+            <button
+              onClick={() => setActiveTab('categories')}
+              className={`flex-1 px-2 py-1 text-xs font-medium rounded-sm transition-colors ${
+                activeTab === 'categories' 
+                  ? 'bg-white text-blue-700 shadow-sm' 
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              Categories
+            </button>
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`flex-1 px-2 py-1 text-xs font-medium rounded-sm transition-colors ${
+                activeTab === 'stats' 
+                  ? 'bg-white text-blue-700 shadow-sm' 
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              Stats
+            </button>
+            <button
+              onClick={() => setActiveTab('details')}
+              className={`flex-1 px-2 py-1 text-xs font-medium rounded-sm transition-colors ${
+                activeTab === 'details' 
+                  ? 'bg-white text-blue-700 shadow-sm' 
+                  : 'text-slate-700 hover:text-slate-900'
+              }`}
+            >
+              Details
+            </button>
+          </div>
+          
+          {/* Image and categories grid */}
+          <div className={`grid ${activeTab === 'categories' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'} gap-4 mb-4`}>
+            {/* Left column - image preview - only shown in categories tab or on desktop */}
+            {(activeTab === 'categories' || window.innerWidth >= 768) && (
+              <div className="relative">
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="text-sm font-medium text-slate-700">Detection Visualization</h3>
+                  <button 
+                    onClick={() => setShowFullImage(!showFullImage)}
+                    className="p-0.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                    title={showFullImage ? "Minimize" : "View full size"}
+                  >
+                    <Maximize2 size={14} />
+                  </button>
+                </div>
+                
+                {/* Detection image with improved styling */}
+                <div 
+                  className={`border border-slate-200 rounded-md bg-white overflow-hidden mb-2 shadow-sm transition-all duration-300 ${
+                    showFullImage ? 'fixed inset-4 z-50 flex items-center justify-center bg-black bg-opacity-90' : ''
+                  }`}
+                  style={{ height: showFullImage ? 'auto' : '240px' }}
+                >
+                  {showFullImage && (
+                    <button 
+                      className="absolute top-4 right-4 bg-black bg-opacity-50 text-white p-1.5 rounded-full z-10"
+                      onClick={() => setShowFullImage(false)}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                  
+                  {visualizationImage ? (
+                    <img 
+                      src={visualizationImage} 
+                      alt="ML detection visualization" 
+                      className={`w-full h-full ${showFullImage ? 'object-contain' : 'object-cover'}`}
+                      data-job-id={jobId || data?.job_id}
+                      data-image-type="visualization"
+                      onLoad={() => console.log('DETECTION PREVIEW: Successfully loaded visualization image')}
+                      onError={(e) => {
+                        console.log('DETECTION PREVIEW: Error loading visualization image, trying satellite image');
+                        // Try satellite image instead
+                        if (satelliteImage) {
+                          e.target.src = satelliteImage;
+                          e.target.alt = "Satellite image";
+                          console.log('DETECTION PREVIEW: Trying satellite image:', satelliteImage);
+                          
+                          // If satellite image fails too, show placeholder
+                          e.target.onerror = () => {
+                            console.log('DETECTION PREVIEW: Error loading satellite image, showing placeholder');
+                            e.target.style.display = "none";
+                            e.target.parentElement.innerHTML = `
+                              <div class="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                                <svg class="w-12 h-12 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                </svg>
+                                <p class="text-xs text-slate-500">Detection visualization not available</p>
+                                <p class="text-xs text-slate-400 mt-1">ML Dir: ${data?.ml_dir || jobId || 'unknown'}</p>
+                              </div>
+                            `;
+                          };
+                        } else {
+                          // No satellite image available, show placeholder immediately
+                          console.log('DETECTION PREVIEW: No satellite image available, showing placeholder directly');
+                          e.target.style.display = "none";
+                          e.target.parentElement.innerHTML = `
+                            <div class="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                              <svg class="w-12 h-12 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                              </svg>
+                              <p class="text-xs text-slate-500">Detection visualization not available</p>
+                              <p class="text-xs text-slate-400 mt-1">ML Dir: ${data?.ml_dir || jobId || 'unknown'}</p>
+                            </div>
+                          `;
+                        }
+                      }}
+                    />
+                  ) : isPreliminary ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                      <div className="animate-pulse mb-2">
+                        <svg className="w-16 h-16 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <p className="text-sm font-medium text-blue-500">Processing satellite imagery...</p>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Visualization will appear when ready
+                      </p>
+                      <p className="text-xs text-slate-400 mt-3 px-4 text-center">
+                        {data?.metadata?.coordinates || coordinates || 'Analyzing area...'}
+                      </p>
+                      <div className="mt-3 flex space-x-1">
+                        <div className="h-1.5 w-1.5 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
+                        <div className="h-1.5 w-1.5 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
+                        <div className="h-1.5 w-1.5 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-50">
+                      <Camera size={36} className="text-slate-300 mb-2" />
+                      <p className="text-xs text-slate-500">Visualization image not available</p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {data?.ml_dir ? `ML Dir: ${data.ml_dir}` : jobId ? `Job ID: ${jobId}` : 'No image path available'}
+                      </p>
+                      {data?.ml_response_dir && (
+                        <p className="text-xs text-slate-400">Response Dir: {data.ml_response_dir}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Image selector pills */}
+                <div className="flex justify-center space-x-2 mb-3">
+                  <button className="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                    Detection View
+                  </button>
+                  <button className="px-2.5 py-0.5 bg-slate-100 text-slate-600 text-xs font-medium rounded-full hover:bg-slate-200">
+                    Satellite View
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Right column - tree categories - shown in categories tab */}
+            {activeTab === 'categories' && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-700 mb-1.5 flex items-center">
+                  <Tag size={14} className="mr-1" /> Tree Categories
+                </h3>
+                <div className="border border-slate-200 rounded-md overflow-hidden bg-white p-3 shadow-sm" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                  {/* Tree categories with improved styling */}
+                  {Object.entries(treeCategories).map(([category, info]) => {
+                    const count = categoryCounts[category] || 0;
+                    // Show all categories for debugging
+                    // if (count === 0) return null;
+                    
+                    return (
+                      <div 
+                        key={category}
+                        className={`flex items-center justify-between mb-2 p-1.5 rounded-sm transition-colors ${
+                          activeCategory === category 
+                            ? 'bg-slate-100 border border-slate-200' 
+                            : 'hover:bg-slate-50 cursor-pointer'
+                        }`}
+                        onClick={() => handleCategoryChange(category)}
+                        style={{ 
+                          backgroundColor: activeCategory === category ? info.bgColor : '',
+                          borderColor: activeCategory === category ? info.color : ''
+                        }}
+                      >
+                        <div className="flex items-center">
+                          <div 
+                            className="w-2.5 h-2.5 rounded-full mr-2 flex-shrink-0" 
+                            style={{ backgroundColor: info.color }}
+                          />
+                          <div className="flex items-center">
+                            {info.icon && <span className="mr-1 text-slate-500">{info.icon}</span>}
+                            <span className="text-sm text-slate-700">{info.label}</span>
+                          </div>
+                        </div>
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                          {count}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* Generic trees with improved styling */}
+                  {(categoryCounts.generic > 0 || (totalTreeCount > 0 && !hasSpecificCategories)) && (
+                    <div 
+                      className={`flex items-center justify-between mb-2 p-1.5 rounded-sm transition-colors ${
+                        activeCategory === 'trees' 
+                          ? 'bg-green-50 border border-green-100' 
+                          : 'hover:bg-slate-50 cursor-pointer'
+                      }`}
+                      onClick={() => handleCategoryChange('trees')}
+                    >
+                      <div className="flex items-center">
+                        <div className="w-2.5 h-2.5 rounded-full mr-2 bg-green-500 flex-shrink-0" />
+                        <div className="flex items-center">
+                          <TreePine size={14} className="mr-1 text-slate-500" />
+                          <span className="text-sm text-slate-700">All Trees</span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {categoryCounts.generic || totalTreeCount}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Buildings */}
+                  {buildingCount > 0 && (
+                    <div 
+                      className={`flex items-center justify-between mb-2 p-1.5 rounded-sm transition-colors ${
+                        activeCategory === 'buildings' 
+                          ? 'bg-blue-50 border border-blue-100' 
+                          : 'hover:bg-slate-50 cursor-pointer'
+                      }`}
+                      onClick={() => handleCategoryChange('buildings')}
+                    >
+                      <div className="flex items-center">
+                        <div className="w-2.5 h-2.5 rounded-full mr-2 bg-blue-500 flex-shrink-0" />
+                        <div className="flex items-center">
+                          <Building size={14} className="mr-1 text-slate-500" />
+                          <span className="text-sm text-slate-700">Buildings</span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {buildingCount}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Power Lines */}
+                  {powerLineCount > 0 && (
+                    <div 
+                      className={`flex items-center justify-between mb-2 p-1.5 rounded-sm transition-colors ${
+                        activeCategory === 'powerLines' 
+                          ? 'bg-amber-50 border border-amber-100' 
+                          : 'hover:bg-slate-50 cursor-pointer'
+                      }`}
+                      onClick={() => handleCategoryChange('powerLines')}
+                    >
+                      <div className="flex items-center">
+                        <div className="w-2.5 h-2.5 rounded-full mr-2 bg-amber-500 flex-shrink-0" />
+                        <div className="flex items-center">
+                          <Zap size={14} className="mr-1 text-slate-500" />
+                          <span className="text-sm text-slate-700">Power Lines</span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                        {powerLineCount}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* If no objects found */}
+                  {totalCount === 0 && (
+                    <div className="flex flex-col items-center justify-center p-4">
+                      {isPreliminary ? (
+                        <>
+                          <div className="animate-pulse flex flex-col items-center mb-3">
+                            <svg className="w-8 h-8 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" />
+                            </svg>
+                            <span className="mt-2 text-sm font-medium text-blue-600">Loading detection data...</span>
+                          </div>
+                          <div className="text-xs text-slate-500 text-center">
+                            <p>Tree data will appear as soon as detection completes</p>
+                            <p className="mt-1 italic">Analyzing satellite imagery at {coordinates}</p>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex items-center text-slate-500">
+                          <AlertTriangle size={16} className="mr-2 text-amber-500" />
+                          <span className="text-sm">No objects found</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                {/* Show advanced options for categories tab */}
+                {activeTab === 'categories' && (
+                  <div className="mt-3">
+                    <button 
+                      onClick={() => setShowAdvancedOptions(!showAdvancedOptions)}
+                      className="w-full flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-md text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors"
+                    >
+                      <span className="flex items-center">
+                        <Filter size={14} className="mr-1.5 text-slate-500" />
+                        Display Options
+                      </span>
+                      <ChevronDown 
+                        size={14} 
+                        className={`text-slate-500 transition-transform ${showAdvancedOptions ? 'transform rotate-180' : ''}`} 
+                      />
+                    </button>
+                    
+                    {showAdvancedOptions && (
+                      <div className="mt-2 p-3 border border-slate-200 rounded-md bg-white">
+                        <div>
+                          <h4 className="text-xs font-semibold text-slate-800 mb-2">Object Visibility</h4>
+                          
+                          <label className="flex items-center hover:bg-slate-50 p-1.5 rounded transition-colors">
+                            <input 
+                              type="checkbox"
+                              checked={detectionFilters.trees}
+                              onChange={() => setDetectionFilters({...detectionFilters, trees: !detectionFilters.trees})}
+                              className="mr-2 h-3.5 w-3.5 accent-green-600 rounded"
+                            />
+                            <div className="flex items-center text-sm">
+                              <TreePine size={14} className="text-green-600 mr-1.5" />
+                              <span>Trees</span>
+                              <span className="ml-1 text-xs text-slate-400">({totalTreeCount})</span>
+                            </div>
+                          </label>
+                          
+                          {buildingCount > 0 && (
+                            <label className="flex items-center hover:bg-slate-50 p-1.5 rounded transition-colors">
+                              <input 
+                                type="checkbox"
+                                checked={detectionFilters.buildings}
+                                onChange={() => setDetectionFilters({...detectionFilters, buildings: !detectionFilters.buildings})}
+                                className="mr-2 h-3.5 w-3.5 accent-blue-600 rounded"
+                              />
+                              <div className="flex items-center text-sm">
+                                <Building size={14} className="text-blue-600 mr-1.5" />
+                                <span>Buildings</span>
+                                <span className="ml-1 text-xs text-slate-400">({buildingCount})</span>
+                              </div>
+                            </label>
+                          )}
+                          
+                          {powerLineCount > 0 && (
+                            <label className="flex items-center hover:bg-slate-50 p-1.5 rounded transition-colors">
+                              <input 
+                                type="checkbox"
+                                checked={detectionFilters.powerLines}
+                                onChange={() => setDetectionFilters({...detectionFilters, powerLines: !detectionFilters.powerLines})}
+                                className="mr-2 h-3.5 w-3.5 accent-amber-600 rounded"
+                              />
+                              <div className="flex items-center text-sm">
+                                <Zap size={14} className="text-amber-600 mr-1.5" />
+                                <span>Power Lines</span>
+                                <span className="ml-1 text-xs text-slate-400">({powerLineCount})</span>
+                              </div>
+                            </label>
+                          )}
+                        </div>
+                        
+                        {/* Display Style */}
+                        <div className="mt-3">
+                          <h4 className="text-xs font-semibold text-slate-800 mb-2">Display Style</h4>
+                          
+                          <label className="flex items-center hover:bg-slate-50 p-1.5 rounded transition-colors">
+                            <input 
+                              type="checkbox"
+                              checked={showLabels}
+                              onChange={(e) => setShowLabels(e.target.checked)}
+                              className="mr-2 h-3.5 w-3.5 accent-blue-600 rounded"
+                            />
+                            <div className="flex items-center text-sm">
+                              <Tag size={14} className="text-slate-600 mr-1.5" />
+                              <span>Show Object Labels</span>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Stats view - shown in stats tab */}
+            {activeTab === 'stats' && (
+              <div className="bg-white rounded-md border border-slate-200 shadow-sm p-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-3 flex items-center">
+                  <FileBarChart2 size={16} className="mr-1.5 text-blue-600" />
+                  Detection Statistics
+                </h3>
+                
+                <div className="mb-4">
+                  {/* Total Trees Card */}
+                  {isPreliminary && totalTreeCount === 0 ? (
+                    <div className="bg-blue-50 rounded-md p-3 border border-blue-100">
+                      <div className="text-xs text-blue-700 mb-1">Processing Detection</div>
+                      <div className="flex items-center">
+                        <div className="text-xl font-bold text-blue-800 animate-pulse">Analyzing...</div>
+                        <div className="ml-2 flex space-x-1">
+                          <div className="h-1.5 w-1.5 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
+                          <div className="h-1.5 w-1.5 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
+                          <div className="h-1.5 w-1.5 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                        </div>
+                      </div>
+                      <div className="text-xs text-blue-600 mt-2">
+                        Model: {modelType || 'Standard Detection'}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-green-50 rounded-md p-3 border border-green-100">
+                      <div className="text-xs text-green-700 mb-1">Trees Detected</div>
+                      <div className="text-2xl font-bold text-green-800">{totalTreeCount}</div>
+                      <div className="text-xs text-green-600 mt-1">
+                        Detection confidence: {confidencePercent ? `${confidencePercent}%` : 'N/A'}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Tree Categories Breakdown */}
+                <h4 className="text-xs font-semibold text-slate-700 mb-2">Tree Categories Breakdown</h4>
+                <div className="space-y-2 mb-4">
+                  {Object.entries(treeCategories).map(([category, info]) => {
+                    const count = categoryCounts[category] || 0;
+                    if (count === 0) return null;
+                    
+                    // Calculate percentage of total trees
+                    const percentage = Math.round((count / totalTreeCount) * 100);
+                    
+                    return (
+                      <div key={category} className="flex flex-col">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center text-xs text-slate-700">
+                            <div className="w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: info.color }}></div>
+                            {info.label}
+                          </div>
+                          <div className="text-xs font-medium">{count} <span className="text-slate-500">({percentage}%)</span></div>
+                        </div>
+                        {/* Progress bar */}
+                        <div className="w-full bg-slate-100 rounded-full h-1.5">
+                          <div 
+                            className="h-1.5 rounded-full" 
+                            style={{ 
+                              width: `${percentage}%`,
+                              backgroundColor: info.color
+                            }}
+                          ></div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                
+                {/* Confidence Rating - only show if confidence data exists */}
+                {confidenceData !== null && (
+                  <div className="mt-4 pt-3 border-t border-slate-200">
+                    <h4 className="text-xs font-semibold text-slate-700 mb-2">Overall Confidence</h4>
+                    <div className="flex items-center">
+                      <div className="flex-1 mr-4">
+                        <div className="w-full bg-slate-100 rounded-full h-2">
+                          <div 
+                            className="h-2 rounded-full bg-blue-600"
+                            style={{ width: `${confidencePercent}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      <div className="text-sm font-semibold text-blue-700">
+                        {confidencePercent}%
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {/* Details view - shown in details tab */}
+            {activeTab === 'details' && (
+              <div className="bg-white rounded-md border border-slate-200 shadow-sm p-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-3">Detection Details</h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  {/* Job ID */}
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-500 text-xs">Job ID:</span>
+                    <span className="font-medium text-slate-800 text-xs">{jobId || 'N/A'}</span>
+                  </div>
+                  
+                  {/* Timestamp */}
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-500 text-xs">Detection Time:</span>
+                    <span className="font-medium text-slate-800 text-xs">{detectionTime}</span>
+                  </div>
+                  
+                  {/* Model Type */}
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-500 text-xs">Model:</span>
+                    <span className="font-medium text-slate-800 text-xs">{modelType}</span>
+                  </div>
+                  
+                  {/* Processing Time */}
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-500 text-xs">Processing Time:</span>
+                    <span className="font-medium text-slate-800 text-xs">
+                      {isPreliminary && processingTime === 'Unknown' ? (
+                        <span className="flex items-center">
+                          <span className="mr-1">In progress</span>
+                          <div className="inline-flex space-x-0.5">
+                            <div className="h-1 w-1 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '0ms'}}></div>
+                            <div className="h-1 w-1 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '150ms'}}></div>
+                            <div className="h-1 w-1 bg-blue-500 rounded-full animate-bounce" style={{animationDelay: '300ms'}}></div>
+                          </div>
+                        </span>
+                      ) : (
+                        processingTime
+                      )}
+                    </span>
+                  </div>
+                  
+                  {/* Total Trees */}
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-500 text-xs">Total Trees:</span>
+                    <span className="font-medium text-slate-800 text-xs">
+                      {isPreliminary && totalTreeCount === 0 ? (
+                        <span className="animate-pulse text-blue-600">Processing...</span>
+                      ) : (
+                        totalTreeCount
+                      )}
+                    </span>
+                  </div>
+                  
+                  {/* Coordinates */}
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-500 text-xs">Coordinates:</span>
+                    <span className="font-medium text-slate-800 text-xs">{coordinates}</span>
+                  </div>
+                  
+                  {/* Status */}
+                  <div className="flex justify-between py-1 border-b border-slate-100">
+                    <span className="text-slate-500 text-xs">Status:</span>
+                    <span className="font-medium flex items-center text-xs">
+                      {isPreliminary ? (
+                        <span className="text-blue-600 flex items-center">
+                          <svg className="animate-spin -ml-1 mr-1 h-3 w-3 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Processing
+                        </span>
+                      ) : (
+                        <span className="text-green-600 flex items-center">
+                          <CircleCheck size={12} className="mr-1" />
+                          Complete
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  
+                  {/* ML Response Directory - only in development mode */}
+                  {process.env.NODE_ENV === 'development' && data?.ml_response_dir && (
+                    <div className="flex justify-between py-1 border-b border-slate-100 col-span-2">
+                      <span className="text-slate-500 text-xs">ML Response Dir:</span>
+                      <span className="font-medium text-slate-800 text-xs">{data.ml_response_dir}</span>
+                    </div>
+                  )}
+                </div>                
+              </div>
+            )}
+          </div>
+        </div>
+        
+        {/* Footer with actions - SLIMMER */}
+        <div className="border-t border-slate-200 p-2.5 bg-white flex items-center justify-between">
+          <div className="flex items-center text-xs text-slate-500">
+            <MapPin size={12} className="mr-1" />
+            {isPreliminary ? 'Preparing detection...' : 'Ready for map display'}
+          </div>
+          
+          <div className="flex space-x-2">
+            <button
+              onClick={() => {
+                console.log('DETECTION PREVIEW: Close button clicked');
+                if (typeof onClose === 'function') {
+                  onClose();
+                } else {
+                  console.error('DETECTION PREVIEW: onClose function is not available');
+                  // Fallback to direct call to global function
+                  if (typeof window.destroyDetectionPreview === 'function') {
+                    window.destroyDetectionPreview();
+                  }
+                }
+              }}
+              className="px-3 py-1 border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 rounded-sm transition-colors flex items-center text-xs font-medium"
+            >
+              <X size={12} className="mr-1" />
+              Close
+            </button>
+            <button
+              onClick={handleViewOnMap}
+              className="px-3 py-1 bg-blue-600 text-white rounded-sm hover:bg-blue-700 flex items-center transition-colors text-xs font-medium"
+              style={{ backgroundColor: '#0d47a1' }} /* Exactly match the Detect button color */
+            >
+              <Eye size={12} className="mr-1" />
+              View on Map
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Render the popup into a container
+ */
+function renderPopup(data, container) {
+  try {
+    console.log('RENDER POPUP: Starting render with React', 
+                'createRoot available:', typeof ReactDOM.createRoot === 'function');
+    
+    // CRITICAL: Always create a fresh container to avoid unmounted root issues
+    // First, unmount any existing React root to prevent memory leaks
+    if (container._reactRoot) {
+      try {
+        console.log('RENDER POPUP: Unmounting existing ReactDOM root');
+        container._reactRoot.unmount();
+        container._reactRoot = null;
+      } catch (unmountError) {
+        console.warn('Error unmounting existing root:', unmountError.message);
+        // Continue anyway - we'll create a new container
+      }
+    }
+    
+    // Create a fresh DIV element to avoid React root issues
+    const freshContainer = document.createElement('div');
+    freshContainer.id = 'detection-popup-inner-container';
+    freshContainer.style.width = '100%';
+    freshContainer.style.height = '100%';
+    
+    // Clear the container and add our fresh container
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    container.appendChild(freshContainer);
+    
+    // Use React 18 createRoot API if available
+    if (ReactDOM.createRoot) {
+      console.log('RENDER POPUP: Using React 18 createRoot API with fresh container');
+      // Always create a new root with the fresh container
+      const root = ReactDOM.createRoot(freshContainer);
+      
+      // Store reference to the root
+      container._reactRoot = root;
+      
+      // Render using the root
+      console.log('RENDER POPUP: Rendering component using root.render()');
+      root.render(<DetectionPopup data={data} onClose={() => destroyDetectionPreview()} />);
+      console.log('RENDER POPUP: Component rendered');
+    } else {
+      // Legacy React rendering
+      console.log('RENDER POPUP: Using legacy ReactDOM.render method');
+      ReactDOM.render(
+        <DetectionPopup data={data} onClose={() => destroyDetectionPreview()} />,
+        freshContainer
+      );
+      console.log('RENDER POPUP: Component rendered with legacy method');
+    }
+  } catch (error) {
+    console.error('Error rendering detection popup:', error);
+    console.error('Error details:', error.message);
+    console.error('Error stack:', error.stack);
+  }
+}
+
+/**
+ * Show the detection preview as a modal popup
+ * Enhanced with stability improvements
+ */
+function showDetectionPreview(data) {
+  if (!data) {
+    console.error('No detection data provided');
+    return;
+  }
+  
+  // Debug info for troubleshooting
+  console.log('DETECTION PREVIEW: Function called with data:', {
+    jobId: data.job_id || data._jobId,
+    preliminary: data._preliminary,
+    detailType: typeof data,
+    hasTreesArray: Array.isArray(data.trees),
+    treeCount: Array.isArray(data.trees) ? data.trees.length : 'n/a',
+    hasMetadata: !!data.metadata,
+    calledFrom: new Error().stack.split('\n')[2]?.trim() || 'unknown'
+  });
+  
+  // Force the popup to display even if there's a flag that would prevent it
+  window._preventDetectionPreviewReopen = false;
+  
+  // Make sure trees is at least an empty array to avoid errors
+  if (!Array.isArray(data.trees)) {
+    data.trees = [];
+    console.log('DETECTION PREVIEW: Created empty trees array to avoid rendering errors');
+  }
+  
+  // Force clear any existing preview to make sure this one shows
+  try {
+    const existingContainer = document.getElementById('detection-popup-container');
+    if (existingContainer) {
+      console.log('DETECTION PREVIEW: Forcing removal of existing preview container');
+      if (existingContainer.parentNode) {
+        existingContainer.parentNode.removeChild(existingContainer);
+      }
+      window._detectionPreviewShowInProgress = false;
+    }
+  } catch (error) {
+    console.error('Error removing existing preview:', error);
+  }
+  
+  // Clear the in-progress flag to allow this preview to show
+  window._detectionPreviewShowInProgress = false;
+  
+  // Brief timeout to ensure DOM operations complete
+  setTimeout(() => {
+    // Set flag to indicate we're showing a preview
+    window._detectionPreviewShowInProgress = true;
+    
+    // First, check if we already have a container before destroying
+    const existingContainer = document.getElementById('detection-popup-container');
+    
+    if (existingContainer) {
+      console.log('DETECTION PREVIEW: Existing container found, will reuse it');
+      
+      // Update content instead of destroying and recreating
+      try {
+        renderPopup(data, existingContainer);
+        
+        // Release the show lock after a delay
+        setTimeout(() => {
+          window._detectionPreviewShowInProgress = false;
+          
+          // Process any pending data that arrived during this operation
+          if (window._pendingPreviewData) {
+            const pendingData = window._pendingPreviewData;
+            window._pendingPreviewData = null;
+            showDetectionPreview(pendingData);
+          }
+        }, 100);
+        
+        return;
+      } catch (error) {
+        console.error('Error updating existing preview:', error);
+        // Fall through to create a new container
+      }
+    }
+    
+    // If we got here, we need to create a new container
+    try {
+      // Remove any existing popup first, but only if we're not already in cleanup
+      if (!window._detectionPreviewCleanupInProgress) {
+        destroyDetectionPreview();
+      }
+      
+      // Create fresh container
+      console.log('DETECTION PREVIEW: Creating popup container');
+      const popupContainer = document.createElement('div');
+      popupContainer.id = 'detection-popup-container';
+    
+      // Add a data attribute to prevent other components from removing it
+      popupContainer.setAttribute('data-persistent', 'true');
+      
+      // Set a very high z-index to ensure it's on top but not higher than important app elements
+      popupContainer.style.zIndex = '9999';
+      
+      // Make sure it covers the entire viewport
+      popupContainer.style.position = 'fixed';
+      popupContainer.style.top = '0';
+      popupContainer.style.left = '0';
+      popupContainer.style.width = '100%';
+      popupContainer.style.height = '100%';
+      
+      // Add to document.body
+      document.body.appendChild(popupContainer);
+      
+      // Store container reference globally
+      window._detectionPopupContainer = popupContainer;
+      
+      // Render popup immediately
+      try {
+        console.log('DETECTION PREVIEW: Calling renderPopup...');
+        renderPopup(data, popupContainer);
+        console.log('DETECTION PREVIEW: renderPopup completed');
+        
+        // Force re-attach to document.body to ensure it's in the DOM
+        if (popupContainer.parentNode !== document.body) {
+          console.log('DETECTION PREVIEW: Force re-attaching container to document.body');
+          document.body.appendChild(popupContainer);
+        }
+      } catch (error) {
+        console.error('Error rendering detection popup:', error);
+      }
+      
+      // Make sure body doesn't scroll while popup is open
+      document.body.style.overflow = 'hidden';
+      
+      // REMOVED: MutationObserver recreation was causing popup to immediately reappear after closing
+      
+      // Store the data for recovery if needed
+      window._lastPreviewData = data;
+      
+      // Verify popup is in the DOM after a short delay
+      setTimeout(() => {
+        const containerCheck = document.getElementById('detection-popup-container');
+        if (containerCheck) {
+          console.log('DETECTION PREVIEW: Container exists in DOM after rendering');
+          
+          // Force re-attach again if it's not in document.body
+          if (containerCheck.parentNode !== document.body) {
+            console.log('DETECTION PREVIEW: Re-attaching container to document.body after check');
+            document.body.appendChild(containerCheck);
+          }
+        } else {
+          console.error('DETECTION PREVIEW: Container missing from DOM after rendering!');
+          
+          // We need to recreate the container in this case
+          console.log('DETECTION PREVIEW: Container was removed, recreating it');
+          const newContainer = document.createElement('div');
+          newContainer.id = 'detection-popup-container';
+          newContainer.setAttribute('data-persistent', 'true');
+          newContainer.style.zIndex = '9999';
+          newContainer.style.position = 'fixed';
+          newContainer.style.top = '0';
+          newContainer.style.left = '0';
+          newContainer.style.width = '100%';
+          newContainer.style.height = '100%';
+          
+          document.body.appendChild(newContainer);
+          window._detectionPopupContainer = newContainer;
+          renderPopup(data, newContainer);
+        }
+        
+        // Release the show lock
+        window._detectionPreviewShowInProgress = false;
+        
+        // Process any pending data that arrived during this operation
+        if (window._pendingPreviewData) {
+          const pendingData = window._pendingPreviewData;
+          window._pendingPreviewData = null;
+          showDetectionPreview(pendingData);
+        }
+      }, 100);
+    } catch (error) {
+      console.error('Error creating detection preview:', error);
+      // Release the show lock
+      window._detectionPreviewShowInProgress = false;
+    }
+}
+
+/**
+ * Remove the detection preview popup with safeguards against multiple calls
+ * Implementation of the function previously declared
+ */
+function destroyDetectionPreview(collapseToButton = true) {
+  // Prevent multiple simultaneous destroy calls
+  if (window._detectionPreviewCleanupInProgress) {
+    console.log('DETECTION PREVIEW: Cleanup already in progress, skipping duplicate call');
+    return;
+  }
+  
+  // Set flag to prevent popup from reappearing automatically
+  window._preventDetectionPreviewReopen = true;
+  
+  // Set cleanup lock - critical to prevent race conditions
+  window._detectionPreviewCleanupInProgress = true;
+  
+  console.log('DETECTION PREVIEW: Destroying detection preview, collapseToButton:', collapseToButton);
+  
+  // Get container either from global reference or DOM ID
+  const popupContainer = window._detectionPopupContainer || document.getElementById('detection-popup-container');
+  
+  if (popupContainer) {
+    try {
+      console.log('DETECTION PREVIEW: Unmounting React component');
+      
+      // Find the inner container
+      const innerContainer = document.getElementById('detection-popup-inner-container');
+      
+      // First unmount React components to prevent memory leaks
+      try {
+        // React 18 method
+        if (popupContainer._reactRoot) {
+          console.log('DETECTION PREVIEW: Unmounting React 18 root');
+          popupContainer._reactRoot.unmount();
+          popupContainer._reactRoot = null;
+        }
+        // React 17 and below method
+        else if (ReactDOM.unmountComponentAtNode) {
+          console.log('DETECTION PREVIEW: Unmounting with legacy React method');
+          // Try to unmount from both inner and main container
+          if (innerContainer) {
+            ReactDOM.unmountComponentAtNode(innerContainer);
+          }
+          ReactDOM.unmountComponentAtNode(popupContainer);
+        }
+      } catch (unmountError) {
+        console.warn('Non-critical error during React unmount:', unmountError.message);
+      }
+      
+      // Remove the container from the DOM
+      console.log('DETECTION PREVIEW: Removing container from DOM');
+      
+      // Clear container contents first
+      while (popupContainer.firstChild) {
+        popupContainer.removeChild(popupContainer.firstChild);
+      }
+      
+      // Remove the container itself
+      if (popupContainer.parentNode) {
+        popupContainer.parentNode.removeChild(popupContainer);
+      }
+      
+      // Restore body scroll
+      document.body.style.overflow = '';
+      
+      // Clear global references but KEEP the data for potential recreation
+      window._detectionPopupContainer = null;
+      
+      // Create the "Detection Results" button if we're collapsing to a button
+      if (collapseToButton && window._lastPreviewData) {
+        const treeCount = window._lastPreviewData.trees?.length || 0;
+        console.log('DETECTION PREVIEW: Creating Detection Results button with count:', treeCount);
+        
+        // Try to find detection categories section first to insert after it
+        const detectionCategoriesSection = document.getElementById('detection-categories-section');
+        
+        if (detectionCategoriesSection) {
+          // First, remove any existing Detection Results button to prevent duplicates
+          const existingButton = document.getElementById('detection-results-button');
+          if (existingButton) {
+            console.log('DETECTION PREVIEW: Removing existing Detection Results button');
+            existingButton.parentNode.removeChild(existingButton);
+          }
+          
+          // Create Detection Results button
+          const resultsButton = document.createElement('div');
+          resultsButton.id = 'detection-results-button';
+          resultsButton.className = 'px-3 py-2'; // Consistent spacing with other sections
+          
+          resultsButton.innerHTML = `
+            <div class="flex justify-between items-center px-2 py-1.5 bg-white border border-slate-200 rounded cursor-pointer hover:bg-slate-50">
+              <div class="flex items-center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5 text-slate-500">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span class="text-sm font-medium text-slate-600">Detection Results</span>
+              </div>
+              <div class="flex items-center">
+                <span id="detected-objects-count" class="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">${treeCount}</span>
+              </div>
+            </div>
+          `;
+          
+          // Insert after detection categories
+          detectionCategoriesSection.parentNode.insertBefore(resultsButton, detectionCategoriesSection.nextSibling);
+          
+          // Add click handler to show the preview again
+          resultsButton.querySelector('div').addEventListener('click', () => {
+            // Remove the button first
+            resultsButton.parentNode.removeChild(resultsButton);
+            
+            // Show the preview with the last data
+            if (window._lastPreviewData) {
+              showDetectionPreview(window._lastPreviewData);
+            }
+          });
+          
+          // Also update the detection categories counter to show checked categories count
+          updateCategoriesCounter();
+        }
+      }
+      
+      console.log('DETECTION PREVIEW: Successfully destroyed preview');
+    } catch (error) {
+      console.error('Error removing detection popup:', error);
+      
+      // Fallback: Try a more direct approach
+      try {
+        const container = document.getElementById('detection-popup-container');
+        if (container && container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+        document.body.style.overflow = '';
+        window._detectionPopupContainer = null;
+      } catch (fallbackError) {
+        console.error('Fallback cleanup also failed:', fallbackError);
+      }
+    }
+  } else {
+    console.log('DETECTION PREVIEW: No popup container found to destroy');
+  }
+  
+  // Release cleanup lock after a small delay
+  setTimeout(() => {
+    window._detectionPreviewCleanupInProgress = false;
+  }, 50);
+}
+
+// Helper function to update the categories counter with checked categories count
+function updateCategoriesCounter() {
+  try {
+    // Find the counter in the Detection Categories section
+    const categoriesCounter = document.querySelector('#detection-categories-section #detected-components-count');
+    if (!categoriesCounter) return;
+    
+    // Count checked categories
+    const checkboxes = document.querySelectorAll('#detection-categories-section input[type="checkbox"]');
+    const checkedCount = Array.from(checkboxes).filter(cb => cb.checked).length;
+    
+    // Update the counter
+    categoriesCounter.textContent = checkedCount;
+    
+    // Apply animation
+    categoriesCounter.style.transition = 'all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    categoriesCounter.style.transform = 'scale(1.2)';
+    categoriesCounter.style.backgroundColor = 'rgba(13, 71, 161, 0.15)';
+    
+    setTimeout(() => {
+      categoriesCounter.style.transform = 'scale(1)';
+      categoriesCounter.style.backgroundColor = 'rgba(241, 245, 249, 0.6)';
+    }, 300);
+  } catch (error) {
+    console.error('Error updating categories counter:', error);
+  }
+}
+
+// Set global function immediately to ensure it's available
+console.log('DETECTION PREVIEW: Setting up global showDetectionPreview function');
+window.showDetectionPreview = showDetectionPreview;
+window.destroyDetectionPreview = destroyDetectionPreview;
+console.log('DETECTION PREVIEW: Global functions ready:',
+           'showDetectionPreview:', typeof window.showDetectionPreview === 'function',
+           'destroyDetectionPreview:', typeof window.destroyDetectionPreview === 'function');
+
+// Set up simple event listeners
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('DETECTION PREVIEW: DOM content loaded event fired');
+  
+  // Reset global functions to ensure they're available
+  console.log('DETECTION PREVIEW: Re-registering global functions after DOM load');
+  window.showDetectionPreview = showDetectionPreview;
+  window.destroyDetectionPreview = destroyDetectionPreview;
+  
+  // Handle image loading events
+  document.addEventListener('visualizationImageLoaded', function(event) {
+    if (!event.detail || !event.detail.jobId || !event.detail.imagePath) return;
+    
+    console.log('DETECTION PREVIEW: Visualization image loaded for job', event.detail.jobId);
+    
+    // Update image elements with the loaded image
+    const imageElements = document.querySelectorAll(`img[data-job-id="${event.detail.jobId}"][data-image-type="visualization"]`);
+    if (imageElements.length > 0) {
+      console.log(`DETECTION PREVIEW: Updating ${imageElements.length} image elements`);
+      imageElements.forEach(img => {
+        img.src = event.detail.imagePath;
+      });
+    }
+  });
+  
+  // Listen for fast inference results
+  document.addEventListener('fastInferenceResults', function(event) {
+    if (!event.detail) return;
+    
+    console.log("DETECTION PREVIEW: Received fastInferenceResults event", 
+               'job_id:', event.detail.job_id,
+               'trees:', Array.isArray(event.detail.trees) ? event.detail.trees.length : 'none');
+    showDetectionPreview(event.detail);
+  });
+});
+
+// Export named functions for use in other components
+export { showDetectionPreview, destroyDetectionPreview };
+
+// Also export as default for backward compatibility
+export default {
+  showDetectionPreview,
+  destroyDetectionPreview
+};

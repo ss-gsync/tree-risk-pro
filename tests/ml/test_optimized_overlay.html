@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimized ML Overlay Test</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        #container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        #map-container {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ccc;
+        }
+        #satellite-image {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        #overlay-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .control-panel {
+            background-color: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .metrics {
+            font-family: monospace;
+            background-color: #f0f0f0;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .toggle-group {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        button {
+            padding: 8px 12px;
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0055aa;
+        }
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        .slider-container input {
+            flex-grow: 1;
+        }
+        #s2-cell-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>Optimized ML Overlay Test</h1>
+        
+        <div class="control-panel">
+            <div class="toggle-group">
+                <label>
+                    <input type="checkbox" id="toggle-trees" checked>
+                    Show Trees
+                </label>
+                <label>
+                    <input type="checkbox" id="toggle-buildings">
+                    Show Buildings
+                </label>
+                <label>
+                    <input type="checkbox" id="toggle-segmentation" checked>
+                    Show Segmentation
+                </label>
+                <label>
+                    <input type="checkbox" id="toggle-s2-cells">
+                    Show S2 Cells
+                </label>
+            </div>
+            
+            <div class="slider-container">
+                <span>Opacity:</span>
+                <input type="range" id="opacity-slider" min="0" max="1" step="0.05" value="0.7">
+                <span id="opacity-value">0.7</span>
+            </div>
+
+            <div class="slider-container">
+                <span>Max Objects:</span>
+                <input type="range" id="max-objects-slider" min="10" max="500" step="10" value="200">
+                <span id="max-objects-value">200</span>
+            </div>
+            
+            <button id="load-detection">Load Test Detection</button>
+            <button id="compare-performance">Compare Original vs Optimized</button>
+        </div>
+        
+        <div id="map-container">
+            <img id="satellite-image" src="" alt="Satellite Image">
+            <div id="overlay-container"></div>
+            <div id="s2-cell-overlay"></div>
+        </div>
+        
+        <div class="metrics">
+            <h3>Performance Metrics</h3>
+            <pre id="metrics-display">No detection loaded yet</pre>
+        </div>
+    </div>
+
+    <script type="module">
+        import { renderDetectionOverlay } from '../../scripts/MLOverlay.js';
+        import { loadDetection, getDetectionMetadata } from '../../scripts/overlay_detection.js';
+        
+        // Test detection ID
+        const TEST_DETECTION_ID = '1748726908';
+        
+        // UI Elements
+        const satelliteImage = document.getElementById('satellite-image');
+        const overlayContainer = document.getElementById('overlay-container');
+        const s2CellOverlay = document.getElementById('s2-cell-overlay');
+        const metricsDisplay = document.getElementById('metrics-display');
+        const loadDetectionBtn = document.getElementById('load-detection');
+        const comparePerformanceBtn = document.getElementById('compare-performance');
+        const opacitySlider = document.getElementById('opacity-slider');
+        const opacityValue = document.getElementById('opacity-value');
+        const maxObjectsSlider = document.getElementById('max-objects-slider');
+        const maxObjectsValue = document.getElementById('max-objects-value');
+        
+        // Checkboxes
+        const toggleTrees = document.getElementById('toggle-trees');
+        const toggleBuildings = document.getElementById('toggle-buildings');
+        const toggleSegmentation = document.getElementById('toggle-segmentation');
+        const toggleS2Cells = document.getElementById('toggle-s2-cells');
+        
+        // State
+        let currentDetectionData = null;
+        
+        // Event Handlers
+        loadDetectionBtn.addEventListener('click', loadTestDetection);
+        comparePerformanceBtn.addEventListener('click', runPerformanceComparison);
+        
+        opacitySlider.addEventListener('input', () => {
+            opacityValue.textContent = opacitySlider.value;
+            updateOverlay();
+        });
+        
+        maxObjectsSlider.addEventListener('input', () => {
+            maxObjectsValue.textContent = maxObjectsSlider.value;
+            updateOverlay();
+        });
+        
+        toggleTrees.addEventListener('change', updateOverlay);
+        toggleBuildings.addEventListener('change', updateOverlay);
+        toggleSegmentation.addEventListener('change', updateOverlay);
+        toggleS2Cells.addEventListener('change', updateOverlay);
+        
+        // Functions
+        async function loadTestDetection() {
+            try {
+                metricsDisplay.textContent = 'Loading detection data...';
+                
+                const startTime = performance.now();
+                currentDetectionData = await loadDetection(TEST_DETECTION_ID, '/data/tests/test_');
+                const loadTime = performance.now() - startTime;
+                
+                // Set satellite image
+                satelliteImage.src = `/data/tests/test_${TEST_DETECTION_ID}/satellite_${TEST_DETECTION_ID}.jpg`;
+                
+                // Update overlay
+                updateOverlay();
+                
+                // Display metrics
+                const metadata = getDetectionMetadata();
+                metricsDisplay.textContent = `
+Detection ID: ${TEST_DETECTION_ID}
+Load time: ${loadTime.toFixed(2)}ms
+Objects: ${currentDetectionData.detections.length}
+With segmentation: ${metadata.withSegmentation || 0}
+With S2 cells: ${metadata.withS2Cells || 0}
+Memory usage: ${formatBytes(metadata.memoryUsage || 0)}
+                `;
+            } catch (error) {
+                metricsDisplay.textContent = `Error loading detection: ${error.message}`;
+                console.error('Error loading detection:', error);
+            }
+        }
+        
+        function updateOverlay() {
+            if (!currentDetectionData) return;
+            
+            // Clear previous overlay
+            overlayContainer.innerHTML = '';
+            s2CellOverlay.innerHTML = '';
+            
+            // Get options from UI
+            const options = {
+                opacity: parseFloat(opacitySlider.value),
+                maxObjects: parseInt(maxObjectsSlider.value, 10),
+                classes: {
+                    trees: toggleTrees.checked,
+                    buildings: toggleBuildings.checked
+                },
+                showSegmentation: toggleSegmentation.checked,
+                showS2Cells: toggleS2Cells.checked
+            };
+            
+            // Render overlay
+            const renderStartTime = performance.now();
+            const renderResult = renderDetectionOverlay(
+                currentDetectionData, 
+                options, 
+                overlayContainer,
+                s2CellOverlay
+            );
+            const renderTime = performance.now() - renderStartTime;
+            
+            // Update metrics with render info
+            const currentMetrics = metricsDisplay.textContent;
+            metricsDisplay.textContent = `${currentMetrics}
+Render time: ${renderTime.toFixed(2)}ms
+Objects rendered: ${renderResult.rendered || 0}
+Segmentations rendered: ${renderResult.segmentationsRendered || 0}
+            `;
+        }
+        
+        async function runPerformanceComparison() {
+            if (!currentDetectionData) {
+                alert('Please load a detection first');
+                return;
+            }
+            
+            metricsDisplay.textContent = 'Running performance comparison...';
+            
+            try {
+                // Import original implementations
+                const originalModule = await import('../../scripts/MLOverlay.js.bak');
+                
+                // Test original implementation
+                const originalStartTime = performance.now();
+                overlayContainer.innerHTML = '';
+                s2CellOverlay.innerHTML = '';
+                
+                // Same options as current
+                const options = {
+                    opacity: parseFloat(opacitySlider.value),
+                    maxObjects: parseInt(maxObjectsSlider.value, 10),
+                    classes: {
+                        trees: toggleTrees.checked,
+                        buildings: toggleBuildings.checked
+                    },
+                    showSegmentation: toggleSegmentation.checked
+                };
+                
+                // Run original render if available
+                let originalRenderTime = 0;
+                let originalResult = { rendered: 0, segmentationsRendered: 0 };
+                
+                if (typeof originalModule.renderDetectionOverlay === 'function') {
+                    originalResult = originalModule.renderDetectionOverlay(
+                        currentDetectionData,
+                        options,
+                        overlayContainer
+                    );
+                    originalRenderTime = performance.now() - originalStartTime;
+                } else {
+                    originalRenderTime = NaN;
+                }
+                
+                // Clear and test optimized implementation
+                const optimizedStartTime = performance.now();
+                overlayContainer.innerHTML = '';
+                s2CellOverlay.innerHTML = '';
+                
+                // Import optimized implementation
+                const optimizedModule = await import('../../scripts/MLOverlay.js');
+                const optimizedResult = optimizedModule.renderDetectionOverlay(
+                    currentDetectionData,
+                    options,
+                    overlayContainer,
+                    s2CellOverlay
+                );
+                
+                const optimizedRenderTime = performance.now() - optimizedStartTime;
+                
+                // Calculate improvement percentage
+                let improvement = NaN;
+                if (!isNaN(originalRenderTime) && originalRenderTime > 0) {
+                    improvement = ((originalRenderTime - optimizedRenderTime) / originalRenderTime) * 100;
+                }
+                
+                // Display comparison results
+                metricsDisplay.textContent = `
+Performance Comparison:
+
+Original implementation:
+  Render time: ${originalRenderTime.toFixed(2)}ms
+  Objects rendered: ${originalResult.rendered || 'N/A'}
+  Segmentations: ${originalResult.segmentationsRendered || 'N/A'}
+  
+Optimized implementation:
+  Render time: ${optimizedRenderTime.toFixed(2)}ms
+  Objects rendered: ${optimizedResult.rendered || 0}
+  Segmentations: ${optimizedResult.segmentationsRendered || 0}
+
+Improvement: ${isNaN(improvement) ? 'N/A' : improvement.toFixed(2) + '%'}
+                `;
+                
+                // Show the optimized overlay
+                updateOverlay();
+                
+            } catch (error) {
+                metricsDisplay.textContent = `Error in comparison: ${error.message}`;
+                console.error('Comparison error:', error);
+            }
+        }
+        
+        // Helper function to format bytes
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+        
+        // Initialize - auto-load first detection
+        window.addEventListener('load', loadTestDetection);
+    </script>
+</body>
+</html>

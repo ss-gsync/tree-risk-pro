@@ -1,23 +1,48 @@
-# Tree Risk Pro - v0.2.1
+# Tree ML - v0.2.3
 
-A comprehensive platform for assessing tree risks using LiDAR data, aerial imagery, and Gemini AI.
+A comprehensive platform for tree detection and risk assessment using S2 geospatial indexing, ML models, and Gemini AI.
 
 ## Project Overview
 
-Tree Risk Pro is designed for arborists and property managers to visualize, analyze, and validate tree health and risk factors. This platform combines advanced LiDAR processing, machine learning, and AI-powered insights to provide accurate tree risk assessments.
+Tree ML is designed for arborists and property managers to visualize, analyze, and validate tree health and risk factors. This platform combines S2 geospatial indexing, machine learning, and AI-powered insights to provide accurate tree detection and risk assessments.
 
 ## Project Components
 
 This repository consists of these main components:
 
-1. **[Dashboard](/tree_risk_pro/dashboard)** - The web-based UI for visualization and analysis
-2. **[Pipeline](/tree_risk_pro/pipeline)** - Data processing pipeline for LiDAR and imagery
-3. **[Server](/tree_risk_pro/server)** - Backend services for data storage and retrieval
+1. **[Dashboard](/tree_ml/dashboard)** - The web-based UI for visualization and analysis
+2. **[Pipeline](/tree_ml/pipeline)** - Data processing pipeline for imagery and ML models
+3. **[Server](/tree_ml/server)** - Backend services for data storage and retrieval
+4. **[Model Server](/tree_ml/pipeline/model_server.py)** - ML model server with T4 GPU integration
 
-## Latest Release: v0.2.1 (2025-05-11)
+## Latest Release: v0.2.3 (2025-06-05)
+
+### Key Changes
+- Added T4 GPU integration for dedicated model server deployment
+- Replaced YOLO with DeepForest, SAM, and Gemini API for improved tree detection
+- Implemented external model service client for T4 server communication
+- Added configuration-based selection between local and remote models
+- Enhanced error handling with no synthetic data or fallbacks
+
+### New Architecture
+The v0.2.3 release introduces a significant architectural improvement with the addition of a dedicated T4 GPU model server. This allows for offloading intensive ML tasks from the dashboard server to a specialized GPU instance, improving overall system performance and scalability.
+
+### Important Documentation
+- See [T4_INTEGRATION.md](/tree_ml/docs/T4_INTEGRATION.md) for detailed information on the T4 model server setup
+- Review [ML_FINDINGS.md](/tree_ml/docs/ML_FINDINGS.md) for analysis of tree detection models
+
+## Previous Release: v0.2.2 (2025-05-27)
+
+### Key Changes
+- Renamed package from `tree_risk_pro` to `tree_ml` for better clarity and simplicity
+- Added S2 geospatial indexing for efficient spatial queries at multiple zoom levels
+- Comprehensive testing of ML models on satellite imagery
+- Documentation of ML pipeline challenges
+
+## Previous Release: v0.2.1 (2025-05-11)
 
 ### New Features
-- S2 geospatial indexing with Zarr store integration
+- Initial S2 geospatial indexing with Zarr store integration
 - Validation reports linking to area reports via S2 cells
 - New API endpoints for S2 cell-based report management
 - Enhanced Object Report view with linked validation reports
@@ -37,75 +62,59 @@ This repository consists of these main components:
 - Better map container resizing during sidebar transitions
 - Enhanced error handling for DOM operations
 
-## Previous Release: v0.2.0 (2025-04-26)
-
-### UI Improvements
-- Better header layout with consistent spacing
-- Settings button now in header for easier access
-- Added visual separators in sidebars
-- Renamed "Save to Database" to "Save for Review"
-- Fixed sidebar navigation
-
-### Map Functionality
-- 3D map state now preserved between views
-- Improved 3D/2D toggle
-- Fixed map sizing when using sidebars
-
-### Backend Updates
-- Added thorough code documentation
-- Better Gemini AI integration
-- Enhanced error handling
-- Improved state management
-
-## Access Information
-
-Our production instance at https://34.125.120.78 uses basic authentication:
-- Username: `TestAdmin`
-- Password: `trp345!`
-
-See [DEPLOYMENT.md](/tree_risk_pro/dashboard/DEPLOYMENT.md) for detailed setup instructions.
-
-This project uses a modern stack with:
-
-- **Frontend**: React + Vite with Redux for state management
-- **Backend**: Flask Python API with RESTful endpoints
-- **UI Components**: shadcn/UI with Tailwind CSS
-- **Packaging**: Poetry for Python dependencies, npm for JavaScript
-
-### Directory Structure
+## Directory Structure
 
 ```
-tree_risk_pro/
+tree_ml/
 │
-├── tree_risk_pro/                 # Core package
-│   ├── dashboard/                 # Dashboard module
-│   │   ├── backend/               # Python backend
-│   │   │   ├── app.py             # Main Flask application
-│   │   │   ├── services/          # Backend services
-│   │   │   │   ├── tree_service.py        # Tree analysis 
-│   │   │   │   ├── lidar_service.py       # LiDAR processing
-│   │   │   │   └── gemini_service.py      # Gemini AI integration
+├── tree_ml/                   # Core package
+│   ├── dashboard/             # Dashboard module
+│   │   ├── backend/           # Python backend
+│   │   │   ├── app.py         # Main Flask application
+│   │   │   ├── services/      # Backend services
+│   │   │   │   ├── tree_service.py      # Tree analysis 
+│   │   │   │   ├── detection_service.py  # Detection with S2 indexing
+│   │   │   │   └── gemini_service.py    # Gemini AI integration
 │   │   │   └── ...
 │   │   │
-│   │   └── src/                   # Frontend source
-│   │       ├── components/        # UI components
-│   │       ├── hooks/             # Custom React hooks
-│   │       ├── services/          # Frontend services
+│   │   └── src/               # Frontend source
+│   │       ├── components/    # UI components
+│   │       ├── hooks/         # Custom React hooks
+│   │       ├── services/      # Frontend services
 │   │       └── ...
 │   │
-│   ├── pipeline/                  # Data processing pipeline
+│   ├── pipeline/              # Data processing pipeline
 │   │   ├── data_collection.py
 │   │   ├── image_processing.py
 │   │   └── object_recognition.py
 │   │
-│   └── server/                    # Data server components
-│       ├── h5serv/                # HDF5 server for geospatial data
-│       └── client/                # Client for interacting with data server
+│   └── server/                # Data server components
+│       ├── h5serv/            # HDF5 server for geospatial data
+│       └── client/            # Client for interacting with data server
 │
-├── scripts/                       # Utility scripts
-├── docs/                          # Documentation
-└── tests/                         # Tests
+├── scripts/                   # Utility scripts
+├── docs/                      # Documentation
+└── tests/                     # Tests
 ```
+
+## S2 Geospatial Indexing
+
+Tree ML uses Google's S2 geospatial indexing library for efficient spatial organization of tree data. Key features include:
+
+- **Hierarchical Cell Levels**: Support for city (level 10), neighborhood (level 13), block (level 15), and property (level 18) zoom levels
+- **Neighbor Finding**: Efficient algorithm for finding adjacent cells at any level
+- **Spatial Queries**: Fast retrieval of trees based on location
+- **Statistics Aggregation**: Group and summarize tree data by geographic area
+
+## ML Pipeline Status
+
+The current ML pipeline has limitations with tree detection in satellite imagery:
+
+- YOLO models (both custom and standard) are not effectively detecting trees in satellite views
+- Testing with multiple models and extremely low confidence thresholds confirmed this limitation
+- S2 indexing works correctly but needs effective tree detection to be fully useful
+
+See [ML_PIPELINE_FINDINGS.md](/tree_ml/ML_PIPELINE_FINDINGS.md) for detailed analysis and next steps.
 
 ## Setup and Installation
 
@@ -126,14 +135,14 @@ tree_risk_pro/
 2. Configure environment:
    ```bash
    # Create backend environment file
-   cd tree_risk_pro/dashboard/backend
+   cd tree_ml/dashboard/backend
    cp .env.example .env
    # Edit .env with your configuration
    ```
 
 3. Run the backend:
    ```bash
-   cd tree_risk_pro/dashboard/backend
+   cd tree_ml/dashboard/backend
    poetry run python app.py
    ```
 
@@ -141,7 +150,7 @@ tree_risk_pro/
 
 1. Install JavaScript dependencies:
    ```bash
-   cd tree_risk_pro/dashboard
+   cd tree_ml/dashboard
    npm install
    ```
 
@@ -160,8 +169,9 @@ tree_risk_pro/
 
 ## Main Features
 
-- **Tree Detection**: Analyze LiDAR and aerial imagery to detect and measure trees
-- **Risk Assessment**: Evaluate tree health and risk factors using multiple data sources
+- **S2 Geospatial Indexing**: Efficient spatial organization of tree data
+- **Tree Detection**: Analysis of aerial imagery to detect trees (in development)
+- **Risk Assessment**: Evaluation of tree health and risk factors
 - **3D Visualization**: Interactive 2D/3D map visualization of trees and properties
 - **Validation System**: Workflow for validating and refining detection results
 - **Reporting**: Generate comprehensive tree risk assessment reports
@@ -175,13 +185,34 @@ tree_risk_pro/
 - Document code using docstrings and comments
 - Follow semantic versioning
 
+## Testing
+
+The project uses three specialized testing scripts in the `/tests/ml` directory:
+
+```bash
+# Test on a single image
+poetry run python tests/ml/ml_tester.py
+
+# Process all test images in the directory
+poetry run python tests/ml/ml_tester.py --all-images
+
+# Test specific models or pipeline
+poetry run python tests/ml/ml_tester.py --test {deepforest|sam|pipeline}
+
+# Test CUDA/GPU compatibility 
+poetry run python tests/ml/cuda_tester.py
+
+# Alternative batch processor with additional options
+poetry run python tests/ml/image_processor.py
+```
+
+Test results are stored in `/ttt/data/tests/ml_test_results/` with a consistent structure. Results include shared model/pipeline output directories for comparison and individual directories for each processed image with detection results and visualizations.
+
+See [tests/ml/README.md](/tests/ml/README.md) for comprehensive documentation of the testing framework.
+
 ## Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for a complete list of changes between versions.
-
-## Deployment
-
-See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed deployment instructions.
+See [CHANGELOG.md](/tree_ml/CHANGELOG.md) for a complete list of changes between versions.
 
 ## License
 
