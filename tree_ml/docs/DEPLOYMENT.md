@@ -60,7 +60,36 @@ v0.2.3 includes these key improvements requiring deployment attention:
 
 ## GPU and CUDA Setup
 
-Before deploying the application, you need to install CUDA and the appropriate NVIDIA drivers on your T4 instance:
+### For newer GCP T4 instances (with CUDA pre-installed)
+
+Recent GCP instances with T4 GPUs come with CUDA 12.x pre-installed. You can verify this with:
+
+```bash
+# Check if NVIDIA drivers are installed
+nvidia-smi
+
+# Check CUDA compiler version
+nvcc --version
+```
+
+If you see output showing your T4 GPU and CUDA version (12.x), you can skip the CUDA installation step and proceed with installing system dependencies:
+
+```bash
+# Install system dependencies for ML pipeline
+sudo apt-get update
+sudo apt-get install -y build-essential python3-dev python3-pip
+sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 
+sudo apt-get install -y nginx
+
+# Set up CUDA environment variables (if needed, check actual CUDA path)
+echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+```
+
+### For instances without CUDA (or with older versions)
+
+If CUDA is not pre-installed, follow these steps:
 
 ```bash
 # Add NVIDIA package repositories
@@ -120,13 +149,37 @@ git clone https://github.com/your-org/tree-ml.git ~/tree-ml
 cd ~/tree-ml
 ```
 
-### 3. Install Python Dependencies with Poetry
+### 3. Set Up Python Environment
+
+#### For Debian 12+ / Ubuntu 22.04+ (with externally-managed-environment protection)
+
+```bash
+# Install prerequisites
+sudo apt-get update
+sudo apt-get install -y python3-venv python3-full
+
+# Create a virtual environment
+python3 -m venv ~/tree_ml_venv
+
+# Activate the virtual environment
+source ~/tree_ml_venv/bin/activate
+
+# Now you can install packages safely
+pip install --upgrade pip
+pip install poetry
+```
+
+#### For older systems (without externally-managed-environment protection)
 
 ```bash
 # Install Poetry package manager
 pip install --upgrade pip
 pip install poetry
+```
 
+#### Configure Poetry and Install Dependencies
+
+```bash
 # Configure Poetry to create virtual environment in project directory
 poetry config virtualenvs.in-project true
 
@@ -134,7 +187,11 @@ poetry config virtualenvs.in-project true
 poetry install
 
 # Install PyTorch with CUDA support
-poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+# For CUDA 12.x (common in newer GCP instances)
+poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# For CUDA 11.8 (if specifically installed)
+# poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 ### 4. Download ML Model Weights
@@ -249,6 +306,15 @@ sudo chmod -R 755 /opt/tree-ml/model-server/weights
 Create a systemd service file for the model server:
 
 ```bash
+# If using a system-wide virtual environment
+VENV_PATH=~/tree_ml_venv
+
+# If using Poetry's virtual environment
+# cd /opt/tree-ml
+# VENV_PATH=$(sudo poetry env info --path)
+
+echo "Virtual environment path: $VENV_PATH"
+
 sudo tee /etc/systemd/system/tree-ml-model-server.service > /dev/null << EOF
 [Unit]
 Description=Tree ML Model Server
@@ -257,7 +323,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/opt/tree-ml/model-server
-ExecStart=/usr/bin/poetry run python model_server.py --port 8000 --host 0.0.0.0
+ExecStart=$VENV_PATH/bin/python model_server.py --port 8000 --host 0.0.0.0
 Environment="PYTHONPATH=/opt/tree-ml"
 Environment="MODEL_DIR=/opt/tree-ml/model-server/weights"
 Environment="LOG_DIR=/opt/tree-ml/model-server/logs"
@@ -285,7 +351,11 @@ sudo pip install poetry
 sudo poetry install
 
 # Install PyTorch with CUDA support in the deployment environment
-sudo poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+# For CUDA 12.x (common in newer GCP instances)
+sudo poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# For CUDA 11.8 (if specifically installed)
+# sudo poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 ### 11. Configure Nginx
@@ -364,10 +434,14 @@ sudo systemctl restart nginx
 ### 12. Create Backend Systemd Service
 
 ```bash
-# First find the exact path to gunicorn in the Poetry environment
-cd /opt/tree-ml
-GUNICORN_PATH=$(sudo poetry env info --path)
-echo "Poetry virtualenv path: $GUNICORN_PATH"
+# If using a system-wide virtual environment
+VENV_PATH=~/tree_ml_venv
+
+# If using Poetry's virtual environment
+# cd /opt/tree-ml
+# VENV_PATH=$(sudo poetry env info --path)
+
+echo "Virtual environment path: $VENV_PATH"
 
 # Create the systemd service file for the backend
 sudo tee /etc/systemd/system/tree-ml-backend.service > /dev/null << EOF
@@ -378,7 +452,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/opt/tree-ml/backend
-ExecStart=$GUNICORN_PATH/bin/gunicorn -w 4 -b 127.0.0.1:5000 app:app
+ExecStart=$VENV_PATH/bin/gunicorn -w 4 -b 127.0.0.1:5000 app:app
 Environment="DASHBOARD_USERNAME=TestAdmin"
 Environment="DASHBOARD_PASSWORD=trp345!"
 Environment="APP_MODE=production" 

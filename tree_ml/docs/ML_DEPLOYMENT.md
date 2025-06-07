@@ -94,7 +94,17 @@ sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 nginx
 # sudo apt-get install -y libgl1 libglib2.0-0 nginx
 # sudo apt-get install -y libgl1-mesa-dev  # Alternative OpenGL package
 
-# Install Python package manager
+# For newer Debian/Ubuntu systems (with externally-managed-environment protection)
+sudo apt-get update
+sudo apt-get install -y python3-venv python3-full
+
+# Create a virtual environment for Python packages
+python3 -m venv ~/tree_ml_venv
+
+# Activate the virtual environment
+source ~/tree_ml_venv/bin/activate
+
+# Install Python package manager in the virtual environment
 pip install --upgrade pip
 pip install poetry
 ```
@@ -117,7 +127,7 @@ poetry config virtualenvs.in-project true
 poetry install
 
 # Install PyTorch with CUDA support for CUDA 12.x (for newer GCP T4 instances)
-poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu121
+poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 # Alternative for CUDA 11.8 (for older GCP instances)
 # poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
@@ -539,7 +549,10 @@ After=network.target
 [Service]
 User=${SERVICE_USER}
 WorkingDirectory=${REPO_PATH}
-ExecStart=${REPO_PATH}/.venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
+# If using a system-wide virtual environment
+ExecStart=~/tree_ml_venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
+# If using Poetry's virtual environment
+# ExecStart=${REPO_PATH}/.venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
 Restart=on-failure
 Environment=PYTHONPATH=${REPO_PATH}
 Environment=MODEL_DIR=${MODEL_DIR}
