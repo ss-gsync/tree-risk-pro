@@ -65,15 +65,17 @@ The v0.2.3 release introduces a significant architectural improvement with the a
 ## Directory Structure
 
 ```
-tree_ml/
-│
 ├── tree_ml/                   # Core package
 │   ├── dashboard/             # Dashboard module
 │   │   ├── backend/           # Python backend
 │   │   │   ├── app.py         # Main Flask application
 │   │   │   ├── services/      # Backend services
+│   │   │   │   ├── ml/        # ML services
+│   │   │   │   │   ├── model_service.py       # Local model service
+│   │   │   │   │   ├── external_model_service.py # T4 model client
+│   │   │   │   │   └── __init__.py            # Service selection
 │   │   │   │   ├── tree_service.py      # Tree analysis 
-│   │   │   │   ├── detection_service.py  # Detection with S2 indexing
+│   │   │   │   ├── detection_service.py # Detection with S2 indexing
 │   │   │   │   └── gemini_service.py    # Gemini AI integration
 │   │   │   └── ...
 │   │   │
@@ -83,18 +85,29 @@ tree_ml/
 │   │       ├── services/      # Frontend services
 │   │       └── ...
 │   │
+│   ├── docs/                  # Documentation
+│   │   ├── CHANGELOG.md       # Version history
+│   │   ├── ML_FINDINGS.md     # ML pipeline findings
+│   │   ├── T4_INTEGRATION.md  # T4 server documentation
+│   │   └── ...
+│   │
 │   ├── pipeline/              # Data processing pipeline
-│   │   ├── data_collection.py
-│   │   ├── image_processing.py
-│   │   └── object_recognition.py
+│   │   ├── data_collection.py # Data collection utilities
+│   │   ├── image_processing.py # Image processing utilities
+│   │   ├── model_server.py    # T4 model server implementation
+│   │   ├── deploy_t4.sh       # T4 deployment script
+│   │   └── object_recognition.py # Object detection utilities
 │   │
 │   └── server/                # Data server components
 │       ├── h5serv/            # HDF5 server for geospatial data
 │       └── client/            # Client for interacting with data server
 │
-├── scripts/                   # Utility scripts
-├── docs/                      # Documentation
 └── tests/                     # Tests
+    ├── model_server/          # T4 model server tests
+    │   ├── test_external_model_service.py # T4 client tests
+    │   ├── test_model_server.py # Server tests
+    │   └── ...
+    └── ...
 ```
 
 ## S2 Geospatial Indexing
@@ -106,15 +119,24 @@ Tree ML uses Google's S2 geospatial indexing library for efficient spatial organ
 - **Spatial Queries**: Fast retrieval of trees based on location
 - **Statistics Aggregation**: Group and summarize tree data by geographic area
 
-## ML Pipeline Status
+## ML Pipeline and T4 Integration
 
-The current ML pipeline has limitations with tree detection in satellite imagery:
+The v0.2.3 release introduces significant improvements to the ML pipeline:
 
-- YOLO models (both custom and standard) are not effectively detecting trees in satellite views
-- Testing with multiple models and extremely low confidence thresholds confirmed this limitation
-- S2 indexing works correctly but needs effective tree detection to be fully useful
+- **DeepForest Integration**: Replaced YOLO with DeepForest for improved tree detection in satellite imagery
+- **SAM Integration**: Added Segment Anything Model for high-quality tree segmentation
+- **T4 GPU Server**: Added dedicated GPU server for ML inference offloading
+- **Unified Service Selection**: API-compatible local and remote model services
+- **Configuration-Based Architecture**: Easily switch between local and T4 models via configuration
 
-See [ML_PIPELINE_FINDINGS.md](/tree_ml/ML_PIPELINE_FINDINGS.md) for detailed analysis and next steps.
+### T4 Model Server Benefits
+
+- **Performance**: GPU acceleration with T4 provides up to 20x faster inference
+- **Scalability**: Separate ML workloads from dashboard server
+- **Resource Optimization**: Dashboard server can use less powerful hardware
+- **Isolation**: ML pipeline failures don't affect dashboard stability
+
+See [ML_FINDINGS.md](/tree_ml/docs/ML_FINDINGS.md) for detailed analysis and [T4_INTEGRATION.md](/tree_ml/docs/T4_INTEGRATION.md) for setup instructions.
 
 ## Setup and Installation
 
@@ -206,13 +228,13 @@ poetry run python tests/ml/cuda_tester.py
 poetry run python tests/ml/image_processor.py
 ```
 
-Test results are stored in `/ttt/data/tests/ml_test_results/` with a consistent structure. Results include shared model/pipeline output directories for comparison and individual directories for each processed image with detection results and visualizations.
+Test results are stored in `data/tests/ml_test_results/` with a consistent structure. Results include shared model/pipeline output directories for comparison and individual directories for each processed image with detection results and visualizations.
 
 See [tests/ml/README.md](/tests/ml/README.md) for comprehensive documentation of the testing framework.
 
 ## Changelog
 
-See [CHANGELOG.md](/tree_ml/CHANGELOG.md) for a complete list of changes between versions.
+See [CHANGELOG.md](/tree_ml/docs/CHANGELOG.md) for a complete list of changes between versions.
 
 ## License
 

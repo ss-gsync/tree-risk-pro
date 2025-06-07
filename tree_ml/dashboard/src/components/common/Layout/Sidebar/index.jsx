@@ -1,7 +1,7 @@
 // src/components/common/Layout/Sidebar/index.jsx
 
 import React, { useState, useEffect } from 'react';
-import { Settings, BarChart, Database, Box, FileText, ChevronLeft, ChevronRight, Eye, ClipboardList, Plane, Sparkles } from 'lucide-react';
+import { Settings, BarChart, Database, Box, FileText, ChevronLeft, ChevronRight, Eye, ClipboardList, Plane, Sparkles, Layers } from 'lucide-react';
 import MapControls from '../../../visualization/MapView/MapControls';
 import { DetectionSidebarBridge } from '../../../visualization/Detection';
 
@@ -512,7 +512,7 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                     className="flex items-center justify-center p-2 bg-gray-50 text-gray-600 hover:bg-gray-100 rounded-md"
                   >
                     <ClipboardList className="h-4 w-4 mr-2" />
-                    <span className="text-xs font-medium">Validation</span>
+                    <span className="text-xs font-medium">Validate</span>
                   </button>
                 </div>
               </div>
@@ -568,7 +568,7 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                 }}
                 className="flex items-center justify-center p-2 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 rounded-md cursor-pointer"
               >
-                <Plane className={`h-4 w-4 ${!collapsed && 'mr-1'}`} />
+                <Layers className={`h-4 w-4 ${!collapsed && 'mr-1'}`} />
                 {!collapsed && <span className="text-xs">Aerial</span>}
               </button>
               
@@ -584,6 +584,19 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                   // If detection is already active, just ensure overlay and badge are visible
                   if (isDetectionActive) {
                     console.log("Detection sidebar already active, ensuring overlay visible");
+                    
+                    // CRITICAL FIX: Dispatch openTreeDetection event to ensure ML overlay is visible
+                    // with the 'sidebar_button' source to activate the proper code path
+                    // Using buttonTriggered: true to simulate a detect button click to force overlay visibility
+                    window.dispatchEvent(new CustomEvent('openTreeDetection', {
+                      detail: {
+                        sidebarInitialization: true,
+                        initialVisibility: true,
+                        buttonTriggered: true, // Simulate detection button to ensure overlay appears on first click
+                        source: 'sidebar_button',
+                        jobId: window.currentDetectionJobId || window._lastDetectionJobId
+                      }
+                    }));
                     
                     // Make sure overlay is visible
                     const overlay = document.getElementById('ml-detection-overlay');
@@ -756,7 +769,10 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                     
                     // 6. Add the ML overlay to the map - we need this for the blue tint
                     let overlay = document.getElementById('ml-detection-overlay');
+                    
+                    // If no overlay exists, create it and ensure it's visible
                     if (!overlay && mapContainer) {
+                      console.log("CRITICAL: Creating new ML overlay on first detection click");
                       overlay = document.createElement('div');
                       overlay.id = 'ml-detection-overlay';
                       overlay.style.position = 'absolute';
@@ -776,41 +792,65 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                         console.error("Error reading opacity setting:", e);
                       }
                       
+                      // Set global settings and ensure visibility
+                      window.mlOverlaySettings = {
+                        ...(window.mlOverlaySettings || {}),
+                        opacity: opacity,
+                        showOverlay: true
+                      };
+                      window.detectionShowOverlay = true;
+                      
+                      // Style the overlay to make it visible with the right opacity
                       overlay.style.backgroundColor = `rgba(0, 30, 60, ${opacity})`;
                       overlay.style.pointerEvents = 'none';
                       overlay.style.zIndex = '50';
-                      overlay.style.transition = 'opacity 0.3s ease, background-color 0.3s ease';
+                      overlay.style.transition = 'background-color 0.3s ease';
+                      overlay.style.display = 'block';
                       mapContainer.appendChild(overlay);
                       
-                      // Set visibility based on the checkbox (if it exists yet)
-                      // Default to visible if checkbox doesn't exist
-                      const displayOverlayCheckbox = document.getElementById('display-ml-overlay');
-                      if (displayOverlayCheckbox && !displayOverlayCheckbox.checked) {
-                        overlay.style.display = 'none';
-                        overlay.style.opacity = '0';
-                      }
+                      console.log(`Created new ML overlay with opacity ${opacity} and forced visibility`);
                       
-                      console.log(`Created ML overlay with opacity ${opacity}`);
+                      // CRITICAL: Trigger the openTreeDetection event to ensure proper initialization
+                      // This is typically only triggered on second click, but we need it on first click too
+                      window.dispatchEvent(new CustomEvent('openTreeDetection', {
+                        detail: {
+                          sidebarInitialization: true,
+                          initialVisibility: true,
+                          buttonTriggered: true, // Simulate detection button to ensure overlay appears
+                          source: 'sidebar_first_click',
+                          forceVisibility: true // Special flag for first click
+                        }
+                      }));
                     } else if (overlay) {
-                      // Get display ML overlay checkbox state (if it exists)
-                      const displayOverlayCheckbox = document.getElementById('display-ml-overlay');
-                      const shouldDisplayOverlay = !displayOverlayCheckbox || displayOverlayCheckbox.checked;
+                      // Get stored overlay visibility setting
+                      const shouldDisplayOverlay = window.mlOverlaySettings?.showOverlay !== false;
                       
-                      // Update visibility based on checkbox state
-                      if (shouldDisplayOverlay) {
-                        overlay.style.display = 'block';
-                        overlay.style.opacity = '1';
-                      } else {
-                        overlay.style.display = 'none';
-                        overlay.style.opacity = '0';
-                      }
+                      // Update visibility based on stored setting
+                      overlay.style.display = shouldDisplayOverlay ? 'block' : 'none';
                       
                       // Update to current stored opacity if available
                       try {
-                        const savedOpacity = localStorage.getItem('ml-overlay-opacity');
-                        if (savedOpacity !== null) {
-                          const opacity = parseFloat(savedOpacity);
+                        // First try from global settings
+                        let opacity = window.mlOverlaySettings?.opacity;
+                        
+                        // If not in global settings, try localStorage
+                        if (opacity === undefined) {
+                          const savedOpacity = localStorage.getItem('ml-overlay-opacity');
+                          if (savedOpacity !== null) {
+                            opacity = parseFloat(savedOpacity);
+                            
+                            // Update the global settings for consistency
+                            window.mlOverlaySettings = {
+                              ...(window.mlOverlaySettings || {}),
+                              opacity: opacity
+                            };
+                          }
+                        }
+                        
+                        // Apply the opacity if we found a value
+                        if (opacity !== undefined) {
                           overlay.style.backgroundColor = `rgba(0, 30, 60, ${opacity})`;
+                          console.log(`Updated existing overlay with opacity ${opacity}`);
                         }
                       } catch (e) {
                         console.error("Error applying stored opacity:", e);
@@ -886,125 +926,14 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                       sidebarElement.style.display = 'block'; // Force block display
                       
                       // Create header for this sidebar
-                      const sidebarHeader = document.createElement('div');
-                      sidebarHeader.style.padding = '8px 12px'; // Match other sidebars' padding
-                      sidebarHeader.style.borderBottom = '1px solid rgba(13, 71, 161, 0.1)';
-                      sidebarHeader.style.display = 'flex';
-                      sidebarHeader.style.justifyContent = 'space-between';
-                      sidebarHeader.style.alignItems = 'center';
-                      sidebarHeader.style.backgroundColor = '#edf6ff'; // Subtle light blue for header
-                      sidebarHeader.style.height = '36px'; // Match other sidebar headers' height
-                      
-                      // Title with ML icon
-                      const sidebarTitleContainer = document.createElement('div');
-                      sidebarTitleContainer.style.display = 'flex';
-                      sidebarTitleContainer.style.alignItems = 'center';
-                      
-                      // ML/Deep Learning icon (chip/CPU with neural connections)
-                      const sidebarIconSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-                      sidebarIconSvg.setAttribute("width", "16");
-                      sidebarIconSvg.setAttribute("height", "16");
-                      sidebarIconSvg.setAttribute("viewBox", "0 0 24 24");
-                      sidebarIconSvg.setAttribute("fill", "none");
-                      sidebarIconSvg.setAttribute("stroke", "#0d47a1");
-                      sidebarIconSvg.setAttribute("stroke-width", "2");
-                      sidebarIconSvg.setAttribute("stroke-linecap", "round");
-                      sidebarIconSvg.setAttribute("stroke-linejoin", "round");
-                      sidebarIconSvg.style.marginRight = '8px';
-                      
-                      // Create a processor/chip icon (represents ML/deep learning)
-                      const sidebarRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-                      sidebarRect.setAttribute("x", "6");
-                      sidebarRect.setAttribute("y", "6");
-                      sidebarRect.setAttribute("width", "12");
-                      sidebarRect.setAttribute("height", "12");
-                      sidebarRect.setAttribute("rx", "1");
-                      
-                      // Center dot
-                      const sidebarCenterCircle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-                      sidebarCenterCircle.setAttribute("cx", "12");
-                      sidebarCenterCircle.setAttribute("cy", "12");
-                      sidebarCenterCircle.setAttribute("r", "2");
-                      
-                      // Connection lines (pins) coming out from the chip
-                      const sidebarLine1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                      sidebarLine1.setAttribute("x1", "12");
-                      sidebarLine1.setAttribute("y1", "2");
-                      sidebarLine1.setAttribute("x2", "12");
-                      sidebarLine1.setAttribute("y2", "6");
-                      
-                      const sidebarLine2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                      sidebarLine2.setAttribute("x1", "12");
-                      sidebarLine2.setAttribute("y1", "18");
-                      sidebarLine2.setAttribute("x2", "12");
-                      sidebarLine2.setAttribute("y2", "22");
-                      
-                      const sidebarLine3 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                      sidebarLine3.setAttribute("x1", "2");
-                      sidebarLine3.setAttribute("y1", "12");
-                      sidebarLine3.setAttribute("x2", "6");
-                      sidebarLine3.setAttribute("y2", "12");
-                      
-                      const sidebarLine4 = document.createElementNS("http://www.w3.org/2000/svg", "line");
-                      sidebarLine4.setAttribute("x1", "18");
-                      sidebarLine4.setAttribute("y1", "12");
-                      sidebarLine4.setAttribute("x2", "22");
-                      sidebarLine4.setAttribute("y2", "12");
-                      
-                      sidebarIconSvg.appendChild(sidebarRect);
-                      sidebarIconSvg.appendChild(sidebarCenterCircle);
-                      sidebarIconSvg.appendChild(sidebarLine1);
-                      sidebarIconSvg.appendChild(sidebarLine2);
-                      sidebarIconSvg.appendChild(sidebarLine3);
-                      sidebarIconSvg.appendChild(sidebarLine4);
-                      
-                      sidebarTitleContainer.appendChild(sidebarIconSvg);
-                      
-                      // Title text
-                      const sidebarTitle = document.createElement('span');
-                      sidebarTitle.textContent = 'Image Recognition';
-                      sidebarTitle.style.fontWeight = 'bold';
-                      sidebarTitle.style.fontSize = '14px';
-                      sidebarTitle.style.color = '#0d47a1'; // Dark blue text
-                      sidebarTitleContainer.appendChild(sidebarTitle);
-                      
-                      sidebarHeader.appendChild(sidebarTitleContainer);
-                      
-                      // Header buttons container (for close button only - removing eye/settings button)
-                      const sidebarHeaderBtns = document.createElement('div');
-                      sidebarHeaderBtns.style.display = 'flex';
-                      sidebarHeaderBtns.style.alignItems = 'center';
-                      sidebarHeaderBtns.style.gap = '8px';
-                      
-                      // We've removed the settings icon/button to simplify the UI
-                      
-                      // Close button
-                      const sidebarCloseBtn = document.createElement('button');
-                      sidebarCloseBtn.innerHTML = '×';
-                      sidebarCloseBtn.style.background = 'none';
-                      sidebarCloseBtn.style.border = 'none';
-                      sidebarCloseBtn.style.color = '#0d47a1'; // Dark blue
-                      sidebarCloseBtn.style.fontSize = '22px';
-                      sidebarCloseBtn.style.cursor = 'pointer';
-                      sidebarCloseBtn.style.padding = '0';
-                      sidebarCloseBtn.style.lineHeight = '1';
-                      sidebarCloseBtn.style.marginLeft = '8px';
-                      sidebarCloseBtn.onclick = () => {
-                        window.dispatchEvent(new CustomEvent('forceCloseObjectDetection', {
-                          detail: { source: 'object_recognition_sidebar' }
-                        }));
-                      };
-                      
-                      // Close button only - no settings button
-                      sidebarHeaderBtns.appendChild(sidebarCloseBtn);
-                      sidebarHeader.appendChild(sidebarHeaderBtns);
-                      sidebarElement.appendChild(sidebarHeader);
+                      // Don't create header here - the React component will handle it
+                      console.log("Skipping creation of DOM-based header - using React component header instead");
                       
                       // Create main content area for DetectionSidebar to render in
                       const contentContainer = document.createElement('div');
                       contentContainer.id = 'detection-content-container';
                       contentContainer.style.width = '100%';
-                      contentContainer.style.height = 'calc(100% - 36px)'; // Account for header height
+                      contentContainer.style.height = '100%'; // Full height since React handles the header
                       contentContainer.style.overflow = 'auto';
                       contentContainer.style.position = 'relative';
                       sidebarElement.appendChild(contentContainer);

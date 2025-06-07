@@ -130,10 +130,22 @@ const DetectionCategories = () => {
   
   return (
     <div id="detection-categories-section" className="px-3 py-2">
-      {/* Clickable header with counter - serves as dropdown toggle */}
+      {/* Clickable header with counter - serves as dropdown toggle AND DetectionPreview trigger */}
       <div 
         className="flex justify-between items-center px-2 py-1.5 bg-white border border-slate-200 rounded cursor-pointer hover:bg-slate-50"
-        onClick={() => setIsExpanded(!isExpanded)}
+        onClick={() => {
+          // Toggle dropdown expanded state
+          setIsExpanded(!isExpanded);
+          
+          // ALSO trigger the detection preview if we have detection data
+          if (window.mlDetectionData && typeof window.showDetectionPreview === 'function') {
+            console.log('DetectionCategories: Showing detection preview from Objects Found counter');
+            window.showDetectionPreview(window.mlDetectionData);
+          } else if (typeof window.checkAndShowDetectionPreview === 'function') {
+            console.log('DetectionCategories: Checking for detection data to show preview');
+            window.checkAndShowDetectionPreview();
+          }
+        }}
       >
         <div className="flex items-center">
           {/* Neural network/segmentation inspired icon */}

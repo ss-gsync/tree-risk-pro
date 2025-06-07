@@ -2,7 +2,7 @@
 // Unified detection module that integrates all functionality
 
 // Export all detection-related components for easier importing
-export { default as MLOverlay } from './MLOverlay';
+export * as MLOverlay from './MLOverlay';
 export { default as ObjectDetection } from './ObjectDetection';
 export { default as DetectionPreview } from './DetectionPreview';
 export { default as DetectionSidebar } from './DetectionSidebar';
@@ -15,7 +15,7 @@ export { default as TreeInfo } from './TreeInfo';
 export { default as TreeTagForm } from './TreeTagForm';
 
 // Import the MLOverlay module to ensure it's loaded
-import MLOverlayModule from './MLOverlay';
+import * as MLOverlayModule from './MLOverlay';
 
 // Export service functions
 export { 
@@ -124,27 +124,30 @@ window.removeDetectionOverlay = removeDetectionOverlay;
 
 // Export a complete treeDetection object for compatibility with standalone scripts
 // Get functions from the MLOverlay module - handle the case where they're not defined yet
-const renderDetectionOverlay = MLOverlayModule.renderDetectionOverlay || 
-                              ((...args) => {
-                                 console.log('Deferring renderDetectionOverlay call until Google Maps is loaded');
-                                 return setTimeout(() => {
-                                   if (window.renderDetectionOverlay) window.renderDetectionOverlay(...args);
-                                 }, 1000);
-                               });
-const mlRemoveOverlay = MLOverlayModule.removeDetectionOverlay;
-const updateOverlayOpacity = MLOverlayModule.updateOverlayOpacity;
-const updateDetectionClasses = MLOverlayModule.updateDetectionClasses;
+const renderMLOverlay = MLOverlayModule.renderMLOverlay || 
+                      ((...args) => {
+                         console.log('Deferring renderMLOverlay call until Google Maps is loaded');
+                         return setTimeout(() => {
+                           if (window.renderMLOverlay) window.renderMLOverlay(...args);
+                         }, 1000);
+                       });
+const mlRemoveOverlay = MLOverlayModule.removeMLOverlay;
+const updateOverlayOpacity = MLOverlayModule.updateMLOverlayOpacity;
+const updateDetectionClasses = MLOverlayModule.updateMLOverlayClasses;
 
 // Make these available globally with safety checks
-window.renderDetectionOverlay = renderDetectionOverlay;
+window.renderDetectionOverlay = renderMLOverlay; // For backward compatibility
 window.mlUpdateOverlayOpacity = updateOverlayOpacity;
 window.mlUpdateDetectionClasses = updateDetectionClasses;
+window.ensureMLOverlayInitialized = MLOverlayModule.ensureInitialized;
 
 window.treeDetection = {
   ...detectionService,
   applyDetection: enhancedApplyDetection,
   removeOverlay: removeDetectionOverlay,
-  renderDetectionOverlay,
+  renderDetectionOverlay: renderMLOverlay, // For backward compatibility
+  renderMLOverlay: renderMLOverlay,
   updateOverlayOpacity,
-  updateDetectionClasses
+  updateDetectionClasses,
+  ensureInitialized: MLOverlayModule.ensureInitialized
 };

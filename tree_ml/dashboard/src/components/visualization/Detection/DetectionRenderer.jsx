@@ -4,14 +4,12 @@
 // It's split from the larger DetectionMode.jsx component.
 
 import React, { useEffect, useCallback, useState } from 'react';
-// Import MLOverlay using default export to avoid named export conflicts
-import MLOverlayModule from './MLOverlay';
+// Import MLOverlay with named imports
+import * as MLOverlayModule from './MLOverlay';
 import MLOverlayInitializer from './MLOverlayInitializer';
 import DetectionPreview from './DetectionPreview';
 
-// Extract functions from the MLOverlay module
-const { renderDetectionOverlay, removeDetectionOverlay: mlRemoveOverlay, 
-        updateOverlayOpacity, updateDetectionClasses } = MLOverlayModule;
+// Use functions directly from MLOverlayModule
 
 /**
  * Detection Renderer Component
@@ -543,7 +541,7 @@ const DetectionRenderer = ({
             debug: true
           });
         } else {
-          window.renderDetectionOverlay(detectionData, {
+          window.renderMLOverlay(detectionData, {
             forceRenderBoxes: true,
             debug: true
           });
@@ -1211,9 +1209,9 @@ const DetectionRenderer = ({
               console.log(`DetectionRenderer: Processing ${combinedData.detections.length} detections for map rendering`);
               
               // Force MLOverlay to render the detection data FIRST
-              if (typeof window.renderDetectionOverlay === 'function') {
+              if (typeof window.renderMLOverlay === 'function') {
                 try {
-                  console.log("DetectionRenderer: Directly calling renderDetectionOverlay global function");
+                  console.log("DetectionRenderer: Directly calling renderMLOverlay global function");
                   
                   // Get map container element
                   let targetElement = null;
@@ -1259,7 +1257,7 @@ const DetectionRenderer = ({
                     console.log(`DetectionRenderer: Created detections array with ${combinedData.detections.length} items`);
                   }
                   
-                  window.renderDetectionOverlay(combinedData, {
+                  window.renderMLOverlay(combinedData, {
                     opacity: 1.0,
                     classes: {
                       healthy_tree: true,
@@ -1441,7 +1439,7 @@ const DetectionRenderer = ({
                   
                   // Even if initialization appears to fail, try rendering anyway
                   try {
-                    MLOverlayModule.renderDetectionOverlay(detectionData, {
+                    MLOverlayModule.renderMLOverlay(detectionData, {
                       opacity: overlayOpacity,
                       classes: detectionFilters,
                       forceRenderBoxes: true,

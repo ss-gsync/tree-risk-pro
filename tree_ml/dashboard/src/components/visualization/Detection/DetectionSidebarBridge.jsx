@@ -84,6 +84,31 @@ const DetectionSidebarBridge = () => {
     return true;
   };
   
+  // Proactively make the overlay visible when this component mounts
+  useEffect(() => {
+    // Force overlay to be visible on first render
+    console.log('DetectionSidebarBridge: Forcing overlay to be visible on first render');
+    window.mlOverlaySettings = {
+      ...(window.mlOverlaySettings || {}),
+      showOverlay: true
+    };
+    window.detectionShowOverlay = true;
+    
+    // Check if we have an existing overlay, make it visible
+    if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
+      window._mlDetectionOverlay.div.style.display = 'block';
+    }
+    
+    // Dispatch event to notify other components
+    window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
+      detail: {
+        showOverlay: true,
+        opacity: window.mlOverlaySettings?.opacity || 0.7,
+        source: 'detection_sidebar_bridge_init'
+      }
+    }));
+  }, []);
+    
   // Initialize when the component mounts
   useEffect(() => {
     // Remove any existing sidebars first to prevent duplicates
@@ -190,6 +215,66 @@ const DetectionSidebarBridge = () => {
     const handleMLDetectionActive = (event) => {
       console.log('DetectionSidebarBridge: ML detection active event received', event.detail);
       
+      // Immediately mark detection as active for other components
+      window.detectionShowOverlay = true;
+      window.mlOverlaySettings = {
+        ...(window.mlOverlaySettings || {}),
+        showOverlay: true,
+        pendingButtonTrigger: false
+      };
+      
+      // Ensure MLOverlay is initialized - this is critical for first click functionality
+      if (typeof window.ensureMLOverlayInitialized === 'function') {
+        console.log('DetectionSidebarBridge: Using global ensureMLOverlayInitialized function');
+        const initialized = window.ensureMLOverlayInitialized();
+        console.log('DetectionSidebarBridge: Global initialization result:', initialized);
+      } else if (typeof MLOverlayModule.ensureInitialized === 'function') {
+        console.log('DetectionSidebarBridge: Using module ensureInitialized function');
+        const initialized = MLOverlayModule.ensureInitialized();
+        console.log('DetectionSidebarBridge: Module initialization result:', initialized);
+      }
+      
+      // CRITICAL FIX: Always make the overlay visible when the Detection sidebar is opened
+      console.log('DetectionSidebarBridge: Initializing detection sidebar AND setting overlay to visible');
+      
+      // Set the overlay to visible by default - this is the key fix
+      window.mlOverlaySettings = {
+        ...(window.mlOverlaySettings || {}),
+        showOverlay: true,  // Make overlay visible by default
+        pendingButtonTrigger: false
+      };
+      window.detectionShowOverlay = true;
+      
+      // Dispatch event to trigger overlay creation
+      window.dispatchEvent(new CustomEvent('openTreeDetection', {
+        detail: { 
+          buttonTriggered: true,  // Pretend this is a button trigger to force overlay creation
+          sidebarInitialization: true,
+          initialVisibility: true,  // Flag to indicate this should make overlay visible
+          prepareDetection: true
+        }
+      }));
+      
+      // Import MLOverlay module directly to ensure it's loaded and initialized
+      import('./MLOverlay').then(MLOverlayModule => {
+        console.log('DetectionSidebarBridge: MLOverlay module imported directly');
+        
+        // Try to initialize the module
+        if (typeof MLOverlayModule.ensureInitialized === 'function') {
+          const initialized = MLOverlayModule.ensureInitialized();
+          console.log('DetectionSidebarBridge: MLOverlay initialization result:', initialized);
+        }
+        
+        // Make sure global methods are set
+        window.renderMLOverlay = MLOverlayModule.renderMLOverlay;
+        window.removeMLOverlay = MLOverlayModule.removeMLOverlay;
+        window.updateMLOverlayOpacity = MLOverlayModule.updateMLOverlayOpacity;
+        window.updateMLOverlayClasses = MLOverlayModule.updateMLOverlayClasses;
+        window.ensureInitialized = MLOverlayModule.ensureInitialized;
+      }).catch(err => {
+        console.error('DetectionSidebarBridge: Error importing MLOverlay module:', err);
+      });
+      
       // Check global flag before doing cleanup
       if (!window.isDetectionSidebarActive) {
         // Only do cleanup if sidebar isn't currently being created
@@ -238,7 +323,7 @@ const DetectionSidebarBridge = () => {
             contentContainer = document.createElement('div');
             contentContainer.id = 'detection-content-container';
             contentContainer.style.width = '100%';
-            contentContainer.style.height = 'calc(100% - 36px)'; // Account for header height
+            contentContainer.style.height = '100%'; // Full height since React header is inside the content container
             contentContainer.style.overflow = 'auto';
             contentContainer.style.position = 'relative';
             event.detail.sidebarElement.appendChild(contentContainer);
@@ -710,7 +795,7 @@ const DetectionSidebarBridge = () => {
     const newContainer = document.createElement('div');
     newContainer.id = 'detection-content-container';
     newContainer.style.width = '100%';
-    newContainer.style.height = 'calc(100% - 36px)';
+    newContainer.style.height = '100%'; // Full height since React header is inside
     newContainer.style.overflow = 'auto';
     newContainer.style.position = 'relative';
     sidebarElement.appendChild(newContainer);

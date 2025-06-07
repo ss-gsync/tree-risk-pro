@@ -8,12 +8,12 @@ import { useGoogleMapsApi } from '../../../hooks/useGoogleMapsApi';
 import { store } from '../../../store';
 import { TreeService } from '../../../services/api/apiService';
 import DetectionMode from '../Detection/DetectionMode';
-import MLOverlayModule from '../Detection/MLOverlay';
+import * as MLOverlayModule from '../Detection/MLOverlay';
 import MLOverlayInitializer from '../Detection/MLOverlayInitializer';
 import LocationInfo from './LocationInfo';
 
-// Get the renderDetectionOverlay function from the module
-const { renderDetectionOverlay } = MLOverlayModule;
+// Get the renderMLOverlay function from the module
+const { renderMLOverlay } = MLOverlayModule;
 
 // Direct rendering component for detection overlay
 const DirectDetectionOverlay = ({ validationData }) => {
@@ -259,9 +259,9 @@ const DirectDetectionOverlay = ({ validationData }) => {
         }
       }, 5000);
       
-      // DIRECT APPROACH: If renderDetectionOverlay is available, call it directly
-      if (typeof window.renderDetectionOverlay === 'function' && detectionData) {
-        console.log("DirectDetectionOverlay: Using direct renderDetectionOverlay call for immediate rendering");
+      // DIRECT APPROACH: If renderMLOverlay is available, call it directly
+      if (typeof window.renderMLOverlay === 'function' && detectionData) {
+        console.log("DirectDetectionOverlay: Using direct renderMLOverlay call for immediate rendering");
         
         try {
           // Prepare data in the format MLOverlay expects
@@ -302,7 +302,7 @@ const DirectDetectionOverlay = ({ validationData }) => {
           }
           
           // Call the global function directly
-          window.renderDetectionOverlay(mlData, {
+          window.renderMLOverlay(mlData, {
             opacity: 1.0,
             forceRenderBoxes: true,
             jobId: validationData?.jobId || 'direct-render',
@@ -1179,8 +1179,7 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
       
       // Log the event details to help diagnose issues
       console.log("enterDetectionMode event received with details:", {
-        detectionJobId: event.detail.detectionJobId,
-        jobId: event.detail.jobId,
+        jobId: event.detail.jobId || event.detail.detectionJobId,
         ml_response_dir: event.detail.ml_response_dir,
         visualizationPath: event.detail.visualizationPath,
         treeCount: event.detail.treeCount,
@@ -1245,9 +1244,9 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
       }
       
       try {
+        // Consolidate jobId - use either jobId or detectionJobId, prefer jobId
+        const jobId = event.detail.jobId || event.detail.detectionJobId;
         const { 
-          detectionJobId, 
-          jobId, 
           areaId, 
           treeCount, 
           trees, 
@@ -1255,7 +1254,7 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
           visualizationPath 
         } = event.detail;
         
-        console.log(`Entering object detection validation mode for detection ${detectionJobId || jobId} with ${treeCount} trees`);
+        console.log(`Entering object detection validation mode for job ${jobId} with ${treeCount} trees`);
         console.log(`ML response directory: ${ml_response_dir || 'not provided'}`);
         
         // Validate the ML response directory
@@ -1268,8 +1267,7 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
         
         // Create validation data object with all necessary information
         const newValidationData = {
-          jobId: jobId || detectionJobId, // Use jobId as primary identifier
-          detectionJobId: detectionJobId || jobId, // Maintain backward compatibility
+          jobId: jobId, // Use jobId as single identifier
           areaId: areaId,
           treeCount: trees?.length || treeCount || 0,
           source: event.detail.source || 'detection',
@@ -1292,6 +1290,49 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
         
         // Debug validation data
         console.log("Validation data set:", newValidationData);
+        
+        // CRITICAL FIX: Explicitly dispatch openTreeDetection event to ensure ML overlay is visible
+        // and shows bounding boxes from trees.json when the Detection sidebar is opened
+        window.dispatchEvent(new CustomEvent('openTreeDetection', {
+          detail: {
+            sidebarInitialization: true,
+            initialVisibility: true,
+            source: 'sidebar_button',
+            jobId: jobId,
+            data: {
+              trees: trees || []
+            }
+          }
+        }));
+        
+        // Store data globally for other components to access
+        window.mlOverlaySettings = {
+          ...(window.mlOverlaySettings || {}),
+          showOverlay: true,
+          opacity: 0.7,
+          showSegmentation: true
+        };
+        window.detectionShowOverlay = true;
+        
+        // Also store the data globally for other components to access
+        if (trees && trees.length > 0) {
+          window.mlDetectionData = {
+            job_id: jobId,
+            trees: trees,
+            metadata: {
+              job_id: jobId,
+              ml_response_dir: ml_response_dir
+            }
+          };
+          
+          // Broadcast that detection data is available
+          window.dispatchEvent(new CustomEvent('detectionDataAvailable', {
+            detail: { 
+              data: window.mlDetectionData,
+              source: 'enterDetectionMode'
+            }
+          }));
+        }
         
         // If ML results available, notify that visualization is being displayed
         if (ml_response_dir) {

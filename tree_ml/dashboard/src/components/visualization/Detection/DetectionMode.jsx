@@ -310,162 +310,12 @@ const DetectionMode = (props) => {
     window.currentDetectionJobId = jobId;
     console.log(`DetectionMode: Using job ID: ${jobId}`);
     
-    // Create simulated detection data for immediate feedback
-    const simulatedDetectionData = {
-        job_id: jobId,
-        timestamp: new Date().toISOString(),
-        trees: [],
-        healthy_tree: new Array(5).fill(null).map((_, i) => ({ 
-          id: `healthy-tree-${i}`, 
-          class: 'healthy_tree',
-          category: 'healthy_tree',
-          confidence: 0.85 + (Math.random() * 0.1)
-        })),
-        hazardous_tree: new Array(3).fill(null).map((_, i) => ({ 
-          id: `hazard-tree-${i}`, 
-          class: 'hazardous_tree',
-          category: 'hazardous_tree',
-          confidence: 0.75 + (Math.random() * 0.1)
-        })),
-        dead_tree: new Array(1).fill(null).map((_, i) => ({ 
-          id: `dead-tree-${i}`, 
-          class: 'dead_tree',
-          category: 'dead_tree',
-          confidence: 0.80 + (Math.random() * 0.1)
-        })),
-        _preliminary: true
-    };
-    
-    // Show preliminary preview for immediate feedback
-    setTimeout(() => {
-      showDetectionPreview(simulatedDetectionData);
-      progressManager.update(40, 'Initial detection complete - processing details...');
-    }, 100);
-    
-    // Prepare directories for mock ML detection data
-    try {
-      const dataDir = `/ttt/data/tests/${jobId}/ml_response`;
-      
-      // Create directories (Bash commands executed via JavaScript)
-      const createDirCommand = `mkdir -p ${dataDir}`;
-      console.log(`Creating ML data directory: ${createDirCommand}`);
-      
-      // Use fetch with a timeout to create the directory
-      fetch('/api/exec', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: createDirCommand })
-      }).catch(err => console.log("Error creating directory:", err));
-      
-      // Create a mock trees.json file
-      const treesData = {
-        job_id: jobId,
-        timestamp: new Date().toISOString(),
-        trees: [],
-        tree_count: 10,
-        status: "complete"
-      };
-      
-      // Generate 10 random tree objects
-      for (let i = 0; i < 10; i++) {
-        // Random category
-        const categories = ['healthy_tree', 'hazardous_tree', 'dead_tree', 'low_canopy_tree'];
-        const category = categories[Math.floor(Math.random() * categories.length)];
-        
-        // Generate tree with random properties
-        const tree = {
-          id: `tree-${jobId}-${i}`,
-          species: ['Oak', 'Pine', 'Maple', 'Elm', 'Cypress'][Math.floor(Math.random() * 5)],
-          height: Math.floor(20 + Math.random() * 30),
-          diameter: Math.floor(10 + Math.random() * 20),
-          risk_level: ['low', 'medium', 'high'][Math.floor(Math.random() * 3)],
-          confidence: 0.7 + Math.random() * 0.25,
-          validated: false,
-          category,
-          class: category,
-          box: {
-            x: 0.2 + Math.random() * 0.6,
-            y: 0.2 + Math.random() * 0.6,
-            width: 0.05 + Math.random() * 0.1,
-            height: 0.05 + Math.random() * 0.1
-          },
-          location: [
-            // Random coordinate near Dallas
-            -96.7 - Math.random() * 0.2,
-            32.7 + Math.random() * 0.2
-          ]
-        };
-        
-        treesData.trees.push(tree);
-      }
-      
-      // Attempt to write the mock file directly
-      setTimeout(() => {
-        try {
-          // Store data in window for other components to access
-          window.mlDetectionData = treesData;
-          
-          // Manually trigger the preview
-          showDetectionPreview(treesData);
-          progressManager.update(90, 'Detection complete! Rendering results...');
-          
-          // Dispatch event that detection is complete
-          window.dispatchEvent(new CustomEvent('treeDetectionComplete', {
-            detail: { success: true, jobId }
-          }));
-          
-          // Also dispatch event with inference results
-          window.dispatchEvent(new CustomEvent('fastInferenceResults', {
-            detail: treesData
-          }));
-          
-          console.log('Successfully created mock ML detection data');
-        } catch (err) {
-          console.error('Error creating mock ML data:', err);
-        }
-      }, 2000);
-    } catch (err) {
-      console.error('Error creating mock ML data directory:', err);
-    }
-    
-    // Define path to the trees.json file - use the correct data directory
-    const treesJsonPath = `/ttt/data/ml/${jobId}/ml_response/trees.json`;
-    
-    // Create a file checker function
-    const checkForTreesJson = () => {
-      fetch(treesJsonPath)
-        .then(response => {
-          if (response.ok) {
-            return response.json();
-          }
-          throw new Error('File not available yet');
-        })
-        .then(data => {
-          data.job_id = jobId;
-          showDetectionPreview(data);
-          progressManager.update(90, 'Full detection results available!');
-        })
-        .catch((error) => {
-          if (error.message !== 'File not available yet') {
-            console.log("Info: trees.json not available yet, using window.mlDetectionData");
-          }
-          // Don't retry - we'll use the mock data we created
-        });
-    };
-    
-    // Start checking for trees.json (but we'll actually use our mock data)
-    setTimeout(checkForTreesJson, 300);
-    
     // Set up event handlers for detection process
-    const handleFastInferenceResults = (event) => {
+    const handleDetectionResults = (event) => {
       if (!event.detail) return;
       
-      console.log("DetectionMode: Received fastInferenceResults event with data:", event.detail);
+      console.log("DetectionMode: Received detection results event");
       progressManager.update(80, 'Inference complete! Rendering results...');
-      
-      // Always show the preview immediately when we get results, regardless of preliminary status
-      // This ensures users see results as soon as possible
-      showDetectionPreview(event.detail);
     };
     
     const handleDetectionComplete = () => {
@@ -491,7 +341,7 @@ const DetectionMode = (props) => {
     
     // Register all event listeners
     eventManager.registerListeners([
-      { event: 'fastInferenceResults', handler: handleFastInferenceResults },
+      { event: 'detectionDataLoaded', handler: handleDetectionResults },
       { event: 'enterTreeValidationMode', handler: handleDetectionComplete },
       { event: 'treeDetectionError', handler: handleDetectionError },
       { event: 'treeDetectionComplete', handler: handleDetectionComplete }
@@ -501,7 +351,7 @@ const DetectionMode = (props) => {
     const safetyTimeout = setTimeout(() => {
       console.log('Detection safety timeout reached - forcing completion');
       handleDetectionComplete();
-    }, 20000); // 20 seconds max
+    }, 30000); // 30 seconds max
     
     // First make sure any cached mapViewInfo is cleared so we get fresh coordinates
     delete window.mapViewInfo;

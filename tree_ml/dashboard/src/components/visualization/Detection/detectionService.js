@@ -12,10 +12,32 @@
  */
 export async function loadDetectionMetadata(detectionId) {
   try {
-    // Load from production data path with sanitized ID
-    const metadataPath = `/ttt/data/ml/${detectionId}/ml_response/metadata.json`;
+    // First try to load from API endpoint (works with both local and T4 server mode)
+    try {
+      const apiPath = `/api/ml/detection/${detectionId}/metadata`;
+      console.log(`Trying to load metadata from API: ${apiPath}`);
+      
+      const apiResponse = await fetch(apiPath);
+      if (apiResponse.ok) {
+        const metadata = await apiResponse.json();
+        console.log(`Successfully loaded metadata for detection ${detectionId} from API`);
+        
+        // Add API info to metadata
+        metadata._loadedFrom = 'api';
+        
+        // Store the successful path for trees.json loading
+        window._lastMetadataPath = apiPath;
+        
+        return metadata;
+      }
+    } catch (apiError) {
+      console.warn("API metadata fetch failed, falling back to direct file access:", apiError);
+    }
     
-    console.log(`Loading metadata from: ${metadataPath}`);
+    // Fall back to direct file access
+    const metadataPath = `/data/ml/${detectionId}/ml_response/metadata.json`;
+    
+    console.log(`Loading metadata from direct file: ${metadataPath}`);
     const response = await fetch(metadataPath);
     
     if (!response.ok) {
@@ -23,7 +45,10 @@ export async function loadDetectionMetadata(detectionId) {
     }
     
     const metadata = await response.json();
-    console.log(`Successfully loaded metadata for detection ${detectionId}`);
+    console.log(`Successfully loaded metadata for detection ${detectionId} from direct file`);
+    
+    // Add file info to metadata
+    metadata._loadedFrom = 'file';
     
     // Store the successful path for trees.json loading
     window._lastMetadataPath = metadataPath;
@@ -48,16 +73,50 @@ export async function loadDetectionData(detectionId) {
       throw new Error('Failed to load metadata');
     }
     
-    // Use consistent path for all detection data
-    const treesPath = `/ttt/data/ml/${detectionId}/ml_response/trees.json`;
+    // First try to load from API endpoint
+    let data;
+    let loadedFrom = '';
     
-    console.log(`Loading trees data from: ${treesPath}`);
-    const response = await fetch(treesPath);
-    if (!response.ok) {
-      throw new Error(`Failed to load trees.json: ${response.status} ${response.statusText}`);
+    try {
+      const apiPath = `/api/ml/detection/${detectionId}/trees`;
+      console.log(`Trying to load trees data from API: ${apiPath}`);
+      
+      const apiResponse = await fetch(apiPath);
+      if (apiResponse.ok) {
+        data = await apiResponse.json();
+        console.log(`Successfully loaded trees data for detection ${detectionId} from API`);
+        loadedFrom = 'api';
+      } else {
+        // Fall back to direct file access
+        const treesPath = `/data/ml/${detectionId}/ml_response/trees.json`;
+        
+        console.log(`Loading trees data from direct file: ${treesPath}`);
+        const response = await fetch(treesPath);
+        if (!response.ok) {
+          throw new Error(`Failed to load trees.json: ${response.status} ${response.statusText}`);
+        }
+        
+        data = await response.json();
+        loadedFrom = 'file';
+      }
+    } catch (apiError) {
+      // Final fallback to direct file access
+      console.warn("API trees fetch failed, falling back to direct file access:", apiError);
+      
+      const treesPath = `/data/ml/${detectionId}/ml_response/trees.json`;
+      
+      console.log(`Loading trees data from direct file (fallback): ${treesPath}`);
+      const response = await fetch(treesPath);
+      if (!response.ok) {
+        throw new Error(`Failed to load trees.json: ${response.status} ${response.statusText}`);
+      }
+      
+      data = await response.json();
+      loadedFrom = 'file-fallback';
     }
     
-    const data = await response.json();
+    // Add load source to data
+    data._loadedFrom = loadedFrom;
     
     if (!data.success || !data.detections || !Array.isArray(data.detections)) {
       console.error('Invalid detection data format:', data);
@@ -72,9 +131,11 @@ export async function loadDetectionData(detectionId) {
     // Extract bounds from metadata
     const bounds = metadata.bounds;
     
-    // Use the detections array directly
+    // Create transformed data structure with both trees and detections arrays
     const transformedData = {
-      trees: []
+      trees: [],
+      detections: [], // Keep the original detections array
+      raw_data: data  // Store original data for reference
     };
     
     // OPTIMIZATION: Use batch processing with limited segmentation data
@@ -129,6 +190,9 @@ export async function loadDetectionData(detectionId) {
           }
         }
         
+        // Preserve original class with spaces before normalizing
+        const originalClass = detection.class || 'healthy tree';
+        
         // Create object with properties expected by MLOverlay
         const detectionObject = {
           box: {
@@ -138,9 +202,14 @@ export async function loadDetectionData(detectionId) {
             height: y2 - y
           },
           confidence: detection.confidence || 0.5,
+          // Keep the original class string and also provide normalized versions
+          original_class: originalClass,
           // Convert space-separated classes to underscore format
-          class: detection.class ? detection.class.replace(/\s+/g, '_') : 'tree',
-          category: detection.class ? detection.class.replace(/\s+/g, '_') : 'tree',
+          class: originalClass.replace(/\s+/g, '_'),
+          category: originalClass.replace(/\s+/g, '_'),
+          // Also preserve original properties for compatibility
+          bbox: detection.bbox,
+          mask_score: detection.mask_score,
           location: location,
           segmentation: detection.segmentation,
           s2_cell: s2_cell
@@ -174,34 +243,58 @@ export async function loadDetectionData(detectionId) {
     // Dispatch early data loaded event for preview to show data before imagery is ready
     // This allows the preview to initialize with the data we have now while waiting for imagery
     try {
-      const earlyDataEvent = new CustomEvent('fastInferenceResults', {
-        detail: {
-          ...transformedData,
-          _preliminary: true,
-          job_id: detectionId,
-          timestamp: new Date().toISOString()
-        }
-      });
+      // Ensure the job ID is correct format for all consumers
+      const normalizedJobId = detectionId.startsWith('detection_') ? detectionId : `detection_${detectionId}`;
+      console.log('detectionService: Dispatching results with normalized job ID:', normalizedJobId);
+      
+      const detailData = {
+        ...transformedData,
+        _preliminary: true,
+        job_id: normalizedJobId,
+        timestamp: new Date().toISOString(),
+        // Add explicit paths to make it easier for consumers
+        paths: {
+          visualizationImage: `/api/ml/detection/${detectionId}/visualization`,
+          visualizationImageFallback: `/data/ml/${detectionId}/ml_response/combined_visualization.jpg`,
+          satelliteImage: `/api/ml/detection/${detectionId}/satellite`,
+          satelliteImageFallback: `/data/ml/${detectionId}/satellite_${detectionId}.jpg`,
+          metadataApi: `/api/ml/detection/${detectionId}/metadata`,
+          metadataFile: `/data/ml/${detectionId}/ml_response/metadata.json`,
+          treesApi: `/api/ml/detection/${detectionId}/trees`,
+          treesFile: `/data/ml/${detectionId}/ml_response/trees.json`,
+          loadedFrom: loadedFrom
+        },
+        // Include the raw data for consumers that need the original format
+        raw_trees_data: {
+          success: data.success,
+          detections: data.detections
+        },
+        // Ensure we have both arrays properly populated
+        trees: transformedData.trees,
+        detections: data.detections || transformedData.detections
+      };
+      
+      // Dispatch as both document and window events for maximum compatibility
+      const earlyDataEvent = new CustomEvent('fastInferenceResults', { detail: detailData });
       document.dispatchEvent(earlyDataEvent);
+      window.dispatchEvent(new CustomEvent('fastInferenceResults', { detail: detailData }));
       
-      // Also dispatch as window event for maximum compatibility
-      window.dispatchEvent(new CustomEvent('fastInferenceResults', {
-        detail: {
-          ...transformedData,
-          _preliminary: true,
-          job_id: detectionId,
-          timestamp: new Date().toISOString()
-        }
-      }));
+      // Also dispatch as detectionDataLoaded event for MLOverlayInitializer
+      window.dispatchEvent(new CustomEvent('detectionDataLoaded', { detail: detailData }));
       
-      // For direct access, also try to call the preview function
+      // For direct access, try to call the preview function
       if (typeof window.showDetectionPreview === 'function') {
-        window.showDetectionPreview({
-          ...transformedData,
-          _preliminary: true,
-          job_id: detectionId,
-          timestamp: new Date().toISOString()
-        });
+        console.log('detectionService: Directly calling showDetectionPreview with data');
+        window.showDetectionPreview(detailData);
+      } else {
+        console.warn('detectionService: window.showDetectionPreview is not available yet');
+        // Set a timeout to try again in case the function is defined later
+        setTimeout(() => {
+          if (typeof window.showDetectionPreview === 'function') {
+            console.log('detectionService: Calling showDetectionPreview after delay');
+            window.showDetectionPreview(detailData);
+          }
+        }, 500);
       }
       
       console.log('Dispatched fastInferenceResults event with early detection data');
@@ -377,7 +470,7 @@ export async function applyDetectionOverlay(detectionId, appendMode = false) {
   
   try {
     // Load MLOverlay renderer
-    if (typeof window.renderDetectionOverlay !== 'function') {
+    if (typeof window.renderMLOverlay !== 'function') {
       throw new Error('MLOverlay functions not available');
     }
     
@@ -427,7 +520,7 @@ export async function applyDetectionOverlay(detectionId, appendMode = false) {
     }
     
     // Apply overlay with detection data
-    window.renderDetectionOverlay(window.mlDetectionData, {
+    window.renderMLOverlay(window.mlDetectionData, {
       opacity: 1.0,
       classes: { trees: true, buildings: true, powerLines: true },
       targetElement: mapContainer,

@@ -35,7 +35,27 @@ const ResponseViewer = ({
       try {
         setLoading(true);
         
-        // Attempt to load metadata.json
+        // Attempt to load metadata through the API first (works with both local and T4 mode)
+        try {
+          const apiPath = `/api/ml/detection/${detectionId}/metadata`;
+          const apiResponse = await fetch(apiPath);
+          
+          if (apiResponse.ok) {
+            const metadataJson = await apiResponse.json();
+            setMetadata(metadataJson);
+            
+            // Get tree count from metadata
+            if (metadataJson.detection_count !== undefined) {
+              setTreeCount(metadataJson.detection_count);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (apiError) {
+          console.warn("API metadata fetch failed, falling back to direct file access:", apiError);
+        }
+        
+        // Fallback to direct file access
         const metadataPath = `/data/ml/${detectionId}/ml_response/metadata.json`;
         const metadataResponse = await fetch(metadataPath);
         
@@ -52,13 +72,29 @@ const ResponseViewer = ({
         } else {
           // Try to fetch trees.json to count trees
           try {
-            const treesPath = `/data/ml/${detectionId}/ml_response/trees.json`;
-            const treesResponse = await fetch(treesPath);
+            // Try API first
+            const apiTreesPath = `/api/ml/detection/${detectionId}/trees`;
+            const apiTreesResponse = await fetch(apiTreesPath);
             
-            if (treesResponse.ok) {
-              const treesData = await treesResponse.json();
+            if (apiTreesResponse.ok) {
+              const treesData = await apiTreesResponse.json();
               if (treesData.trees) {
                 setTreeCount(treesData.trees.length);
+              } else if (treesData.detections) {
+                setTreeCount(treesData.detections.length);
+              }
+            } else {
+              // Fallback to direct file access
+              const treesPath = `/data/ml/${detectionId}/ml_response/trees.json`;
+              const treesResponse = await fetch(treesPath);
+              
+              if (treesResponse.ok) {
+                const treesData = await treesResponse.json();
+                if (treesData.trees) {
+                  setTreeCount(treesData.trees.length);
+                } else if (treesData.detections) {
+                  setTreeCount(treesData.detections.length);
+                }
               }
             }
           } catch (treeError) {
@@ -196,12 +232,18 @@ const ResponseViewer = ({
         <div className="mb-4">
           <div className="relative w-full aspect-video bg-gray-100 rounded-md overflow-hidden">
             <img 
-              src={`/data/ml/${detectionId}/ml_response/combined_visualization.jpg`}
+              src={`/api/ml/detection/${detectionId}/visualization`}
               alt="Detection visualization"
               className="w-full h-full object-contain"
               onError={(e) => {
+                console.warn("API visualization load failed, falling back to direct file path");
                 e.target.onerror = null;
-                e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ccc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Ccircle cx='8.5' cy='8.5' r='1.5'%3E%3C/circle%3E%3Cpolyline points='21 15 16 10 5 21'%3E%3C/polyline%3E%3C/svg%3E";
+                // Try direct file path as fallback
+                e.target.src = `/data/ml/${detectionId}/ml_response/combined_visualization.jpg`;
+                // Set a final fallback if direct path also fails
+                e.target.onerror = () => {
+                  e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ccc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='18' height='18' rx='2' ry='2'%3E%3C/rect%3E%3Ccircle cx='8.5' cy='8.5' r='1.5'%3E%3C/circle%3E%3Cpolyline points='21 15 16 10 5 21'%3E%3C/polyline%3E%3C/svg%3E";
+                };
               }}
             />
           </div>

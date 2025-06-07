@@ -8,141 +8,59 @@ import {
 } from 'lucide-react';
 
 /**
- * DetectionPreview Component as Popup
+ * DetectionPopup Component - Displays detection results in a modal
  */
 const DetectionPopup = ({ data, onClose }) => {
-  console.log('DETECTION PREVIEW: Data received:', data);
+  console.log('DetectionPopup: Rendering with data:', {
+    hasData: !!data,
+    hasDetections: !!data?.detections,
+    hasTrees: !!data?.trees,
+    treeCount: Array.isArray(data?.trees) ? data.trees.length : 0,
+    detectionCount: Array.isArray(data?.detections) ? data.detections.length : 0,
+    jobId: data?.job_id
+  });
   
-  // Always prioritize showing results if we have any trees data
-  const hasData = Array.isArray(data?.trees) && data.trees.length > 0;
-  
-  // Only show preliminary state briefly, especially if we have actual data
-  // Force isPreliminary to false if we have tree data
-  const isPreliminary = hasData ? false : (data?.status === 'processing' || data?._preliminary === true);
-  
-  // IMPORTANT: Always use the job_id from the data object returned by the server
-  // This is the SINGLE SOURCE OF TRUTH for job IDs
-  const jobId = data?.job_id;
-  console.log('DETECTION PREVIEW: Using server-returned job ID:', jobId);
-  
-  // Also update the global currentDetectionJobId to maintain consistency
-  if (jobId) {
-    window.currentDetectionJobId = jobId;
-    console.log('DETECTION PREVIEW: Updated global job ID to server value:', jobId);
-  }
+  // Get all tree data from any available source
+  const treeData = useTreeData(data);
   
   // Image paths
-  // Keep the full path with /ttt prefix since that's how the Express server is configured
-  // Check if jobId already starts with "detection_" to avoid duplication
-  const jobPrefix = jobId && !jobId.startsWith('detection_') ? 'detection_' : '';
-  const formattedJobId = jobId ? `${jobPrefix}${jobId}` : null;
+  const jobId = data?.job_id;
+  const imagePath = data?.paths?.visualizationImage || 
+    (jobId ? `/ttt/data/ml/${jobId}/ml_response/combined_visualization.jpg` : null);
+  const satellitePath = data?.paths?.satelliteImage || 
+    (jobId ? `/ttt/data/ml/${jobId}/satellite_${jobId}.jpg` : null);
   
-  // Use formatted job ID to avoid duplication in paths
-  const visualizationImage = formattedJobId ? 
-    `/ttt/data/ml/detection_${formattedJobId.replace('detection_', '')}/ml_response/combined_visualization.jpg` : null;
-  const satelliteImage = formattedJobId ? 
-    `/ttt/data/ml/detection_${formattedJobId.replace('detection_', '')}/satellite_${formattedJobId.replace('detection_', '')}.jpg` : null;
-    
-  // State for fullscreen view
+  // UI state
   const [fullscreenImage, setFullscreenImage] = useState(null);
-  
-  console.log('DETECTION PREVIEW: Using sanitized job ID:', formattedJobId ? formattedJobId.replace('detection_', '') : 'none');
-    
-  console.log('DETECTION PREVIEW: Image paths:', { visualizationImage, satelliteImage });
-  
-  // Debug image loading by creating test image elements
-  useEffect(() => {
-    if (visualizationImage) {
-      const img = new Image();
-      img.onload = () => console.log(`Successfully loaded visualization image: ${visualizationImage}`);
-      img.onerror = (err) => console.error(`Failed to load visualization image: ${visualizationImage}`, err);
-      img.src = visualizationImage;
-    }
-    
-    if (satelliteImage) {
-      const img = new Image();
-      img.onload = () => console.log(`Successfully loaded satellite image: ${satelliteImage}`);
-      img.onerror = (err) => console.error(`Failed to load satellite image: ${satelliteImage}`, err);
-      img.src = satelliteImage;
-    }
-  }, [visualizationImage, satelliteImage]);
-  
-  // Tree counts
-  const treeCount = Array.isArray(data?.trees) ? data.trees.length : 0;
-  
-  // Get counts by category
-  const treeCategoryCounts = {
-    healthy_tree: 0,
-    hazardous_tree: 0,
-    dead_tree: 0,
-    low_canopy_tree: 0,
-    pest_disease_tree: 0,
-    flood_prone_tree: 0,
-    utility_conflict_tree: 0,
-    structural_hazard_tree: 0,
-    fire_risk_tree: 0
-  };
-  
-  // Count trees by category
-  if (Array.isArray(data?.trees)) {
-    data.trees.forEach(tree => {
-      const category = tree.category || tree.class || 'healthy_tree';
-      if (treeCategoryCounts.hasOwnProperty(category)) {
-        treeCategoryCounts[category]++;
-      } else {
-        // Default to healthy if unknown category
-        treeCategoryCounts.healthy_tree++;
-      }
-    });
-  }
-  
-  // Category display names mapping
-  const categoryLabels = {
-    healthy_tree: 'Healthy Trees',
-    hazardous_tree: 'Hazardous Trees',
-    dead_tree: 'Dead Trees',
-    low_canopy_tree: 'Low Canopy',
-    pest_disease_tree: 'Pest/Disease',
-    flood_prone_tree: 'Flood-Prone',
-    utility_conflict_tree: 'Utility Conflict',
-    structural_hazard_tree: 'Structural Hazard',
-    fire_risk_tree: 'Fire Risk'
-  };
-  
-  // Category colors
-  const categoryColors = {
-    healthy_tree: '#16a34a',
-    hazardous_tree: '#8b5cf6',
-    dead_tree: '#6b7280',
-    low_canopy_tree: '#0ea5e9',
-    pest_disease_tree: '#84cc16',
-    flood_prone_tree: '#0891b2',
-    utility_conflict_tree: '#3b82f6',
-    structural_hazard_tree: '#0d9488',
-    fire_risk_tree: '#4f46e5'
-  };
-  
-  // Stats
-  const detectionTime = data?.timestamp;
-  const modelType = data?.model_type || data?.metadata?.model || 'Standard Detection';
-  
-  // Tab state
   const [activeTab, setActiveTab] = useState('results');
   
-  // Handle view on map click
+  // Load tree categories from available data
+  const { categories, treeCount } = useCategoryCounts(treeData);
+  
+  // Basic metadata
+  const detectionTime = data?.timestamp || new Date().toISOString();
+  const modelType = data?.model_type || data?.metadata?.model || 'Standard Detection';
+  
+  // Setup escape key handler
+  useEffect(() => {
+    const handleEscKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEscKey);
+    return () => document.removeEventListener('keydown', handleEscKey);
+  }, [onClose]);
+  
+  // View on map handler
   const handleViewOnMap = () => {
-    // Create detection data
-    const detectionData = { ...data, job_id: jobId };
-    
-    // Set global flags
+    // Update global flags
     window.detectionShowOverlay = true;
-    window.mlDetectionData = detectionData;
+    window.mlDetectionData = data;
     
-    // Dispatch event
+    // Dispatch event to trigger map view
     window.dispatchEvent(new CustomEvent('enterDetectionMode', {
       detail: {
-        jobId: jobId,
-        data: detectionData,
+        jobId,
+        data,
         showOverlay: true,
         forceVisible: true,
         forceRenderBoxes: true
@@ -150,20 +68,8 @@ const DetectionPopup = ({ data, onClose }) => {
     }));
     
     // Close the popup
-    setTimeout(() => onClose(), 100);
+    setTimeout(onClose, 100);
   };
-  
-  // Escape key handler
-  useEffect(() => {
-    const handleEscKey = (event) => {
-      if (event.key === 'Escape') onClose();
-    };
-    
-    document.addEventListener('keydown', handleEscKey);
-    return () => document.removeEventListener('keydown', handleEscKey);
-  }, [onClose]);
-  
-  if (!data) return null;
   
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[9999] overflow-y-auto backdrop-blur-sm">
@@ -178,7 +84,6 @@ const DetectionPopup = ({ data, onClose }) => {
               <BarChart size={16} className="mr-1.5 text-blue-600" />
               Detection Results
             </h2>
-            {/* Status messages removed as requested */}
           </div>
           
           <div className="flex items-center space-x-2">
@@ -228,51 +133,40 @@ const DetectionPopup = ({ data, onClose }) => {
               <div>
                 <h3 className="text-sm font-medium text-slate-700 mb-2">Detection Visualization</h3>
                 <div className="border border-slate-200 rounded-md bg-white overflow-hidden shadow-sm" style={{ height: '240px' }}>
-                  {visualizationImage ? (
+                  {imagePath ? (
                     <div className="relative w-full h-full">
                       <img 
-                        src={visualizationImage} 
+                        src={imagePath} 
                         alt="ML detection visualization" 
                         className="w-full h-full object-cover cursor-pointer"
-                        onClick={() => setFullscreenImage(visualizationImage)}
-                        onLoad={() => console.log('Visualization image loaded successfully in UI')}
+                        onClick={() => setFullscreenImage(imagePath)}
                         onError={(e) => {
-                          console.log('Error loading visualization image, trying satellite image');
-                          // Try satellite image as fallback
-                          if (satelliteImage) {
-                            console.log('Trying satellite image instead:', satelliteImage);
-                            e.target.src = satelliteImage;
-                            e.target.alt = "Satellite image";
-                            
-                            // Add onerror handler for satellite image too
-                            e.target.onerror = () => {
-                              console.log('Satellite image also failed to load');
-                              // If both fail, show a fallback message
-                              const parent = e.target.parentNode;
-                              if (parent) {
-                                const fallback = document.createElement('div');
-                                fallback.className = "absolute inset-0 flex flex-col items-center justify-center bg-slate-50";
-                                fallback.innerHTML = `
-                                  <svg class="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                  </svg>
-                                  <p class="text-xs text-slate-500">Failed to load images</p>
-                                  <p class="text-xs text-slate-400">Job ID: ${jobId || 'Unknown'}</p>
-                                `;
-                                parent.appendChild(fallback);
-                              }
-                            };
+                          console.error('Error loading visualization image');
+                          e.target.style.display = 'none';
+                          
+                          const parent = e.target.parentNode;
+                          if (parent) {
+                            const fallback = document.createElement('div');
+                            fallback.className = "absolute inset-0 flex flex-col items-center justify-center bg-slate-50";
+                            fallback.innerHTML = `
+                              <svg class="w-8 h-8 text-slate-300 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                              </svg>
+                              <p class="text-xs text-slate-500">Failed to load detection image</p>
+                              <p class="text-xs text-slate-400">Job ID: ${jobId || 'Unknown'}</p>
+                            `;
+                            parent.appendChild(fallback);
                           }
                         }}
                       />
                       <div className="absolute bottom-2 right-2 bg-white bg-opacity-75 text-xs p-1 rounded">
-                        Job ID: {jobId}
+                        Job ID: {jobId || 'Unknown'}
                       </div>
                       <div className="absolute top-2 right-2 bg-white bg-opacity-75 rounded p-1">
                         <Maximize2 
                           size={16} 
                           className="text-slate-600 cursor-pointer"
-                          onClick={() => setFullscreenImage(visualizationImage)} 
+                          onClick={() => setFullscreenImage(imagePath)} 
                         />
                       </div>
                     </div>
@@ -295,6 +189,7 @@ const DetectionPopup = ({ data, onClose }) => {
                           src={fullscreenImage} 
                           alt="Detection visualization fullscreen" 
                           className="max-w-full max-h-[90vh] object-contain"
+                          onError={() => setFullscreenImage(null)}
                         />
                         <button 
                           className="absolute top-4 right-4 bg-white bg-opacity-75 rounded-full p-2"
@@ -326,20 +221,20 @@ const DetectionPopup = ({ data, onClose }) => {
                         <div className="text-xs text-slate-600 mb-2 font-semibold">Analysis Results:</div>
                         <div className="text-sm text-slate-700 leading-relaxed">
                           <p>
-                            Satellite imagery analysis completed successfully using {modelType} machine learning model. 
-                            {treeCount > 0 ? ` A total of ${treeCount} trees were detected in the target area.` : ' No trees were detected in the target area.'}
+                            Satellite imagery analysis completed using ML detection model. 
+                            {treeCount > 0 ? ` Found ${treeCount} trees in the target area.` : ' No trees detected in the target area.'}
                           </p>
                           
-                          {/* Only show category breakdown if we have trees */}
+                          {/* Category breakdown */}
                           {treeCount > 0 && (
                             <div className="mt-2">
                               <div className="text-xs font-medium mb-1.5">Categories breakdown:</div>
                               <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-                                {Object.entries(treeCategoryCounts).map(([category, count]) => 
+                                {Object.entries(categories).map(([category, count]) => 
                                   count > 0 ? (
                                     <div key={category} className="flex items-center text-xs">
-                                      <div className="w-2 h-2 rounded-full mr-1" style={{backgroundColor: categoryColors[category]}}></div>
-                                      <span className="truncate" title={categoryLabels[category]}>{categoryLabels[category]}:</span>
+                                      <div className="w-2 h-2 rounded-full mr-1" style={{backgroundColor: getCategoryColor(category)}}></div>
+                                      <span className="truncate" title={getCategoryLabel(category)}>{getCategoryLabel(category)}:</span>
                                       <span className="ml-auto font-medium">{count}</span>
                                     </div>
                                   ) : null
@@ -349,7 +244,7 @@ const DetectionPopup = ({ data, onClose }) => {
                           )}
                           
                           <p className="mt-2 text-xs text-slate-500">
-                            To view the detected trees on the map, click the "View on Map" button below.
+                            Click "View on Map" to see trees on the map.
                           </p>
                         </div>
                       </div>
@@ -360,7 +255,7 @@ const DetectionPopup = ({ data, onClose }) => {
                         <AlertTriangle size={24} className="mb-2 text-amber-500" />
                         <span className="text-sm font-medium">No trees detected</span>
                         <p className="text-xs text-slate-400 mt-1">
-                          Try a different location or adjust the view
+                          Try a different location or adjust parameters
                         </p>
                       </div>
                     </div>
@@ -378,24 +273,24 @@ const DetectionPopup = ({ data, onClose }) => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                 <div className="bg-green-50 rounded-md p-3 border border-green-100">
                   <div className="text-xs text-green-700 mb-1">Trees Detected</div>
-                  <div className="text-xl font-bold text-green-800">{treeCount}</div>
-                  <div className="text-xs text-green-600 mt-1">Total count from aerial imagery</div>
+                  <div className="text-base font-bold text-green-800">{treeCount}</div>
+                  <div className="text-xs text-green-600 mt-1">Total tree count</div>
                 </div>
                 
                 <div className="bg-blue-50 rounded-md p-3 border border-blue-100">
                   <div className="text-xs text-blue-700 mb-1">Detection Quality</div>
-                  <div className="text-xl font-bold text-blue-800">
-                    {treeCount > 10 ? 'High' : treeCount > 0 ? 'Medium' : 'N/A'}
+                  <div className="text-base font-bold text-blue-800">
+                    Standard
                   </div>
-                  <div className="text-xs text-blue-600 mt-1">Based on detection confidence</div>
+                  <div className="text-xs text-blue-600 mt-1">Baseline detection</div>
                 </div>
                 
                 <div className="bg-indigo-50 rounded-md p-3 border border-indigo-100">
                   <div className="text-xs text-indigo-700 mb-1">Model</div>
-                  <div className="text-lg font-bold text-indigo-800 truncate" title={modelType}>
-                    {modelType}
+                  <div className="text-base font-bold text-indigo-800 truncate" title="Grounded SAM">
+                    Grounded SAM
                   </div>
-                  <div className="text-xs text-indigo-600 mt-1">Machine learning algorithm</div>
+                  <div className="text-xs text-indigo-600 mt-1">Detection + Segmentation</div>
                 </div>
               </div>
               
@@ -417,37 +312,27 @@ const DetectionPopup = ({ data, onClose }) => {
                   </div>
                   
                   <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-600 text-xs font-medium">Average Confidence</span>
-                    <span className="text-slate-800 text-xs">
-                      {Array.isArray(data?.trees) && data.trees.length > 0
-                        ? `${Math.round(data.trees.reduce((sum, tree) => sum + (tree.confidence || 0), 0) / data.trees.length * 100)}%`
-                        : 'N/A'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between py-1 border-b border-slate-100">
-                    <span className="text-slate-600 text-xs font-medium">Processing Status</span>
-                    <span className="text-xs">
-                      <span className="text-green-600 flex items-center">
-                        <Check size={12} className="mr-1" />
-                        Complete
-                      </span>
+                    <span className="text-slate-600 text-xs font-medium">Status</span>
+                    <span className="text-green-600 text-xs flex items-center">
+                      <Check size={12} className="mr-1" />
+                      Complete
                     </span>
                   </div>
                 </div>
               </div>
               
-              {/* Category distribution section */}
+              {/* Categories distribution */}
               {treeCount > 0 && (
                 <div className="border-t border-slate-100 pt-4">
                   <h4 className="text-sm font-medium text-slate-700 mb-3">Category Distribution</h4>
                   <div className="grid grid-cols-1 gap-y-2">
-                    {Object.entries(treeCategoryCounts).map(([category, count]) => {
-                        const percentage = count > 0 ? Math.round((count / treeCount) * 100) : 0;
+                    {Object.entries(categories).map(([category, count]) => {
+                      if (count > 0) {
+                        const percentage = Math.round((count / treeCount) * 100);
                         return (
                           <div key={category} className="flex items-center">
-                            <div className="w-3 h-3 rounded-full mr-2" style={{backgroundColor: categoryColors[category]}}></div>
-                            <span className="text-xs text-slate-600">{categoryLabels[category]}</span>
+                            <div className="w-3 h-3 rounded-full mr-2" style={{backgroundColor: getCategoryColor(category)}}></div>
+                            <span className="text-xs text-slate-600">{getCategoryLabel(category)}</span>
                             <div className="ml-auto flex items-center">
                               <span className="text-xs font-medium text-slate-700 mr-2">{count}</span>
                               <div className="w-20 bg-slate-100 h-1.5 rounded overflow-hidden">
@@ -455,7 +340,7 @@ const DetectionPopup = ({ data, onClose }) => {
                                   className="h-full rounded" 
                                   style={{
                                     width: `${percentage}%`, 
-                                    backgroundColor: categoryColors[category]
+                                    backgroundColor: getCategoryColor(category)
                                   }}
                                 ></div>
                               </div>
@@ -463,7 +348,9 @@ const DetectionPopup = ({ data, onClose }) => {
                             </div>
                           </div>
                         );
-                      })}
+                      }
+                      return null;
+                    })}
                   </div>
                 </div>
               )}
@@ -495,66 +382,44 @@ const DetectionPopup = ({ data, onClose }) => {
                     </div>
                     
                     <div className="flex justify-between py-1">
-                      <span className="text-slate-600 text-xs">Imagery Source:</span>
-                      <span className="font-medium text-slate-800 text-xs">Satellite</span>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="border rounded-md p-3 bg-slate-50">
-                  <h4 className="text-xs font-semibold text-slate-700 mb-2">Processing Information</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between py-1 border-b border-slate-100">
-                      <span className="text-slate-600 text-xs">Status:</span>
-                      <span className="font-medium text-xs flex items-center">
-                        <span className="text-green-600 flex items-center">
-                          <Check size={12} className="mr-1" />
-                          Complete
-                        </span>
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between py-1 border-b border-slate-100">
-                      <span className="text-slate-600 text-xs">Tree Count:</span>
+                      <span className="text-slate-600 text-xs">Detected Trees:</span>
                       <span className="font-medium text-slate-800 text-xs">{treeCount}</span>
                     </div>
-                    
-                    <div className="flex justify-between py-1 border-b border-slate-100">
-                      <span className="text-slate-600 text-xs">Detection Path:</span>
-                      <span className="font-medium text-slate-800 text-xs truncate" style={{maxWidth: '200px'}} title={data?.ml_response_dir || 'N/A'}>
-                        {data?.ml_response_dir || 'N/A'}
-                      </span>
-                    </div>
-                    
-                    <div className="flex justify-between py-1">
-                      <span className="text-slate-600 text-xs">API Version:</span>
-                      <span className="font-medium text-slate-800 text-xs">v0.2.3</span>
-                    </div>
                   </div>
                 </div>
                 
-                {/* Visualization info */}
+                {/* Data sources */}
                 <div className="border rounded-md p-3 bg-slate-50">
-                  <h4 className="text-xs font-semibold text-slate-700 mb-2">Visualization Assets</h4>
-                  <div className="space-y-2 text-xs">
+                  <h4 className="text-xs font-semibold text-slate-700 mb-2">Data Sources</h4>
+                  <div className="space-y-2">
                     <div className="flex items-center py-1 border-b border-slate-100">
                       <div className="w-6 text-center">
-                        {visualizationImage ? 
+                        {imagePath ? 
                           <Check size={12} className="text-green-600 inline" /> : 
                           <CircleOff size={12} className="text-slate-400 inline" />
                         }
                       </div>
-                      <span className="text-slate-600">Detection Visualization</span>
+                      <span className="text-slate-600 text-xs">ML Visualization</span>
+                    </div>
+                    
+                    <div className="flex items-center py-1 border-b border-slate-100">
+                      <div className="w-6 text-center">
+                        {satellitePath ? 
+                          <Check size={12} className="text-green-600 inline" /> : 
+                          <CircleOff size={12} className="text-slate-400 inline" />
+                        }
+                      </div>
+                      <span className="text-slate-600 text-xs">Satellite Image</span>
                     </div>
                     
                     <div className="flex items-center py-1">
                       <div className="w-6 text-center">
-                        {satelliteImage ? 
+                        {treeCount > 0 ? 
                           <Check size={12} className="text-green-600 inline" /> : 
                           <CircleOff size={12} className="text-slate-400 inline" />
                         }
                       </div>
-                      <span className="text-slate-600">Satellite Image</span>
+                      <span className="text-slate-600 text-xs">Tree Detection Data</span>
                     </div>
                   </div>
                 </div>
@@ -594,64 +459,271 @@ const DetectionPopup = ({ data, onClose }) => {
 };
 
 /**
+ * Hook to extract and normalize tree data from various formats
+ */
+function useTreeData(data) {
+  const [trees, setTrees] = useState([]);
+  
+  useEffect(() => {
+    if (!data) return;
+    
+    // Extract trees from any available data source
+    let extractedTrees = [];
+    
+    // Try data.trees array first
+    if (Array.isArray(data.trees) && data.trees.length > 0) {
+      console.log(`Using ${data.trees.length} trees from data.trees`);
+      extractedTrees = data.trees;
+    } 
+    // Try data.detections array next
+    else if (Array.isArray(data.detections) && data.detections.length > 0) {
+      console.log(`Using ${data.detections.length} trees from data.detections`);
+      extractedTrees = data.detections;
+    }
+    // Try raw trees.json format (success/detections)
+    else if (data.success === true && Array.isArray(data.detections)) {
+      console.log(`Using ${data.detections.length} trees from raw trees.json format`);
+      extractedTrees = data.detections;
+    }
+    // Try embedded raw_trees_data
+    else if (data.raw_trees_data && data.raw_trees_data.success === true && 
+             Array.isArray(data.raw_trees_data.detections)) {
+      console.log(`Using ${data.raw_trees_data.detections.length} trees from raw_trees_data`);
+      extractedTrees = data.raw_trees_data.detections;
+    }
+    
+    // If we found trees, normalize them
+    if (extractedTrees.length > 0) {
+      // Normalize tree objects
+      const normalizedTrees = extractedTrees.map(tree => {
+        // Get original class/category (spaces included)
+        const originalClass = tree.class || tree.category || 'healthy tree';
+        
+        // Convert to normalized form
+        const normalizedClass = typeof originalClass === 'string' 
+          ? originalClass.toLowerCase().replace(/\s+/g, '_') 
+          : 'healthy_tree';
+        
+        return {
+          ...tree,
+          class: normalizedClass,
+          category: normalizedClass
+        };
+      });
+      
+      setTrees(normalizedTrees);
+      console.log(`Normalized ${normalizedTrees.length} trees for display`);
+    } else {
+      console.warn('No tree data found in any format');
+      setTrees([]);
+    }
+  }, [data]);
+  
+  return trees;
+}
+
+/**
+ * Hook to count trees by category
+ */
+function useCategoryCounts(trees) {
+  const [categoryData, setCategoryData] = useState({ 
+    categories: {}, 
+    treeCount: 0 
+  });
+  
+  useEffect(() => {
+    // Initialize category counters
+    const categoryCounts = {
+      healthy_tree: 0,
+      hazardous_tree: 0,
+      dead_tree: 0,
+      low_canopy_tree: 0,
+      pest_disease_tree: 0,
+      flood_prone_tree: 0,
+      utility_conflict_tree: 0,
+      structural_hazard_tree: 0,
+      fire_risk_tree: 0
+    };
+    
+    // Count trees by category
+    if (Array.isArray(trees) && trees.length > 0) {
+      trees.forEach(tree => {
+        // Use category or class, normalize to underscore format
+        let category = tree.category || tree.class || 'healthy_tree';
+        
+        // Normalize if it's a string
+        if (typeof category === 'string') {
+          category = category.toLowerCase().replace(/\s+/g, '_');
+        }
+        
+        // Count in appropriate category
+        if (categoryCounts.hasOwnProperty(category)) {
+          categoryCounts[category]++;
+        } else {
+          // Default to healthy if unknown category
+          categoryCounts.healthy_tree++;
+        }
+      });
+    }
+    
+    // Update state
+    setCategoryData({
+      categories: categoryCounts,
+      treeCount: trees.length
+    });
+  }, [trees]);
+  
+  return categoryData;
+}
+
+/**
+ * Get display name for a category
+ */
+function getCategoryLabel(category) {
+  const labels = {
+    healthy_tree: 'Healthy Trees',
+    hazardous_tree: 'Hazardous Trees',
+    dead_tree: 'Dead Trees',
+    low_canopy_tree: 'Low Canopy',
+    pest_disease_tree: 'Pest/Disease',
+    flood_prone_tree: 'Flood-Prone',
+    utility_conflict_tree: 'Utility Conflict',
+    structural_hazard_tree: 'Structural Hazard',
+    fire_risk_tree: 'Fire Risk'
+  };
+  
+  return labels[category] || category.replace('_', ' ');
+}
+
+/**
+ * Get color for a category
+ */
+function getCategoryColor(category) {
+  const colors = {
+    healthy_tree: '#16a34a',
+    hazardous_tree: '#8b5cf6',
+    dead_tree: '#6b7280',
+    low_canopy_tree: '#0ea5e9',
+    pest_disease_tree: '#84cc16',
+    flood_prone_tree: '#0891b2',
+    utility_conflict_tree: '#3b82f6',
+    structural_hazard_tree: '#0d9488',
+    fire_risk_tree: '#4f46e5'
+  };
+  
+  return colors[category] || '#16a34a';
+}
+
+/**
+ * Create a direct fallback loader to load trees.json if needed
+ */
+async function loadTreesJsonDirectly(jobId) {
+  if (!jobId) return null;
+  
+  try {
+    console.log(`Direct loader: Attempting to load trees.json for job ${jobId}`);
+    const response = await fetch(`/ttt/data/ml/${jobId}/ml_response/trees.json`);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to load trees.json: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log(`Direct loader: Successfully loaded trees.json with ${data.detections?.length || 0} detections`);
+    return data;
+  } catch (error) {
+    console.error(`Direct loader error:`, error);
+    return null;
+  }
+}
+
+/**
  * Render the popup into a container
  */
 function renderPopup(data, container) {
   try {
-    console.log('DETECTION PREVIEW: Rendering popup');
+    // Create React container
+    const reactContainer = document.createElement('div');
+    reactContainer.id = 'detection-popup-inner-container';
     
-    // Create container for React
-    const freshContainer = document.createElement('div');
-    freshContainer.id = 'detection-popup-inner-container';
-    freshContainer.style.width = '100%';
-    freshContainer.style.height = '100%';
-    
-    // Clear existing content
+    // Clear any existing content
     while (container.firstChild) {
       container.removeChild(container.firstChild);
     }
-    container.appendChild(freshContainer);
     
-    // Use React 18 createRoot if available
+    // Add new container
+    container.appendChild(reactContainer);
+    
+    // Use appropriate React rendering method
     if (ReactDOM.createRoot) {
-      const root = ReactDOM.createRoot(freshContainer);
+      const root = ReactDOM.createRoot(reactContainer);
       container._reactRoot = root;
       root.render(<DetectionPopup data={data} onClose={() => destroyDetectionPreview()} />);
     } else {
       ReactDOM.render(
-        <DetectionPopup data={data} onClose={() => destroyDetectionPreview()} />,
-        freshContainer
+        <DetectionPopup data={data} onClose={() => destroyDetectionPreview()} />, 
+        reactContainer
       );
     }
   } catch (error) {
-    console.error('DETECTION PREVIEW: Error rendering popup:', error);
+    console.error('Error rendering detection popup:', error);
   }
 }
 
 /**
  * Show the detection preview
  */
-function showDetectionPreview(data) {
-  console.log('DETECTION PREVIEW: showDetectionPreview called with data:', data);
+async function showDetectionPreview(data) {
+  console.log('showDetectionPreview called with data:', {
+    hasData: !!data,
+    hasDetections: !!data?.detections,
+    hasTrees: !!data?.trees,
+    hasJobId: !!data?.job_id,
+    jobId: data?.job_id
+  });
   
   if (!data) {
-    console.error('DETECTION PREVIEW: No data provided');
+    console.error('No data provided to showDetectionPreview');
     return;
   }
   
-  // Ensure trees array exists
-  if (!Array.isArray(data.trees)) {
-    data.trees = [];
-  }
+  // Remove any existing preview
+  destroyDetectionPreview();
   
-  // Clean up any existing preview
-  try {
-    const existingContainer = document.getElementById('detection-popup-container');
-    if (existingContainer && existingContainer.parentNode) {
-      existingContainer.parentNode.removeChild(existingContainer);
+  // Extract job ID
+  const jobId = data.job_id;
+  
+  // If there's no tree data in the provided object but we have a job ID,
+  // try to load the trees.json file directly as a fallback
+  let enrichedData = { ...data };
+  
+  if ((!data.trees || data.trees.length === 0) && 
+      (!data.detections || data.detections.length === 0) && 
+      jobId) {
+    console.log(`No tree data found, attempting direct trees.json load for job ${jobId}`);
+    const treesJson = await loadTreesJsonDirectly(jobId);
+    
+    if (treesJson && treesJson.success && Array.isArray(treesJson.detections)) {
+      console.log(`Direct load successful, found ${treesJson.detections.length} trees`);
+      
+      // Add the tree data to our enriched data object
+      enrichedData = {
+        ...data,
+        // Add raw data
+        raw_trees_data: treesJson,
+        // Also add direct detections array
+        detections: treesJson.detections,
+        // And populate trees array
+        trees: treesJson.detections.map(detection => {
+          const className = detection.class ? detection.class.replace(/\s+/g, '_') : 'healthy_tree';
+          return {
+            ...detection,
+            class: className,
+            category: className
+          };
+        })
+      };
     }
-  } catch (error) {
-    console.error('DETECTION PREVIEW: Error removing existing preview:', error);
   }
   
   // Create container
@@ -669,42 +741,38 @@ function showDetectionPreview(data) {
   document.body.appendChild(popupContainer);
   window._detectionPopupContainer = popupContainer;
   
-  // Render popup
-  renderPopup(data, popupContainer);
+  // Render popup with enriched data
+  renderPopup(enrichedData, popupContainer);
   
   // Prevent scrolling
   document.body.style.overflow = 'hidden';
   
   // Store data for reuse
-  window._lastPreviewData = data;
+  window._lastPreviewData = enrichedData;
 }
 
 /**
  * Remove the detection preview
  */
 function destroyDetectionPreview() {
-  console.log('DETECTION PREVIEW: destroyDetectionPreview called');
+  const container = document.getElementById('detection-popup-container');
   
-  const popupContainer = window._detectionPopupContainer || 
-                        document.getElementById('detection-popup-container');
-  
-  if (popupContainer) {
+  if (container) {
     try {
       // Unmount React component
-      if (popupContainer._reactRoot) {
-        popupContainer._reactRoot.unmount();
-        popupContainer._reactRoot = null;
+      if (container._reactRoot) {
+        container._reactRoot.unmount();
       } else if (ReactDOM.unmountComponentAtNode) {
         const innerContainer = document.getElementById('detection-popup-inner-container');
         if (innerContainer) {
           ReactDOM.unmountComponentAtNode(innerContainer);
         }
-        ReactDOM.unmountComponentAtNode(popupContainer);
+        ReactDOM.unmountComponentAtNode(container);
       }
       
       // Remove from DOM
-      if (popupContainer.parentNode) {
-        popupContainer.parentNode.removeChild(popupContainer);
+      if (container.parentNode) {
+        container.parentNode.removeChild(container);
       }
       
       // Restore scrolling
@@ -713,7 +781,7 @@ function destroyDetectionPreview() {
       // Clear reference
       window._detectionPopupContainer = null;
     } catch (error) {
-      console.error('DETECTION PREVIEW: Error destroying preview:', error);
+      console.error('Error cleaning up detection preview:', error);
     }
   }
 }
@@ -724,16 +792,38 @@ window.destroyDetectionPreview = destroyDetectionPreview;
 
 // Set up event listeners
 document.addEventListener('DOMContentLoaded', () => {
+  // Ensure global functions are available
   window.showDetectionPreview = showDetectionPreview;
   window.destroyDetectionPreview = destroyDetectionPreview;
   
-  // Listen for fastInferenceResults event
+  // Listen for events that should trigger the preview
   document.addEventListener('fastInferenceResults', event => {
     if (event.detail) {
-      console.log('DETECTION PREVIEW: Received fastInferenceResults event');
+      console.log('Received fastInferenceResults event');
       showDetectionPreview(event.detail);
     }
   });
+  
+  document.addEventListener('detectionDataLoaded', event => {
+    if (event.detail) {
+      console.log('Received detectionDataLoaded event');
+      showDetectionPreview(event.detail);
+    }
+  });
+  
+  // Add helper function to check for existing detection data
+  window.checkAndShowDetectionPreview = () => {
+    if (window._lastPreviewData) {
+      console.log('Found cached detection data');
+      showDetectionPreview(window._lastPreviewData);
+      return true;
+    } else if (window.mlDetectionData) {
+      console.log('Found global mlDetectionData');
+      showDetectionPreview(window.mlDetectionData);
+      return true;
+    }
+    return false;
+  };
 });
 
 // Export functions

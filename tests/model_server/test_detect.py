@@ -36,8 +36,8 @@ class TestDetectEndpoint(unittest.TestCase):
     @patch('tree_ml.pipeline.model_server.GroundedSAMServer')
     def test_detect_endpoint_with_json(self, mock_server):
         """Test the detection endpoint with JSON payload."""
-        # Add /detect endpoint to app that accepts JSON
-        @app.post("/detect", status_code=202)
+        # Define a custom endpoint for the test
+        @app.post("/detect_json", status_code=202)
         async def detect_trees_json(data: dict):
             return {"job_id": "detection_1234567890", "status": "processing"}
         
@@ -54,7 +54,7 @@ class TestDetectEndpoint(unittest.TestCase):
         }
         
         # Make the request
-        response = self.client.post("/detect", json=valid_data)
+        response = self.client.post("/detect_json", json=valid_data)
         self.assertEqual(response.status_code, 202)  # Accepted
         
         data = response.json()

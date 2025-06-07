@@ -24,14 +24,17 @@ import {
   Smartphone,
   Sparkles,
   TreePine,
-  X
+  X,
+  Activity,
+  Heart,
+  Leaf
 } from 'lucide-react';
 import { useGeminiTreeDetection } from '../../hooks/useGeminiTreeDetection';
 
 /**
- * AnalyticsPanel - Side panel for object risk analysis
- * This component displays detailed risk analysis for detected objects
- * and integrates with the ValidationQueue and Detection systems
+ * AnalyticsPanel - Full screen workflow for comprehensive tree analytics
+ * This component displays detailed analytics across three categories:
+ * Risk Assessment, Health Analysis, and Species Identification
  */
 const AnalyticsPanel = ({
   treeData = null,
@@ -39,7 +42,7 @@ const AnalyticsPanel = ({
   onSaveToQueue = () => {},
   className = ""
 }) => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('risk');
   const [detectedObjects, setDetectedObjects] = useState([]);
   // Risk factors based on Tree Care requirements from the specs
   const [selectedRiskFactors, setSelectedRiskFactors] = useState({
@@ -387,7 +390,6 @@ For tree care professionals, please use arborist terminology where appropriate.`
   }, [selectedRiskFactors, currentObject, activeTab]);
   
   // Handle Gemini Analysis for the current object
-
   const handleGeminiAnalysis = async () => {
     if (!currentObject || !isGeminiEnabled) return;
     
@@ -434,38 +436,74 @@ For tree care professionals, please use arborist terminology where appropriate.`
     }
   };
   
+  // Function to close the panel
+  const closePanel = () => {
+    window.dispatchEvent(new CustomEvent('closeAnalyticsPanel', {
+      detail: { source: 'close_button' }
+    }));
+  };
+
   return (
-    <div className="p-0 bg-white overflow-auto h-full flex flex-col relative">
-      {/* Navigation tabs */}
-      <div className="bg-gray-50 px-4 pt-2 pb-0">
-        <div className="flex space-x-1 border-b border-gray-200">
-          <button 
-            className={`px-3 py-1.5 text-xs font-medium ${
-              activeTab === 'overview' 
-                ? 'border-b-2 border-gray-900 text-gray-900 bg-gray-50' 
-                : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-            onClick={() => setActiveTab('overview')}
-          >
-            Object Details
-          </button>
-          <button 
-            className={`px-3 py-1.5 text-xs font-medium ${
-              activeTab === 'analysis' 
-                ? 'border-b-2 border-gray-900 text-gray-900 bg-gray-50' 
-                : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-            onClick={() => setActiveTab('analysis')}
-          >
-            Risk Analysis
-          </button>
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 animate-fadeIn"
+      onClick={closePanel} // Close when clicking the backdrop
+    >
+      <div 
+        className="bg-white rounded-md shadow-xl overflow-hidden w-5/6 max-w-5xl h-5/6 flex flex-col animate-scaleIn"
+        onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the panel itself
+      >
+        {/* Header with Navigation tabs - Dark Emerald Green Theme */}
+        <div className="bg-emerald-950 px-4 pt-2 pb-0 shadow-md">
+          <div className="flex justify-between border-b border-emerald-800">
+            <div className="flex">
+              <button 
+                className={`px-4 py-2 text-sm font-medium flex items-center ${
+                  activeTab === 'risk' 
+                    ? 'border-b-2 border-emerald-300 text-white bg-emerald-900' 
+                    : 'text-emerald-200 hover:text-white hover:bg-emerald-900/50'
+                }`}
+                onClick={() => setActiveTab('risk')}
+              >
+                <AlertTriangle className="h-4 w-4 mr-2" />
+                Risk
+              </button>
+              <button 
+                className={`px-4 py-2 text-sm font-medium flex items-center ${
+                  activeTab === 'health' 
+                    ? 'border-b-2 border-emerald-300 text-white bg-emerald-900' 
+                    : 'text-emerald-200 hover:text-white hover:bg-emerald-900/50'
+                }`}
+                onClick={() => setActiveTab('health')}
+              >
+                <Heart className="h-4 w-4 mr-2" />
+                Health
+              </button>
+              <button 
+                className={`px-4 py-2 text-sm font-medium flex items-center ${
+                  activeTab === 'species' 
+                    ? 'border-b-2 border-emerald-300 text-white bg-emerald-900' 
+                    : 'text-emerald-200 hover:text-white hover:bg-emerald-900/50'
+                }`}
+                onClick={() => setActiveTab('species')}
+              >
+                <Leaf className="h-4 w-4 mr-2" />
+                Species
+              </button>
+            </div>
+            <button 
+              className="text-emerald-200 hover:text-white focus:outline-none p-1 flex items-center mr-1"
+              onClick={closePanel}
+              title="Close analytics panel"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
-      </div>
-      
-      {/* Content area */}
-      <div className="flex-1 overflow-auto pb-16">
-        {activeTab === 'overview' && (
-          <div className="space-y-3 px-4 py-3">
+        
+        {/* Content area - Scrollable with padding */}
+        <div className="flex-1 overflow-auto bg-gray-50">
+        {activeTab === 'risk' && (
+          <div className="space-y-3 p-4">
             {!currentObject ? (
               <Card className="border-slate-200">
                 <CardContent className="p-4 text-center">
@@ -481,12 +519,12 @@ For tree care professionals, please use arborist terminology where appropriate.`
             ) : (
               <>
                 {/* Horizontal Validation Queue (Object Counter) */}
-                <Card className="mb-3">
-                  <CardHeader className="pb-2 pt-3 px-3 bg-gray-50">
-                    <CardTitle className="text-xs text-gray-900 uppercase tracking-wider flex items-center justify-between">
+                <Card className="mb-3 border-0 rounded-md shadow-[0_1px_3px_0_rgba(6,78,59,0.1)]">
+                  <CardHeader className="pb-2 pt-3 px-3 bg-emerald-900">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider flex items-center justify-between">
                       <span>Objects for Validation ({detectedObjects.length})</span>
                       <button 
-                        className="text-xs text-purple-900 hover:text-purple-800 flex items-center"
+                        className="text-xs text-emerald-100 hover:text-white flex items-center"
                         onClick={() => {
                           // Navigate to validation queue panel
                           console.log('Navigate to validation queue');
@@ -512,8 +550,8 @@ For tree care professionals, please use arborist terminology where appropriate.`
                             key={object.id} 
                             className={`flex-shrink-0 w-28 rounded-md border cursor-pointer transition ${
                               object.id === (currentObject?.id) 
-                                ? 'border-purple-900 bg-gray-50' 
-                                : 'border-slate-200 hover:border-purple-300 hover:bg-gray-50/30'
+                                ? 'border-emerald-900 bg-gray-50' 
+                                : 'border-slate-200 hover:border-emerald-300 hover:bg-gray-50/30'
                             }`}
                             onClick={() => setCurrentObject(object)}
                           >
@@ -575,8 +613,8 @@ For tree care professionals, please use arborist terminology where appropriate.`
                 </div>
                 
                 {/* Basic object details */}
-                <Card className="border border-gray-200 rounded-none overflow-hidden">
-                  <CardHeader className="pb-1.5 pt-2 px-3 bg-purple-950 rounded-none">
+                <Card className="border-0 rounded-md overflow-hidden shadow-[0_1px_3px_0_rgba(6,78,59,0.1)]">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
                     <CardTitle className="text-xs text-white uppercase tracking-wider">
                       Object Details
                     </CardTitle>
@@ -643,9 +681,9 @@ For tree care professionals, please use arborist terminology where appropriate.`
                 </Card>
                 
                 {/* Analysis & risk status */}
-                <Card>
-                  <CardHeader className="pb-2 pt-3 px-3 bg-gray-50">
-                    <CardTitle className="text-xs text-gray-900 uppercase tracking-wider flex items-center justify-between">
+                <Card className="border-0 shadow-sm mt-3">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider flex items-center justify-between">
                       <span>Risk Analysis</span>
                       {currentObject.analysis_status === 'complete' ? (
                         <span className="bg-green-50 text-green-700 px-1.5 py-0.5 rounded text-[10px] font-medium">Complete</span>
@@ -654,7 +692,7 @@ For tree care professionals, please use arborist terminology where appropriate.`
                       )}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-3 pb-3">
+                  <CardContent className="px-3 pb-3 pt-3">
                     {currentObject.analysis_status === 'complete' ? (
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
@@ -697,14 +735,14 @@ For tree care professionals, please use arborist terminology where appropriate.`
                         
                         <div className="flex space-x-2 mt-3">
                           <Button 
-                            className="flex-1 bg-purple-900 hover:bg-purple-800 text-white shadow-sm text-sm py-1.5 h-auto"
-                            onClick={() => setActiveTab('analysis')}
+                            className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-1.5 h-auto rounded-md"
+                            onClick={() => setActiveTab('health')}
                           >
                             <CircleAlert className="h-3.5 w-3.5 mr-1.5" />
                             Edit Analysis
                           </Button>
                           <Button 
-                            className="flex-1 bg-white hover:bg-gray-100 text-neutral-800 text-sm px-2 py-1.5 h-auto border border-neutral-400"
+                            className="flex-1 bg-white hover:bg-emerald-50 text-emerald-800 text-sm px-2 py-1.5 h-auto rounded-md border border-emerald-300"
                             onClick={() => saveToValidationQueue()}
                           >
                             <Save className="h-3.5 w-3.5 mr-1.5" />
@@ -722,17 +760,17 @@ For tree care professionals, please use arborist terminology where appropriate.`
                           </p>
                         </div>
                         
-                        <div className="absolute bottom-0 left-0 right-0 bg-white p-3 border-t border-gray-200 grid grid-cols-2 gap-2">
+                        <div className="mt-4 grid grid-cols-2 gap-2">
                           <Button 
-                            className="flex-1 bg-purple-950 hover:bg-purple-900 text-white shadow-sm text-sm py-2 h-auto rounded border border-gray-700"
-                            onClick={() => setActiveTab('analysis')}
+                            className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-2 h-auto rounded-md border border-emerald-600"
+                            onClick={() => setActiveTab('health')}
                           >
                             <CircleAlert className="h-3.5 w-3.5 mr-1.5" />
                             Start Analysis
                           </Button>
                           
                           <Button 
-                            className="flex-1 bg-gray-100 hover:bg-gray-200 text-purple-950 font-semibold text-sm py-2 h-auto rounded border border-gray-700"
+                            className="flex-1 bg-white hover:bg-emerald-50 text-emerald-800 font-semibold text-sm py-2 h-auto rounded-md border border-emerald-300"
                             onClick={() => {
                               // Display a dialog or modal to review the prompt
                               alert("Review Prompt: This would show the current analysis prompt for review.");
@@ -748,345 +786,14 @@ For tree care professionals, please use arborist terminology where appropriate.`
                   </CardContent>
                 </Card>
                 
-                
-                {/* Gemini Analysis Card - shown if analysis has been run */}
-                {currentObject?.gemini_analysis && (
-                  <Card>
-                    <CardHeader className="pb-2 pt-3 px-3 bg-gray-50">
-                      <CardTitle className="text-xs text-gray-900 uppercase tracking-wider flex items-center">
-                        <Brain className="h-3.5 w-3.5 mr-1.5 text-purple-900" />
-                        Gemini AI Analysis
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-3 pb-3">
-                      <div className="text-xs text-slate-700 space-y-2">
-                        {currentObject.gemini_analysis.risk_summary && (
-                          <div>
-                            <p className="font-medium mb-1">Risk Summary:</p>
-                            <p className="text-slate-600 bg-gray-50 p-1.5 rounded text-[11px]">
-                              {currentObject.gemini_analysis.risk_summary}
-                            </p>
-                          </div>
-                        )}
-                        {currentObject.gemini_analysis.recommendations && (
-                          <div>
-                            <p className="font-medium mb-1">Recommendations:</p>
-                            <p className="text-slate-600 bg-green-50 p-1.5 rounded text-[11px]">
-                              {currentObject.gemini_analysis.recommendations}
-                            </p>
-                          </div>
-                        )}
-                        {currentObject.analysis_timestamp && (
-                          <p className="text-[10px] text-slate-500 mt-1 italic">
-                            Analysis performed: {new Date(currentObject.analysis_timestamp).toLocaleString()}
-                          </p>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-                
-              </>
-            )}
-          </div>
-        )}
-        
-        {activeTab === 'analysis' && (
-          <div className="space-y-3 px-4 py-3">
-            {!currentObject ? (
-              <Card className="border-slate-200">
-                <CardContent className="p-4 text-center">
-                  <Search className="h-8 w-8 mx-auto mb-2 text-slate-400" />
-                  <p className="text-sm text-slate-600 font-medium">
-                    No object selected
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1">
-                    Select an object on the map or from the detection sidebar
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <>
-                <Card>
-                  <CardHeader className="pb-2 pt-3 px-3 bg-gray-50">
-                    <CardTitle className="text-xs text-gray-900 uppercase tracking-wider">
-                      Risk Assessment
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="px-3 pb-3">
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <label className="text-xs text-slate-700 font-medium">Object Status</label>
-                        <div className={`flex items-center rounded-md p-1.5 ${
-                          riskLevel === 'high' ? 'bg-red-50 border border-red-200' :
-                          riskLevel === 'medium' ? 'bg-orange-50 border border-orange-200' :
-                          riskLevel === 'low' ? 'bg-yellow-100 border border-yellow-200' :
-                          'bg-green-50 border border-green-200'
-                        }`}>
-                          <div className="flex-1 flex items-center">
-                            <span className={`w-2 h-2 rounded-full mr-2 ${
-                              riskLevel === 'high' ? 'bg-red-500' :
-                              riskLevel === 'medium' ? 'bg-orange-500' :
-                              riskLevel === 'low' ? 'bg-yellow-500' :
-                              'bg-green-500'
-                            }`}></span>
-                            <span className="text-xs font-medium">
-                              {riskLevel === 'high' ? 'High Risk' :
-                                riskLevel === 'medium' ? 'Medium Risk' :
-                                riskLevel === 'low' ? 'Low Risk' :
-                                'No Risk'}
-                            </span>
-                          </div>
-                          <div className="text-[10px] text-slate-600">
-                            {getSelectedFactorCount()} factor{getSelectedFactorCount() !== 1 ? 's' : ''} selected
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <label className="text-xs text-slate-700 font-medium">Risk Factors</label>
-                        <div className="space-y-1.5">
-                          <div 
-                            className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer ${
-                              selectedRiskFactors.treeHealth ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            onClick={() => handleRiskFactorChange('treeHealth')}
-                          >
-                            <div className="flex items-center">
-                              <AlertTriangle className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
-                              <span className="text-xs">Tree Health Issues</span>
-                              <span className="ml-1 text-[9px] text-slate-500">(dead/diseased)</span>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              selectedRiskFactors.treeHealth ? 'bg-red-500 text-white' : 'border border-slate-300'
-                            }`}>
-                              {selectedRiskFactors.treeHealth && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-                                  <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div 
-                            className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer ${
-                              selectedRiskFactors.structuralDefects ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            onClick={() => handleRiskFactorChange('structuralDefects')}
-                          >
-                            <div className="flex items-center">
-                              <AlertTriangle className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
-                              <span className="text-xs">Structural Defects</span>
-                              <span className="ml-1 text-[9px] text-slate-500">(cracks/breaks)</span>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              selectedRiskFactors.structuralDefects ? 'bg-red-500 text-white' : 'border border-slate-300'
-                            }`}>
-                              {selectedRiskFactors.structuralDefects && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-                                  <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div 
-                            className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer ${
-                              selectedRiskFactors.leaningAngle ? 'bg-orange-50 border border-orange-200' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            onClick={() => handleRiskFactorChange('leaningAngle')}
-                          >
-                            <div className="flex items-center">
-                              <Ruler className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
-                              <span className="text-xs">Leaning Angle</span>
-                              <span className="ml-1 text-[9px] text-slate-500">(15-40°+)</span>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              selectedRiskFactors.leaningAngle ? 'bg-orange-500 text-white' : 'border border-slate-300'
-                            }`}>
-                              {selectedRiskFactors.leaningAngle && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-                                  <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div 
-                            className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer ${
-                              selectedRiskFactors.treeSize ? 'bg-orange-50 border border-orange-200' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            onClick={() => handleRiskFactorChange('treeSize')}
-                          >
-                            <div className="flex items-center">
-                              <Ruler className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
-                              <span className="text-xs">Tree Size</span>
-                              <span className="ml-1 text-[9px] text-slate-500">(SM/M/LG)</span>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              selectedRiskFactors.treeSize ? 'bg-orange-500 text-white' : 'border border-slate-300'
-                            }`}>
-                              {selectedRiskFactors.treeSize && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-                                  <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div 
-                            className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer ${
-                              selectedRiskFactors.proximityToStructures ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            onClick={() => handleRiskFactorChange('proximityToStructures')}
-                          >
-                            <div className="flex items-center">
-                              <Smartphone className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
-                              <span className="text-xs">Near High-Risk Areas</span>
-                              <span className="ml-1 text-[9px] text-slate-500">(buildings/power)</span>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              selectedRiskFactors.proximityToStructures ? 'bg-red-500 text-white' : 'border border-slate-300'
-                            }`}>
-                              {selectedRiskFactors.proximityToStructures && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-                                  <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div 
-                            className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer ${
-                              selectedRiskFactors.canopyDensity ? 'bg-orange-50 border border-orange-200' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            onClick={() => handleRiskFactorChange('canopyDensity')}
-                          >
-                            <div className="flex items-center">
-                              <TreePine className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
-                              <span className="text-xs">Canopy Density Issues</span>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              selectedRiskFactors.canopyDensity ? 'bg-orange-500 text-white' : 'border border-slate-300'
-                            }`}>
-                              {selectedRiskFactors.canopyDensity && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-                                  <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div 
-                            className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer ${
-                              selectedRiskFactors.deadLimbs ? 'bg-red-50 border border-red-200' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            onClick={() => handleRiskFactorChange('deadLimbs')}
-                          >
-                            <div className="flex items-center">
-                              <AlertTriangle className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
-                              <span className="text-xs">Dead/Hazardous Limbs</span>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              selectedRiskFactors.deadLimbs ? 'bg-red-500 text-white' : 'border border-slate-300'
-                            }`}>
-                              {selectedRiskFactors.deadLimbs && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-                                  <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div 
-                            className={`flex items-center justify-between p-1.5 rounded-md cursor-pointer ${
-                              selectedRiskFactors.rootSoilIssues ? 'bg-orange-50 border border-orange-200' : 'bg-slate-50 border border-slate-200 hover:bg-slate-100'
-                            }`}
-                            onClick={() => handleRiskFactorChange('rootSoilIssues')}
-                          >
-                            <div className="flex items-center">
-                              <Layers className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
-                              <span className="text-xs">Root/Soil Condition</span>
-                            </div>
-                            <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                              selectedRiskFactors.rootSoilIssues ? 'bg-orange-500 text-white' : 'border border-slate-300'
-                            }`}>
-                              {selectedRiskFactors.rootSoilIssues && (
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4">
-                                  <polyline points="20 6 9 17 4 12"></polyline>
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {isGeminiEnabled && (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <label className="text-xs text-slate-700 font-medium">AI Analysis Prompt</label>
-                            <span className="text-[10px] text-purple-900 bg-gray-50 px-1.5 py-0.5 rounded">
-                              Gemini AI Enabled
-                            </span>
-                          </div>
-                          <div className="rounded-md border border-slate-200 bg-white">
-                            <Textarea 
-                              className="text-xs min-h-[150px] font-mono bg-white border-0 resize-y"
-                              placeholder="Select risk factors above to generate a customized prompt..."
-                              value={customQuery}
-                              onChange={(e) => setCustomQuery(e.target.value)}
-                            />
-                            <div className="p-2 border-t border-slate-200 bg-slate-50 rounded-b-md">
-                              <div className="text-[10px] text-slate-600 flex items-center">
-                                <Info className="h-3 w-3 mr-1 text-slate-400" />
-                                Customize this prompt to focus Gemini AI on specific risk factors. The AI analysis will help fill in details for validation.
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </CardContent>
-                  <CardFooter className="px-0 pb-16 pt-0">
-                    <div className="absolute bottom-0 left-0 right-0 bg-white p-3 border-t border-gray-200 grid grid-cols-2 gap-2">
-                      <Button 
-                        className="flex-1 bg-purple-950 hover:bg-purple-900 text-white shadow-sm text-sm py-2 h-auto rounded border border-gray-700"
-                        onClick={handleGeminiAnalysis}
-                        disabled={isAnalyzing || !customQuery}
-                      >
-                        {isAnalyzing ? (
-                          <>
-                            <div className="h-3.5 w-3.5 mr-1.5 animate-spin border-2 border-white border-opacity-20 border-t-white rounded-full"></div>
-                            Analyzing...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                            Start Analysis
-                          </>
-                        )}
-                      </Button>
-                      <Button 
-                        className="flex-1 bg-gray-100 hover:bg-gray-200 text-purple-950 font-semibold text-sm py-2 h-auto rounded border border-gray-700"
-                        onClick={() => {
-                          // Display a dialog or modal to review the prompt
-                          alert("Review Prompt: " + customQuery);
-                        }}
-                      >
-                        <FileCheck className="h-3.5 w-3.5 mr-1.5" />
-                        Review Prompt
-                      </Button>
-                    </div>
-                  </CardFooter>
-                </Card>
-                
-                <Card>
-                  <CardHeader className="pb-2 pt-3 px-3 bg-gray-50">
-                    <CardTitle className="text-xs text-gray-900 uppercase tracking-wider">
+                {/* Risk Level Guidelines section moved from Health tab to Risk tab */}
+                <Card className="border-0 rounded-md mt-3 shadow-[0_1px_3px_0_rgba(6,78,59,0.1)]">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider">
                       Risk Level Guidelines
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="px-3 pb-3 text-xs space-y-1.5">
+                  <CardContent className="px-3 pb-3 pt-3 text-xs space-y-1.5">
                     <div className="flex items-center">
                       <div className="w-2 h-2 rounded-full bg-red-500 mr-2"></div>
                       <span className="font-medium text-slate-700">High Risk</span>
@@ -1114,10 +821,467 @@ For tree care professionals, please use arborist terminology where appropriate.`
                     </div>
                   </CardContent>
                 </Card>
+                
+                {/* Gemini Analysis Card - shown if analysis has been run */}
+                {currentObject?.gemini_analysis && (
+                  <Card className="border-0 rounded-md mt-3 shadow-[0_1px_3px_0_rgba(6,78,59,0.1)]">
+                    <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                      <CardTitle className="text-xs text-white uppercase tracking-wider flex items-center">
+                        <Brain className="h-3.5 w-3.5 mr-1.5 text-white" />
+                        Gemini AI Analysis
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="px-3 pb-3 pt-3">
+                      <div className="text-xs text-slate-700 space-y-2">
+                        {currentObject.gemini_analysis.risk_summary && (
+                          <div>
+                            <p className="font-medium mb-1">Risk Summary:</p>
+                            <p className="text-slate-600 bg-gray-50 p-1.5 rounded text-[11px]">
+                              {currentObject.gemini_analysis.risk_summary}
+                            </p>
+                          </div>
+                        )}
+                        {currentObject.gemini_analysis.recommendations && (
+                          <div>
+                            <p className="font-medium mb-1">Recommendations:</p>
+                            <p className="text-slate-600 bg-green-50 p-1.5 rounded text-[11px]">
+                              {currentObject.gemini_analysis.recommendations}
+                            </p>
+                          </div>
+                        )}
+                        {currentObject.analysis_timestamp && (
+                          <p className="text-[10px] text-slate-500 mt-1 italic">
+                            Analysis performed: {new Date(currentObject.analysis_timestamp).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                {/* End of Risk tab content */}
               </>
             )}
           </div>
         )}
+        
+        {activeTab === 'health' && (
+          <div className="space-y-3 p-4">
+            {!currentObject ? (
+              <Card className="border-slate-200">
+                <CardContent className="p-4 text-center">
+                  <Search className="h-8 w-8 mx-auto mb-2 text-slate-400" />
+                  <p className="text-sm text-slate-600 font-medium">
+                    No object selected
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Select an object on the map or from the detection sidebar
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Horizontal Validation Queue (Object Counter) */}
+                <Card className="mb-3 border-0 rounded-md shadow-[0_1px_3px_0_rgba(6,78,59,0.1)]">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider flex items-center justify-between">
+                      <span>Objects for Validation ({detectedObjects.length})</span>
+                      <button 
+                        className="text-xs text-emerald-100 hover:text-white flex items-center"
+                        onClick={() => {
+                          // Navigate to validation queue panel
+                          console.log('Navigate to validation queue');
+                          
+                          // Trigger the validation queue panel to open
+                          window.dispatchEvent(new CustomEvent('openReviewPanel', {
+                            detail: { 
+                              source: 'analyticsPanel' 
+                            }
+                          }));
+                        }}
+                      >
+                        View All
+                        <ChevronRight className="h-3 w-3 ml-0.5" />
+                      </button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 py-3">
+                    <div className="relative pb-1">
+                      <div className="overflow-auto flex space-x-2 scrollbar-none max-w-full h-[68px]">
+                        {detectedObjects.map(object => (
+                          <div 
+                            key={object.id} 
+                            className={`flex-shrink-0 w-28 rounded-md border cursor-pointer transition ${
+                              object.id === (currentObject?.id) 
+                                ? 'border-emerald-900 bg-gray-50' 
+                                : 'border-slate-200 hover:border-emerald-300 hover:bg-gray-50/30'
+                            }`}
+                            onClick={() => setCurrentObject(object)}
+                          >
+                            <div className="p-1.5">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  object.risk_level === 'high' ? 'bg-red-500' :
+                                  object.risk_level === 'medium' ? 'bg-orange-500' :
+                                  object.risk_level === 'low' ? 'bg-yellow-500' :
+                                  'bg-green-500'
+                                }`}></div>
+                                <div className={`text-[8px] py-0.5 px-1 rounded ${
+                                  object.analysis_status === 'complete' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
+                                }`}>
+                                  {object.analysis_status === 'complete' ? 'Done' : 'Pending'}
+                                </div>
+                              </div>
+                              <div className="text-xs font-medium text-slate-700 truncate">
+                                {object.tree_species || object.species || 'Unspecified'}
+                              </div>
+                              <div className="text-[8px] text-slate-500 truncate">
+                                {object.id}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {detectedObjects.length === 0 && (
+                          <div className="flex items-center justify-center w-full py-3 px-2 text-center">
+                            <p className="text-xs text-slate-500">
+                              No objects in validation queue
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Object Details */}
+                <Card className="border-0 rounded-md overflow-hidden shadow-[0_1px_3px_0_rgba(6,78,59,0.1)]">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider">
+                      Object Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <div className="text-xs text-slate-500 mb-0.5">ID</div>
+                      <div className="font-mono text-xs text-slate-700">{currentObject.id}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-0.5">Source</div>
+                      <div className="flex items-center">
+                        <span className="text-xs text-slate-700">{currentObject.detection_source}</span>
+                        {currentObject.detection_source === 'ML Detection' && (
+                          <span className="ml-1 px-1 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px]">
+                            {Math.round(currentObject.confidence * 100)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-0.5">Name / Species</div>
+                      <div className="flex items-center">
+                        <span className="text-xs text-slate-700">
+                          {currentObject.tree_species ? `${currentObject.tree_species}` : 'Unknown'}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-0.5">Address</div>
+                      <div className="flex items-center">
+                        <span className="text-xs text-slate-700">
+                          {currentObject.address ? currentObject.address : '123 Example St'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card className="border-0 rounded-md shadow-[0_1px_3px_0_rgba(6,78,59,0.1)] mt-3">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider flex items-center">
+                      <Heart className="h-3.5 w-3.5 mr-1.5" />
+                      Health Assessment
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-3">
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-slate-700 font-medium">Tree Health Status</label>
+                        <div className="flex items-center rounded-md p-1.5 bg-slate-50 border border-slate-200">
+                          <div className="flex-1 flex items-center">
+                            <span className="w-2 h-2 rounded-full mr-2 bg-emerald-500"></span>
+                            <span className="text-xs font-medium text-slate-800">
+                              {currentObject.tree_condition || 'Unknown'}
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-slate-600">
+                            Last assessed: {new Date().toLocaleDateString()}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <label className="text-xs text-slate-700 font-medium">Health Indicators</label>
+                        <div className="space-y-1.5">
+                          {/* Health indicators with slate theme to match risk assessment items */}
+                          <div className="flex items-center justify-between p-1.5 rounded-md bg-slate-50 border border-slate-200">
+                            <div className="flex items-center">
+                              <Activity className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
+                              <span className="text-xs text-slate-800">Canopy Density</span>
+                            </div>
+                            <div className="text-xs font-medium text-slate-900">
+                              {currentObject.canopy_density || 'Normal'}
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between p-1.5 rounded-md bg-slate-50 border border-slate-200">
+                            <div className="flex items-center">
+                              <Activity className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
+                              <span className="text-xs text-slate-800">Foliage Color</span>
+                            </div>
+                            <div className="text-xs font-medium text-slate-900">
+                              Good
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between p-1.5 rounded-md bg-slate-50 border border-slate-200">
+                            <div className="flex items-center">
+                              <Activity className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
+                              <span className="text-xs text-slate-800">Trunk Condition</span>
+                            </div>
+                            <div className="text-xs font-medium text-slate-900">
+                              Healthy
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center justify-between p-1.5 rounded-md bg-slate-50 border border-slate-200">
+                            <div className="flex items-center">
+                              <Activity className="h-3.5 w-3.5 mr-1.5 text-slate-700" />
+                              <span className="text-xs text-slate-800">Growth Pattern</span>
+                            </div>
+                            <div className="text-xs font-medium text-slate-900">
+                              Normal
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Recommendations section */}
+                      <div>
+                        <label className="text-xs text-slate-700 font-medium">Health Recommendations</label>
+                        <div className="mt-1 p-2 bg-white border border-slate-100 rounded-md text-xs text-slate-700">
+                          <p>Based on the assessment, this tree appears to be in good health. Regular monitoring is recommended to maintain its condition.</p>
+                        </div>
+                      </div>
+                      
+                      {/* Add the buttons at the bottom of Health Assessment card */}
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <Button 
+                          className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-2 h-auto rounded-md border border-emerald-600"
+                          onClick={handleGeminiAnalysis}
+                          disabled={isAnalyzing || !customQuery}
+                        >
+                          {isAnalyzing ? (
+                            <>
+                              <div className="h-3.5 w-3.5 mr-1.5 animate-spin border-2 border-white border-opacity-20 border-t-white rounded-full"></div>
+                              Analyzing...
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                              Full Assessment
+                            </>
+                          )}
+                        </Button>
+                        <Button 
+                          className="flex-1 bg-white hover:bg-emerald-50 text-emerald-800 font-semibold text-sm py-2 h-auto rounded-md border border-emerald-300"
+                          onClick={() => {
+                            // Save health report
+                            alert("Health report saved successfully");
+                          }}
+                        >
+                          <Save className="h-3.5 w-3.5 mr-1.5" />
+                          Health Report
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+        )}
+        
+        {/* Species Tab */}
+        {activeTab === 'species' && (
+          <div className="space-y-3 p-4">
+            {!currentObject ? (
+              <Card className="border-slate-200">
+                <CardContent className="p-4 text-center">
+                  <Search className="h-8 w-8 mx-auto mb-2 text-slate-400" />
+                  <p className="text-sm text-slate-600 font-medium">
+                    No object selected
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Select an object on the map or from the detection sidebar
+                  </p>
+                </CardContent>
+              </Card>
+            ) : (
+              <>
+                {/* Horizontal Validation Queue (Object Counter) */}
+                <Card className="mb-3 border-0 rounded-md shadow-[0_1px_3px_0_rgba(6,78,59,0.1)]">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider flex items-center justify-between">
+                      <span>Objects for Validation ({detectedObjects.length})</span>
+                      <button 
+                        className="text-xs text-emerald-100 hover:text-white flex items-center"
+                        onClick={() => {
+                          // Navigate to validation queue panel
+                          console.log('Navigate to validation queue');
+                          
+                          // Trigger the validation queue panel to open
+                          window.dispatchEvent(new CustomEvent('openReviewPanel', {
+                            detail: { 
+                              source: 'analyticsPanel' 
+                            }
+                          }));
+                        }}
+                      >
+                        View All
+                        <ChevronRight className="h-3 w-3 ml-0.5" />
+                      </button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 py-3">
+                    <div className="relative pb-1">
+                      <div className="overflow-auto flex space-x-2 scrollbar-none max-w-full h-[68px]">
+                        {detectedObjects.map(object => (
+                          <div 
+                            key={object.id} 
+                            className={`flex-shrink-0 w-28 rounded-md border cursor-pointer transition ${
+                              object.id === (currentObject?.id) 
+                                ? 'border-emerald-900 bg-gray-50' 
+                                : 'border-slate-200 hover:border-emerald-300 hover:bg-gray-50/30'
+                            }`}
+                            onClick={() => setCurrentObject(object)}
+                          >
+                            <div className="p-1.5">
+                              <div className="flex items-center justify-between mb-0.5">
+                                <div className={`w-2 h-2 rounded-full ${
+                                  object.risk_level === 'high' ? 'bg-red-500' :
+                                  object.risk_level === 'medium' ? 'bg-orange-500' :
+                                  object.risk_level === 'low' ? 'bg-yellow-500' :
+                                  'bg-green-500'
+                                }`}></div>
+                                <div className={`text-[8px] py-0.5 px-1 rounded ${
+                                  object.analysis_status === 'complete' ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'
+                                }`}>
+                                  {object.analysis_status === 'complete' ? 'Done' : 'Pending'}
+                                </div>
+                              </div>
+                              <div className="text-xs font-medium text-slate-700 truncate">
+                                {object.tree_species || object.species || 'Unspecified'}
+                              </div>
+                              <div className="text-[8px] text-slate-500 truncate">
+                                {object.id}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                        
+                        {detectedObjects.length === 0 && (
+                          <div className="flex items-center justify-center w-full py-3 px-2 text-center">
+                            <p className="text-xs text-slate-500">
+                              No objects in validation queue
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Object Details */}
+                <Card className="border-0 rounded-md overflow-hidden shadow-[0_1px_3px_0_rgba(6,78,59,0.1)]">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider">
+                      Object Details
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 pb-3 pt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <div className="text-xs text-slate-500 mb-0.5">ID</div>
+                      <div className="font-mono text-xs text-slate-700">{currentObject.id}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-0.5">Source</div>
+                      <div className="flex items-center">
+                        <span className="text-xs text-slate-700">{currentObject.detection_source}</span>
+                        {currentObject.detection_source === 'ML Detection' && (
+                          <span className="ml-1 px-1 py-0.5 bg-blue-50 text-blue-700 rounded text-[10px]">
+                            {Math.round(currentObject.confidence * 100)}%
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-0.5">Name / Species</div>
+                      <div className="flex items-center">
+                        <span className="text-xs text-slate-700">
+                          {currentObject.tree_species ? `${currentObject.tree_species}` : 'Unknown'}
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-slate-500 mb-0.5">Address</div>
+                      <div className="flex items-center">
+                        <span className="text-xs text-slate-700">
+                          {currentObject.address ? currentObject.address : '123 Example St'}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <Card className="border-0 rounded-md overflow-hidden shadow-[0_1px_3px_0_rgba(6,78,59,0.1)] mt-3">
+                  <CardHeader className="pb-1.5 pt-2 px-3 bg-emerald-900 rounded-none">
+                    <CardTitle className="text-xs text-white uppercase tracking-wider flex items-center">
+                      <Leaf className="h-3.5 w-3.5 mr-1.5" />
+                      Species Identification
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-3 py-4">
+                    <div className="text-center">
+                      <p className="text-sm text-emerald-800 font-semibold mb-3">
+                        {currentObject.tree_species || 'Unknown Species'}
+                      </p>
+                      <p className="text-xs text-slate-600 mb-4">
+                        Species identification is based on visual recognition and database matching.
+                      </p>
+                      
+                      <div className="grid grid-cols-2 gap-3 mt-4">
+                        <Button 
+                          className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-1.5 h-auto rounded-md"
+                        >
+                          <Search className="h-3.5 w-3.5 mr-1.5" />
+                          Analyze Image
+                        </Button>
+                        <Button 
+                          className="flex-1 bg-white hover:bg-emerald-50 text-emerald-800 text-sm px-2 py-1.5 h-auto rounded-md border border-emerald-300"
+                        >
+                          <FileText className="h-3.5 w-3.5 mr-1.5" />
+                          View Species Data
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
+            )}
+          </div>
+        )}
+      </div>
       </div>
     </div>
   );

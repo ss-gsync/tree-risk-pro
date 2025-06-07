@@ -688,31 +688,29 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
   useEffect(() => {
     const handleOpenTreeDetection = (event) => {
       // Check if this was triggered by the Detect button
-      const isButtonTriggered = event.buttonTriggered === true || 
-                               (event.detail && event.detail.buttonTriggered === true);
+      const isFromDetectButton = event.detail?.source === "detect_button";
       
       console.log("Tree detection requested from sidebar", {
         detail: event.detail,
-        buttonTriggered: isButtonTriggered
+        isFromDetectButton: isFromDetectButton
       });
       
-      // For safety, add global flag that detection was triggered by button
-      if (isButtonTriggered) {
-        window.detectionButtonTriggered = true;
-        window.detectionShowOverlay = true;
-        
-        // Set global ML overlay settings
-        window.mlOverlaySettings = {
-          ...(window.mlOverlaySettings || {}),
-          showOverlay: true,
-          pendingButtonTrigger: false
-        };
-      }
+      // Always make overlay visible
+      window.detectionShowOverlay = true;
       
-      // Check if map reference is available
-      if (!mapRef || !mapRef.current || !mapRef.current.getMap) {
+      // Set global ML overlay settings
+      window.mlOverlaySettings = {
+        ...(window.mlOverlaySettings || {}),
+        showOverlay: true
+      };
+      
+      // For sidebar opening, don't block on map availability
+      if (!isFromDetectButton) {
+        // Skip map check for sidebar initialization
+        console.log("Sidebar initialization - skipping map check");
+      } else if (!mapRef || !mapRef.current || !mapRef.current.getMap) {
+        // Only check map for actual detection button click
         console.error("Map reference not available for tree detection");
-        alert("Map not ready. Please try again in a moment.");
         return;
       }
       
@@ -739,16 +737,23 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
         useRealGemini,
         saveToResponseJson,
         executeMLPipeline,
-        buttonTriggered: isButtonTriggered,
+        buttonTriggered: isFromDetectButton,
         geminiParamsKeys: Object.keys(geminiParams)
       });
       
-      // CRITICAL: Make sure we have current user coordinates from map
+      // CRITICAL: Only proceed with detection if explicitly from the "Detect" button
+      // The Detection sidebar button should NEVER trigger detection
       try {
+        // We already checked if the event source is from detect_button above
+        // Skip detection if not from Detect button
+        if (!isFromDetectButton) {
+          console.log("Not from Detect button - skipping detection entirely");
+          return;
+        }
+        
         const map = mapRef.current.getMap();
         if (!map) {
           console.error("Map not available - cannot get user coordinates");
-          alert("Map not ready. Please try again in a moment.");
           return;
         }
         
@@ -813,16 +818,15 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
           mapViewInfo: window.mapViewInfo?.viewData
         });
         
-        // Start detection with all parameters - pass button trigger info
-        if (isButtonTriggered || executeMLPipeline) {
-          console.log("MapControls: Running ML pipeline for detection");
-          handleExportData(useSatelliteImagery, useRealGemini, saveToResponseJson, geminiParams);
-        } else {
-          console.log("MapControls: Detection not triggered by button, not running ML pipeline");
-        }
+        // Run detection process
+        console.log("MapControls: Running ML pipeline for detection");
+        handleExportData(useSatelliteImagery, useRealGemini, saveToResponseJson, geminiParams, {
+          source: "detect_button",
+          fromEvent: event
+        });
       } catch (error) {
         console.error("Error preparing coordinates for tree detection:", error);
-        alert("Error getting map coordinates. Please try again.");
+        // Log error but don't block with alert
       }
     };
     
@@ -887,9 +891,9 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
   const applyFiltersButtonRef = React.useRef(null);
 
   // Detect trees in the current map view with user validation
-  const handleExportData = async (useSatelliteImagery = true, useRealGemini = false, saveToResponseJson = false, geminiParams = {}) => {
+  const handleExportData = async (useSatelliteImagery = true, useRealGemini = false, saveToResponseJson = false, geminiParams = {}, sourceInfo = {}) => {
     if (!mapRef || !mapRef.current || !mapRef.current.getMap()) {
-      alert('Map is not ready. Please try again in a moment.');
+      console.error('Map is not ready. Please try again in a moment.');
       return;
     }
     
@@ -918,14 +922,9 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
     else {
       console.error("CRITICAL ERROR: Neither mapViewInfo nor mapCoordinates are available");
       setExportStatus("Error: Map coordinates not available");
-      alert('Current map coordinates not available. Please move the map and try again.');
+      console.error('Current map coordinates not available.');
       return;
     }
-    
-    // Define constants for coordinate validation
-    const DEFAULT_DALLAS_LNG = -96.78;
-    const DEFAULT_DALLAS_LAT = 32.86;
-    const DALLAS_TOLERANCE = 0.05;
     
     // Get coordinates based on what's available - prefer mapViewInfo over mapCoordinates
     // because it has all the information needed for the Google Maps Static API
@@ -943,29 +942,6 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
       console.log("Using coordinates from window.mapCoordinates:", exactCenter);
     }
     
-    // Double-check we're not using default coordinates
-    if (Math.abs(exactCenter[0] - DEFAULT_DALLAS_LNG) < DALLAS_TOLERANCE && 
-        Math.abs(exactCenter[1] - DEFAULT_DALLAS_LAT) < DALLAS_TOLERANCE) {
-      console.error("DETECTED DEFAULT COORDINATES in global source of truth:", exactCenter);
-      setExportStatus("Error: Default map location detected");
-      alert("Default map location detected. Please move the map to your area of interest before detecting trees.");
-      
-      // Notify that detection was cancelled due to default coordinates
-      window.dispatchEvent(new CustomEvent('treeDetectionError', {
-        detail: {
-          error: 'default_location',
-          message: 'Default map location detected. Please move the map to your area of interest.'
-        }
-      }));
-      
-      // Reset detection status in all components
-      if (isExporting) {
-        setIsExporting(false);
-      }
-      
-      return;
-    }
-    
     // Log the exact coordinates being used for detection
     console.log("EXACT COORDINATES being used for detection from global source of truth:", {
       center: exactCenter,
@@ -976,8 +952,8 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
     const map = mapRef.current.getMap();
     const bounds = exactBounds || map.getBounds();
     
-    // Check if the zoom level is appropriate for tree detection
-    if (exactZoom < 17) {
+    // Only check zoom level for actual detection from Detect button
+    if (sourceInfo?.source === "detect_button" && exactZoom < 17) {
       alert('Please zoom in closer to detect trees. We recommend a zoom level of at least 17 for accurate detection.');
       
       // Notify that detection was cancelled due to zoom level
@@ -1017,7 +993,6 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
     // First, check what type of bounds object we're dealing with to handle it properly
     if (!bounds) {
       console.error("Map bounds not available, cannot proceed with tree detection");
-      alert("Map bounds data not available. Please try again or refresh the page.");
       
       // Notify that detection was cancelled due to missing bounds
       window.dispatchEvent(new CustomEvent('treeDetectionError', {
@@ -1061,9 +1036,7 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
         console.log("Successfully extracted bounds from Google Maps LatLngBounds object:", boundsArray);
       } catch (e) {
         console.error("Error extracting coordinates from Google Maps bounds:", e);
-        alert("Error processing map bounds. Please try again.");
-        
-        // Notify error and reset
+        // Log error and notify
         window.dispatchEvent(new CustomEvent('treeDetectionError', {
           detail: {
             error: 'bounds_extraction_error',
@@ -1201,26 +1174,29 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
       return;
     }
     
-    // Calculate area size in square degrees - rough estimate
-    const areaSize = 
-      (boundsArray[1][0] - boundsArray[0][0]) * 
-      (boundsArray[1][1] - boundsArray[0][1]);
-    
-    // Check if area is too large (might be inefficient or slow)
-    if (areaSize > 0.01) {
-      const continueAnyway = window.confirm(
-        'The selected area is quite large. Processing might take longer and could be less accurate. We recommend zooming in closer for better results. Continue anyway?'
-      );
+    // Check area size only for actual detection from Detect button
+    if (sourceInfo?.source === "detect_button") {
+      // Calculate area size in square degrees - rough estimate
+      const areaSize = 
+        (boundsArray[1][0] - boundsArray[0][0]) * 
+        (boundsArray[1][1] - boundsArray[0][1]);
       
-      if (!continueAnyway) {
-        // Notify that detection was cancelled by user
-        window.dispatchEvent(new CustomEvent('treeDetectionError', {
-          detail: {
-            error: 'cancelled_by_user',
-            message: 'Detection cancelled by user'
-          }
-        }));
-        return;
+      // Check if area is too large (might be inefficient or slow)
+      if (areaSize > 0.01) {
+        const continueAnyway = window.confirm(
+          'The selected area is quite large. Processing might take longer and could be less accurate. We recommend zooming in closer for better results. Continue anyway?'
+        );
+        
+        if (!continueAnyway) {
+          // Notify that detection was cancelled by user
+          window.dispatchEvent(new CustomEvent('treeDetectionError', {
+            detail: {
+              error: 'cancelled_by_user',
+              message: 'Detection cancelled by user'
+            }
+          }));
+          return;
+        }
       }
     }
     
@@ -1329,14 +1305,14 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
               setExportStatus("Map parameters captured!");
             } else {
               // Do not use fallback coordinates
-              alert('Map not initialized. Please try again.');
+              console.error('Map not initialized. Cannot capture view parameters.');
               return;
             }
           } catch (error) {
             console.error("Error capturing view parameters:", error);
             
             // Do not use fallback coordinates
-            alert('Unable to get map coordinates. Please try again.');
+            console.error('Unable to get map coordinates.');
             return;
           }
         }
@@ -1344,7 +1320,6 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
         // FINAL VERIFICATION: Ensure userCoordinates are present
         if (!mapViewInfo || !mapViewInfo.viewData || !mapViewInfo.viewData.userCoordinates) {
           console.error("CRITICAL ERROR: userCoordinates still missing after all processing");
-          alert('Could not determine user coordinates. Please try again.');
           return;
         }
         
@@ -1358,8 +1333,8 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
       } catch (outerError) {
         console.error("Critical error capturing view parameters:", outerError);
         
-        // Do not use fallback coordinates
-        alert('Unable to get map coordinates. Please try again.');
+        // Just log error and return
+        console.error('Unable to get map coordinates.');
         return;
       }
       
