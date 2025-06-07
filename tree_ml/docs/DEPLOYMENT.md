@@ -159,10 +159,10 @@ sudo apt-get update
 sudo apt-get install -y python3-venv python3-full
 
 # Create a virtual environment
-python3 -m venv ~/tree_ml_venv
+python3 -m venv ~/tree_ml
 
 # Activate the virtual environment
-source ~/tree_ml_venv/bin/activate
+source ~/tree_ml/bin/activate
 
 # Now you can install packages safely
 pip install --upgrade pip
@@ -313,7 +313,7 @@ Create a systemd service file for the model server:
 
 ```bash
 # If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
-VENV_PATH=/home/$USER/tree_ml_venv  # Replace with your actual home directory path
+VENV_PATH=/home/$USER/tree_ml  # Replace with your actual home directory path
 
 # If using Poetry's virtual environment
 # cd /opt/tree-ml
@@ -429,7 +429,7 @@ sudo systemctl restart nginx
 
 ```bash
 # If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
-VENV_PATH=/home/$USER/tree_ml_venv  # Replace with your actual home directory path
+VENV_PATH=/home/$USER/tree_ml  # Replace with your actual home directory path
 
 # If using Poetry's virtual environment
 # cd /opt/tree-ml

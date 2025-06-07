@@ -99,10 +99,10 @@ sudo apt-get update
 sudo apt-get install -y python3-venv python3-full
 
 # Create a virtual environment for Python packages
-python3 -m venv ~/tree_ml_venv
+python3 -m venv ~/tree_ml
 
 # Activate the virtual environment
-source ~/tree_ml_venv/bin/activate
+source ~/tree_ml/bin/activate
 
 # Install Python package manager in the virtual environment
 pip install --upgrade pip
@@ -553,7 +553,7 @@ After=network.target
 User=${SERVICE_USER}
 WorkingDirectory=${REPO_PATH}
 # If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
-ExecStart=/home/${SERVICE_USER}/tree_ml_venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
+ExecStart=/home/${SERVICE_USER}/tree_ml/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
 # If using Poetry's virtual environment
 # ExecStart=${REPO_PATH}/.venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
 Restart=on-failure
