@@ -1,36 +1,44 @@
-# Tree Risk Pro - Deployment Guide (v0.2.1)
+# Tree ML - Deployment Guide (v0.2.3)
 
-> This is the deployment guide for the entire Tree Risk Pro project, including both the dashboard and backend components.
+> This is the deployment guide for the Tree ML project, including the dashboard, backend components, and ML model server.
 
-This guide provides instructions for deploying the Tree Risk Pro system on our Google Cloud Platform (GCP) instance.
+This guide provides instructions for deploying the Tree ML system on a Google Cloud Platform (GCP) T4 GPU instance for unified deployment.
 
 ## Deployment Summary
 
-Our production server is deployed at: **https://34.125.120.78/**
+Our production server will be deployed on a T4 GPU instance for unified ML and dashboard operation.
 
 **Current access credentials:**
 - Username: `TestAdmin`
 - Password: `trp345!`
 
-## v0.2.1 Release Deployment Notes
+## v0.2.3 Release Deployment Notes
 
-v0.2.1 includes these key improvements requiring deployment attention:
-- S2 geospatial indexing with Zarr store integration
-- New API endpoints for S2 cell-based report management
-- ML overlay with persistent opacity settings
-- Enhanced DOM handling requiring proper browser caching settings
-- Fixed Components/Detection sidebar functionality
-- Performance improvements for transitions between modes
-- Improved backend security
-- Streamlined GCP deployment process
+v0.2.3 includes these key improvements requiring deployment attention:
+- Integrated ML Overlay for tree detection visualization
+- Enhanced tree detection with DeepForest, SAM, and Gemini API
+- T4 GPU integration for dedicated model server capabilities
+- Unified deployment architecture (dashboard + ML on same instance)
+- Fixed overlay controls (opacity slider, show/hide toggle)
+- Improved objects counter that preserves counts between detections
+- Fixed detection sidebar with real-time controls
+- New T4 status indicator component
 
 ## Prerequisites
 
-- Ubuntu 22.04 LTS VM with at least 2 vCPU, 4 GB memory
-- Python 3.12+ and pip
+### Hardware Requirements
+- T4 GPU instance (GCP n1-standard-4 with NVIDIA T4)
+- At least 4 vCPU, 16 GB memory
+- 100+ GB SSD storage
+- Ubuntu 20.04 LTS or later
+
+### Software Requirements
+- CUDA 11.8+
+- Python 3.10+
 - Node.js 18+
 - Git
 - Nginx
+- Poetry for Python dependency management
 
 ## Required API Keys
 
@@ -49,6 +57,35 @@ v0.2.1 includes these key improvements requiring deployment attention:
    - Go to https://aistudio.google.com/app/apikey
    - Create a new API key for Gemini model access
    - Ensure your account has access to gemini-2.0-flash model
+
+## GPU and CUDA Setup
+
+Before deploying the application, you need to install CUDA and the appropriate NVIDIA drivers on your T4 instance:
+
+```bash
+# Add NVIDIA package repositories
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
+sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
+sudo dpkg -i cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
+sudo cp /var/cuda-repo-ubuntu2004-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
+sudo apt-get update
+sudo apt-get -y install cuda-11-8
+
+# Install system dependencies for ML pipeline
+sudo apt-get install -y build-essential python3-dev python3-pip
+sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 
+sudo apt-get install -y nginx
+
+# Set up CUDA environment variables
+echo 'export PATH=/usr/local/cuda-11.8/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+source ~/.bashrc
+
+# Verify CUDA installation
+nvidia-smi
+nvcc --version
+```
 
 ## Deployment Process
 
@@ -79,11 +116,42 @@ ps aux | grep -E "(python.*app|gunicorn|node.*server)"
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/tree-risk-pro.git ~/tree-risk-pro
-cd ~/tree-risk-pro
+git clone https://github.com/your-org/tree-ml.git ~/tree-ml
+cd ~/tree-ml
 ```
 
-### 3. Configure Environment
+### 3. Install Python Dependencies with Poetry
+
+```bash
+# Install Poetry package manager
+pip install --upgrade pip
+pip install poetry
+
+# Configure Poetry to create virtual environment in project directory
+poetry config virtualenvs.in-project true
+
+# Install Python dependencies
+poetry install
+
+# Install PyTorch with CUDA support
+poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+```
+
+### 4. Download ML Model Weights
+
+```bash
+# Create model directories
+mkdir -p tree_ml/pipeline/model/weights
+
+# Download SAM model weights
+wget -O tree_ml/pipeline/model/weights/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+
+# Download GroundingDINO weights
+mkdir -p tree_ml/pipeline/grounded-sam/weights
+wget -O tree_ml/pipeline/grounded-sam/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+```
+
+### 5. Configure Environment
 
 Create environment files with your API keys:
 
@@ -97,13 +165,16 @@ VITE_GOOGLE_MAPS_MAP_ID=your_map_id
 EOF
 
 # Backend environment (backend/.env)
-cat > tree_risk_pro/dashboard/backend/.env << EOF
+cat > tree_ml/dashboard/backend/.env << EOF
 APP_MODE=production
 SKIP_AUTH=false
 DASHBOARD_USERNAME=TestAdmin
 DASHBOARD_PASSWORD=trp345!
 GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-2.0-flash
+# Configure for unified deployment (model server on same machine)
+USE_EXTERNAL_MODEL_SERVER=false
+MODEL_SERVER_URL=http://localhost:8000
 EOF
 ```
 
@@ -112,65 +183,106 @@ EOF
 - `your_map_id` with your Google Maps Map ID
 - `your_gemini_api_key` with your Gemini API key
 
-Alternatively, you can use our setup script with production flag:
+### 6. Test ML Model Server
 
 ```bash
-./scripts/setup.sh -d -p your-server-ip
-# Then edit both .env files to update API keys
+# Run the model server test to verify CUDA and model setup
+cd ~/tree-ml
+poetry run python tests/model_server/test_basic.py
+
+# You should see output indicating CUDA is available and models can be loaded
+# The output should include "CUDA is available: True" if properly configured
 ```
 
-### 4. Build Frontend
+### 7. Build Frontend
 
 ```bash
 # Install dependencies and build
-cd tree_risk_pro/dashboard
+cd ~/tree-ml/tree_ml/dashboard
 npm install
 npm run build
 ```
 
-### 5. Setup Deployment Directory
+### 8. Setup Deployment Directory
 
 ```bash
 # Clear previous deployment to prevent any cached or old files
-sudo rm -rf /opt/dashboard/dist/*
-sudo rm -rf /opt/dashboard/backend/*
-sudo rm -f /opt/dashboard/backend/.env
+sudo rm -rf /opt/tree-ml/dist/*
+sudo rm -rf /opt/tree-ml/backend/*
+sudo rm -f /opt/tree-ml/backend/.env
+sudo rm -rf /opt/tree-ml/model-server/*
 
 # Create directory structure
-sudo mkdir -p /opt/dashboard/{backend,dist}
-sudo mkdir -p /opt/dashboard/backend/{logs,data/temp,data/zarr,data/reports,data/exports}
+sudo mkdir -p /opt/tree-ml/{backend,dist,model-server}
+sudo mkdir -p /opt/tree-ml/backend/{logs,data/temp,data/zarr,data/reports,data/exports,data/ml}
+sudo mkdir -p /opt/tree-ml/model-server/{logs,weights}
 
 # Copy files
-sudo cp -r dist/* /opt/dashboard/dist/
-sudo cp -r backend/* /opt/dashboard/backend/
-sudo cp ../../pyproject.toml /opt/dashboard/backend/
-sudo cp .env /opt/dashboard/
-sudo cp backend/.env /opt/dashboard/backend/
+sudo cp -r ~/tree-ml/tree_ml/dashboard/dist/* /opt/tree-ml/dist/
+sudo cp -r ~/tree-ml/tree_ml/dashboard/backend/* /opt/tree-ml/backend/
+sudo cp -r ~/tree-ml/tree_ml/pipeline/* /opt/tree-ml/model-server/
+sudo cp ~/tree-ml/pyproject.toml /opt/tree-ml/
+sudo cp ~/tree-ml/.env /opt/tree-ml/
+sudo cp ~/tree-ml/tree_ml/dashboard/backend/.env /opt/tree-ml/backend/
+
+# Copy model weights
+sudo cp -r ~/tree-ml/tree_ml/pipeline/model/weights/* /opt/tree-ml/model-server/weights/
+sudo cp -r ~/tree-ml/tree_ml/pipeline/grounded-sam/weights/* /opt/tree-ml/model-server/weights/
 
 # Set permissions
-sudo chmod -R 755 /opt/dashboard/backend/logs
-sudo chmod -R 755 /opt/dashboard/backend/data
+sudo chmod -R 755 /opt/tree-ml/backend/logs
+sudo chmod -R 755 /opt/tree-ml/backend/data
+sudo chmod -R 755 /opt/tree-ml/model-server/logs
+sudo chmod -R 755 /opt/tree-ml/model-server/weights
 ```
 
 **IMPORTANT**: The step to clear previous deployment files is critical to ensure no cached or outdated files remain from previous versions.
 
-### 6. Install Backend Dependencies
+### 9. Setup Model Server Service
+
+Create a systemd service file for the model server:
 
 ```bash
-cd /opt/dashboard/backend
+sudo tee /etc/systemd/system/tree-ml-model-server.service > /dev/null << EOF
+[Unit]
+Description=Tree ML Model Server
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/tree-ml/model-server
+ExecStart=/usr/bin/poetry run python model_server.py --port 8000 --host 0.0.0.0
+Environment="PYTHONPATH=/opt/tree-ml"
+Environment="MODEL_DIR=/opt/tree-ml/model-server/weights"
+Environment="LOG_DIR=/opt/tree-ml/model-server/logs"
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Enable and start the service
+sudo systemctl daemon-reload
+sudo systemctl enable tree-ml-model-server
+sudo systemctl start tree-ml-model-server
+
+# Check the status
+sudo systemctl status tree-ml-model-server
+```
+
+### 10. Install Backend Dependencies
+
+```bash
+cd /opt/tree-ml
 sudo pip install poetry
 sudo poetry install
 
-# Extend config.py to include environment variables for Gemini
-sudo tee -a /opt/dashboard/backend/config.py > /dev/null << EOF
-
-# Gemini Configuration
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
-GEMINI_MODEL = os.environ.get('GEMINI_MODEL', 'gemini-2.0-flash')
-EOF
+# Install PyTorch with CUDA support in the deployment environment
+sudo poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
 ```
 
-### 7. Configure Nginx
+### 11. Configure Nginx
 
 ```bash
 # Generate self-signed certificate if needed
@@ -180,8 +292,8 @@ sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -out /etc/ssl/certs/dashboard-selfsigned.crt \
     -subj "/C=US/ST=State/L=City/O=Organization/CN=your-server-ip"
 
-# Create Nginx configuration
-sudo tee /etc/nginx/sites-available/dashboard.conf > /dev/null << EOF
+# Create Nginx configuration for unified deployment
+sudo tee /etc/nginx/sites-available/tree-ml.conf > /dev/null << EOF
 server {
     listen 80;
     server_name _;
@@ -200,7 +312,7 @@ server {
     
     # Frontend static files
     location / {
-        root /opt/dashboard/dist;
+        root /opt/tree-ml/dist;
         try_files \$uri \$uri/ /index.html;
 
         # Add cache control for static assets
@@ -217,43 +329,57 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 90;
+        proxy_read_timeout 180; # Increased timeout for ML operations
+        client_max_body_size 20M; # Allow larger image uploads
+    }
+    
+    # Model Server API - direct access for testing/development
+    location /model-api/ {
+        proxy_pass http://localhost:8000/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_read_timeout 300; # Longer timeout for ML inference
+        client_max_body_size 20M; # Allow larger image uploads
     }
 }
 EOF
 
 # Replace "your-server-ip" with your actual server IP in the Nginx config
-sudo sed -i "s/your-server-ip/$(curl -s ifconfig.me)/g" /etc/nginx/sites-available/dashboard.conf
+sudo sed -i "s/your-server-ip/$(curl -s ifconfig.me)/g" /etc/nginx/sites-available/tree-ml.conf
 
-sudo ln -sf /etc/nginx/sites-available/dashboard.conf /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/tree-ml.conf /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-### 8. Create Systemd Service
+### 12. Create Backend Systemd Service
 
 ```bash
 # First find the exact path to gunicorn in the Poetry environment
-cd /opt/dashboard/backend
+cd /opt/tree-ml
 GUNICORN_PATH=$(sudo poetry env info --path)
 echo "Poetry virtualenv path: $GUNICORN_PATH"
 
-# Create the systemd service file with the FULL PATH to gunicorn
-sudo tee /etc/systemd/system/dashboard-backend.service > /dev/null << EOF
+# Create the systemd service file for the backend
+sudo tee /etc/systemd/system/tree-ml-backend.service > /dev/null << EOF
 [Unit]
-Description=Tree Risk Pro Dashboard Backend
+Description=Tree ML Dashboard Backend
 After=network.target
 
 [Service]
 User=root
-WorkingDirectory=/opt/dashboard/backend
+WorkingDirectory=/opt/tree-ml/backend
 ExecStart=$GUNICORN_PATH/bin/gunicorn -w 4 -b 127.0.0.1:5000 app:app
 Environment="DASHBOARD_USERNAME=TestAdmin"
 Environment="DASHBOARD_PASSWORD=trp345!"
 Environment="APP_MODE=production" 
-Environment="GEMINI_API_KEY=$(grep GEMINI_API_KEY /opt/dashboard/backend/.env | cut -d= -f2)"
-Environment="GEMINI_MODEL=$(grep GEMINI_MODEL /opt/dashboard/backend/.env | cut -d= -f2)"
+Environment="GEMINI_API_KEY=$(grep GEMINI_API_KEY /opt/tree-ml/backend/.env | cut -d= -f2)"
+Environment="GEMINI_MODEL=$(grep GEMINI_MODEL /opt/tree-ml/backend/.env | cut -d= -f2)"
+Environment="USE_EXTERNAL_MODEL_SERVER=false"
+Environment="MODEL_SERVER_URL=http://localhost:8000"
 Restart=always
 
 [Install]
@@ -261,76 +387,104 @@ WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable dashboard-backend
-sudo systemctl restart dashboard-backend
+sudo systemctl enable tree-ml-backend
+sudo systemctl start tree-ml-backend
 ```
 
-### 9. Verify Deployment
+### 13. Verify Deployment
 
 ```bash
-# Check backend status
-sudo systemctl status dashboard-backend
+# Check services status
+sudo systemctl status tree-ml-backend
+sudo systemctl status tree-ml-model-server
 
-# Verify API is running
+# Verify model server is running
+curl http://localhost:8000/health
+
+# Verify backend API is running
 curl -u TestAdmin:trp345! http://localhost:5000/api/config
 
 # Verify the HTTPS site is working (ignore self-signed certificate warning)
 curl https://$(curl -s ifconfig.me)/api/config -k
 ```
 
-After completing these steps, your Tree Risk Pro Dashboard should be accessible via HTTPS at your server's IP address.
+After completing these steps, your Tree ML application should be accessible via HTTPS at your server's IP address.
 
 ## Troubleshooting
 
+### T4 and CUDA Issues
+
+If you're experiencing GPU-related issues:
+
+1. **Verify CUDA installation**:
+   ```bash
+   # Check if NVIDIA drivers are installed correctly
+   nvidia-smi
+   
+   # Check CUDA version
+   nvcc --version
+   
+   # Test CUDA with a simple PyTorch script
+   python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count()); print('Device name:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A')"
+   ```
+
+2. **Check model server logs for GPU errors**:
+   ```bash
+   sudo journalctl -u tree-ml-model-server -e
+   tail -f /opt/tree-ml/model-server/logs/model_server.log
+   ```
+
+3. **Monitor GPU usage during inference**:
+   ```bash
+   # Install GPU monitoring tool
+   sudo apt-get install -y nvidia-cuda-toolkit
+   
+   # Monitor GPU usage in real-time
+   watch -n 1 nvidia-smi
+   ```
+
+4. **Common CUDA issues and solutions**:
+   - **"CUDA out of memory"**: Reduce batch size or image resolution
+   - **"CUDA driver version is insufficient"**: Update NVIDIA drivers
+   - **"No CUDA-capable device"**: Check if T4 is recognized by the system
+
 ### Complete Rebuild and Cache Clear
 
-If you're experiencing version display issues or cached content problems:
+If you're experiencing deployment issues:
 
 1. **Stop all services and kill any related processes**:
    ```bash
-   # Stop the systemd service if it exists
-   sudo systemctl stop dashboard-backend
+   # Stop all systemd services
+   sudo systemctl stop tree-ml-backend
+   sudo systemctl stop tree-ml-model-server
    
    # Kill any Python processes related to the application
    sudo pkill -f "python.*app.py"
+   sudo pkill -f "python.*model_server.py"
    sudo pkill -f "gunicorn.*app:app"
-   
-   # Kill any Node.js processes that might be running the server
-   sudo pkill -f "node.*server.js"
    
    # Kill any processes running on the server ports
    sudo fuser -k 5000/tcp  # For the Flask backend
-   sudo fuser -k 5173/tcp  # For the Vite dev server
+   sudo fuser -k 8000/tcp  # For the ML model server
    
    # Verify all processes are stopped
-   ps aux | grep -E "(python.*app|gunicorn|node.*server)"
+   ps aux | grep -E "(python.*app|model_server|gunicorn)"
    ```
 
 2. **Create a fresh deployment directory**:
    ```bash
-   sudo rm -rf /opt/dashboard
-   sudo mkdir -p /opt/dashboard
+   sudo rm -rf /opt/tree-ml
+   sudo mkdir -p /opt/tree-ml
    ```
 
 3. **Get the latest code**:
    ```bash
-   cd ~/tree-risk-pro
+   cd ~/tree-ml
    git fetch
    git reset --hard origin/main
    ```
 
-4. **Clean and rebuild the frontend**:
-   ```bash
-   cd tree_risk_pro/dashboard
-   rm -rf node_modules dist
-   npm cache clean --force
-   npm install
-   npm run build
-   ```
-
-5. **Follow the deployment steps** from section 5 onwards.
-
-6. **Clear all browser caches completely** before testing.
+4. **Follow the deployment steps** from section 3 onwards.
 
 ### CORS or API Connection Issues
 
@@ -350,70 +504,61 @@ If you see CORS errors or API connection problems:
 
 2. **Verify built JavaScript doesn't contain localhost references**:
    ```bash
-   cd /opt/dashboard/dist
+   cd /opt/tree-ml/dist
    grep -r "localhost:5000" --include="*.js" .
    ```
 
-3. **Check browser console for the actual URL being used**:
-   - If you see `API_BASE_URL: http://localhost:5000`, the frontend was built with the wrong environment settings
-   - If you see `API_BASE_URL: /api/api`, there's a path duplication issue
+3. **Check if model server is accessible from backend**:
+   ```bash
+   # Test if model server is accessible
+   curl http://localhost:8000/health
    
-4. **Clear browser cache thoroughly**:
-   - Use Ctrl+Shift+R or Cmd+Shift+R for a hard refresh
-   - In Chrome DevTools (F12), go to Application > Clear Storage > Clear site data
-   - Try an incognito/private window to test without cache
+   # Test backend configuration
+   grep -r "MODEL_SERVER_URL" /opt/tree-ml/backend
+   ```
 
-5. **Check Nginx logs for proxy errors**:
+### ML Model Issues
+
+If tree detection is not working properly:
+
+1. **Check model weights**:
    ```bash
-   sudo tail -f /var/log/nginx/error.log
+   # Verify SAM model weights exist
+   ls -la /opt/tree-ml/model-server/weights/sam_vit_h_4b8939.pth
+   
+   # Verify GroundingDINO weights exist
+   ls -la /opt/tree-ml/model-server/weights/groundingdino_swint_ogc.pth
    ```
 
-### Backend Service Issues
-
-If the backend service fails to start:
-
-1. **Poetry path issues**:
-   - Find the correct path to the virtualenv: `sudo poetry env info --path`
-   - Use the exact path to gunicorn in the systemd service file
-
-2. **Missing Gemini API configuration**:
-   - Confirm config.py has been updated with Gemini environment variables
-   - Check backend logs: `sudo journalctl -u dashboard-backend -e`
-
-3. **Run backend manually to debug**:
+2. **Test the model server API directly**:
    ```bash
-   cd /opt/dashboard/backend
-   sudo poetry run python app.py
+   # Get server status
+   curl http://localhost:8000/health
+   
+   # Get model information
+   curl http://localhost:8000/models
    ```
 
-### Missing Google Maps Components
-
-If you see the error: "The map is initialized without a valid Map ID, which will prevent use of Advanced Markers":
-
-1. **Get a valid Map ID from Google Cloud Console**:
-   - Go to the [Google Cloud Console](https://console.cloud.google.com/)
-   - Navigate to Google Maps Platform > Map Management
-   - Create a new Map ID or use an existing one
-
-2. **Make sure .env contains the correct Map ID**:
-   ```
-   VITE_GOOGLE_MAPS_MAP_ID=your_map_id
+3. **Review model server logs for specific errors**:
+   ```bash
+   tail -f /opt/tree-ml/model-server/logs/model_server.log
    ```
 
-3. **Rebuild the frontend** after updating the environment variables
-
-## Service Management for v0.2.1
+## Service Management
 
 ### Monitoring Logs
 
 ```bash
 # Backend Flask logs
-sudo journalctl -u dashboard-backend.service -f
-tail -f /opt/dashboard/backend/logs/app.log
+sudo journalctl -u tree-ml-backend.service -f
+tail -f /opt/tree-ml/backend/logs/app.log
 
-# Tree detection logs (job-specific)
-ls -la /opt/dashboard/backend/logs/tree_detection_*
-cat /opt/dashboard/backend/logs/tree_detection_<timestamp>.log
+# Model server logs
+sudo journalctl -u tree-ml-model-server.service -f
+tail -f /opt/tree-ml/model-server/logs/model_server.log
+
+# GPU monitoring
+watch -n 1 nvidia-smi
 
 # Nginx logs
 sudo tail -f /var/log/nginx/access.log
@@ -423,35 +568,40 @@ sudo tail -f /var/log/nginx/error.log
 ### Managing Services
 
 ```bash
-# Backend service management
-sudo systemctl status dashboard-backend
-sudo systemctl restart dashboard-backend
-sudo systemctl stop dashboard-backend
-sudo systemctl start dashboard-backend
+# Service management
+sudo systemctl status tree-ml-backend
+sudo systemctl restart tree-ml-backend
+sudo systemctl status tree-ml-model-server
+sudo systemctl restart tree-ml-model-server
 
 # Nginx service management
 sudo systemctl status nginx
 sudo systemctl restart nginx
 
-# Check current CPU and memory usage
+# Check current resource usage
 top -u $(whoami)
+nvidia-smi
 
 # Monitor disk space
-df -h /opt/dashboard
+df -h /opt/tree-ml
 ```
 
 ### Backup and Restore
 
 ```bash
 # Backup the entire application
-sudo tar -czf /tmp/dashboard-backup-$(date +%Y%m%d).tar.gz /opt/dashboard
+sudo tar -czf /tmp/tree-ml-backup-$(date +%Y%m%d).tar.gz /opt/tree-ml
 
 # Backup just the data directories
-sudo tar -czf /tmp/dashboard-data-$(date +%Y%m%d).tar.gz /opt/dashboard/backend/data
+sudo tar -czf /tmp/tree-ml-data-$(date +%Y%m%d).tar.gz /opt/tree-ml/backend/data
+
+# Backup model weights
+sudo tar -czf /tmp/tree-ml-weights-$(date +%Y%m%d).tar.gz /opt/tree-ml/model-server/weights
 
 # Restore from backup
-sudo tar -xzf /tmp/dashboard-backup-20250426.tar.gz -C /
-sudo systemctl restart dashboard-backend
+sudo tar -xzf /tmp/tree-ml-backup-20250607.tar.gz -C /
+sudo systemctl restart tree-ml-backend
+sudo systemctl restart tree-ml-model-server
 ```
 
 ## Security Checklist
@@ -463,15 +613,20 @@ sudo systemctl restart dashboard-backend
 
 2. **SSL/TLS**:
    - Our deployment script sets up a self-signed certificate by default
-   - Current setup on 34.125.120.78 uses this self-signed certificate
    - For domain-based deployment, use Let's Encrypt:
      ```bash
+     sudo apt install certbot python3-certbot-nginx
+     sudo certbot --nginx -d yourdomain.com
      sudo systemctl status certbot.timer  # Check auto-renewal status
      ```
 
 3. **Firewall**:
-   - Our server has these ports open:
+   - Configure firewall to allow only necessary ports:
      ```bash
+     sudo ufw allow 22/tcp  # SSH
+     sudo ufw allow 80/tcp  # HTTP
+     sudo ufw allow 443/tcp # HTTPS
+     sudo ufw enable
      sudo ufw status  # Should show only 22, 80, 443
      ```
 
@@ -482,16 +637,18 @@ sudo systemctl restart dashboard-backend
      ```
    - Check for outdated dependencies:
      ```bash
-     cd /opt/dashboard && npm outdated
-     cd /opt/dashboard/backend && source venv/bin/activate && pip list --outdated
+     cd /opt/tree-ml && npm outdated
+     cd /opt/tree-ml && poetry show --outdated
      ```
 
 5. **API Security**:
    - Keep API keys secure
-   - Our Gemini API key is restricted to the production VM
+   - Gemini API key should be restricted to the production VM
    - Do not commit credentials to git
 
-6. **Gemini API Usage**:
-   - Monitor usage at https://console.cloud.google.com
-   - Current quota: 60 requests/minute
-   - Current billing: Pay-as-you-go with monthly budget alert
+6. **GPU Security**:
+   - Monitor for unauthorized GPU usage:
+     ```bash
+     # Set up automatic monitoring for suspicious GPU usage
+     echo '*/15 * * * * root nvidia-smi -q | grep "Process ID" > /tmp/nvidia-smi-prev.txt && sleep 60 && nvidia-smi -q | grep "Process ID" > /tmp/nvidia-smi-curr.txt && diff /tmp/nvidia-smi-prev.txt /tmp/nvidia-smi-curr.txt || echo "GPU usage changed"' | sudo tee /etc/cron.d/monitor-gpu
+     ```
