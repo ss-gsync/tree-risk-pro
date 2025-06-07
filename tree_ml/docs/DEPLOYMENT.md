@@ -309,6 +309,8 @@ sudo chmod -R 755 /opt/tree-ml/model-server/weights
 
 Create a systemd service file for the model server:
 
+**IMPORTANT**: When creating systemd service files, you must use absolute paths. The tilde character (`~`) is not expanded in systemd service files and will cause errors.
+
 ```bash
 # If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
 VENV_PATH=/home/$USER/tree_ml_venv  # Replace with your actual home directory path
@@ -437,6 +439,8 @@ sudo systemctl restart nginx
 
 ### 12. Create Backend Systemd Service
 
+**IMPORTANT**: Remember to use absolute paths in systemd service files. The tilde character (`~`) is not expanded and will cause errors.
+
 ```bash
 # If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
 VENV_PATH=/home/$USER/tree_ml_venv  # Replace with your actual home directory path
@@ -456,7 +460,8 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/opt/tree-ml/backend
-ExecStart=$VENV_PATH/bin/gunicorn -w 4 -b 127.0.0.1:5000 app:app
+# IMPORTANT: Make sure to use absolute path here, not $VENV_PATH if it contains tilde (~)
+ExecStart=/home/$USER/tree_ml_venv/bin/gunicorn -w 4 -b 127.0.0.1:5000 app:app
 Environment="DASHBOARD_USERNAME=TestAdmin"
 Environment="DASHBOARD_PASSWORD=trp345!"
 Environment="APP_MODE=production" 

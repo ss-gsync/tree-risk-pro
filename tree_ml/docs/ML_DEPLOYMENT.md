@@ -541,6 +541,9 @@ fi
 echo "Creating systemd service..."
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
+# IMPORTANT: When creating systemd service files, always use absolute paths.
+# The tilde character (~) is not expanded in systemd service files and will cause errors.
+
 sudo tee $SERVICE_FILE > /dev/null << EOF
 [Unit]
 Description=Tree ML Detection Model Server
