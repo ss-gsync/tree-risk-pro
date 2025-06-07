@@ -551,7 +551,7 @@ const AerialImagery = () => {
     <ResizableSidebar 
       id="imagery-sidebar"
       title="Aerial Imagery"
-      icon={Box}
+      icon={Layers}
       color="dark-indigo" // Using custom color for Aerial sidebar
       openEventName="expandImageryPanel"
       closeEventName="forceCloseImageryPanel"
@@ -1647,34 +1647,6 @@ const ReportsOverview = ({ onNavigate }) => {
               className="bg-white px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-md shadow-sm hover:bg-gray-50"
             >
               View Map
-            </button>
-            <button
-              onClick={() => {
-                // First close any other sidebars
-                window.dispatchEvent(new CustomEvent('forceCloseImageryPanel', {
-                  detail: { source: 'reports' }
-                }));
-                window.dispatchEvent(new CustomEvent('closeAnalyticsPanel', {
-                  detail: { source: 'reports' }
-                }));
-                window.dispatchEvent(new CustomEvent('closeReviewPanel', {
-                  detail: { source: 'reports' }
-                }));
-                
-                // Then open database sidebar
-                setTimeout(() => {
-                  window.dispatchEvent(new CustomEvent('openFeatureSelection', {
-                    detail: { 
-                      mode: 'tree_inventory', 
-                      clearExisting: true,
-                      source: 'reports'
-                    }
-                  }));
-                }, 50);
-              }}
-              className="bg-green-50 px-4 py-2 text-sm font-medium text-green-900 border border-green-200 rounded-md shadow-sm hover:bg-green-100"
-            >
-              Open Database
             </button>
           </div>
         </div>

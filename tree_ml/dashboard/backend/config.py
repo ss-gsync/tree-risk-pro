@@ -2,8 +2,9 @@
 import os
 
 # Application mode
-# 'production' - Default mode using ML pipeline with Zarr store
-APP_MODE = 'production'
+# 'development' - Development mode with local models for ML_DEV instance
+# 'production' - Production mode using ML pipeline with Zarr store and optionally T4 server
+APP_MODE = os.environ.get('APP_MODE', 'development')
 
 # Data paths
 BASE_DIR = '/ttt'
@@ -21,8 +22,8 @@ os.makedirs(REPORTS_DIR, exist_ok=True)
 os.makedirs(ZARR_DIR, exist_ok=True)  # Make sure ZARR_DIR is created
 os.makedirs(ML_DIR, exist_ok=True)
 
-# Debug mode
-DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1', 't')
+# Debug mode - Enable debugging in development environment
+DEBUG = os.environ.get('DEBUG', 'True' if APP_MODE == 'development' else 'False').lower() in ('true', '1', 't')
 
 # API Configuration
 API_VERSION = '0.2.3'
@@ -30,9 +31,10 @@ DEFAULT_RESPONSE_LIMIT = 100
 
 # ML Service configuration
 # Set to True to use the external T4 model server instead of local models
-USE_EXTERNAL_MODEL_SERVER = os.environ.get('USE_EXTERNAL_MODEL_SERVER', 'True').lower() in ('true', '1', 't')
-# URL for the external T4 model server
-MODEL_SERVER_URL = os.environ.get('MODEL_SERVER_URL', 'http://t4-model-server:8000')
+# Default to False for ML_DEV instance (development environment)
+USE_EXTERNAL_MODEL_SERVER = os.environ.get('USE_EXTERNAL_MODEL_SERVER', 'False').lower() in ('true', '1', 't')
+# URL for the external T4 model server (only used when USE_EXTERNAL_MODEL_SERVER is True)
+MODEL_SERVER_URL = os.environ.get('MODEL_SERVER_URL', 'http://localhost:8000')
 
 # Generic function to get API keys from environment or .env file
 def get_api_key(env_var_name, env_file_prefix=None):

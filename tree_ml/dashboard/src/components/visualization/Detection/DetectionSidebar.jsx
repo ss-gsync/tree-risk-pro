@@ -17,6 +17,7 @@ import {
 // Import the components for detection categories and preview
 import DetectionCategories from './DetectionCategories';
 import DetectionPreview from './DetectionPreview';
+import T4StatusIndicator from './T4StatusIndicator';
 
 /**
  * Detection Sidebar Component
@@ -134,14 +135,29 @@ const DetectionSidebar = ({
       setFilteredTrees(visibleTrees);
       // Update the ref to current value
       prevVisibleTreesRef.current = [...visibleTrees];
+      
+      // Update the DOM counter directly to ensure it's always in sync
+      const counterEl = document.getElementById('detected-objects-count');
+      if (counterEl) {
+        counterEl.textContent = visibleTrees.length.toString();
+      }
     }
     
-    // Clear any existing detection data on initialization to prevent auto-rendering
-    if (window.mlDetectionData) {
-      console.log('DetectionSidebar: Clearing existing detection data to prevent auto-rendering');
-      window.mlDetectionData = null;
+    // CRITICAL: Check for detection data and update counter when we have mlDetectionData
+    if (window.mlDetectionData && window.mlDetectionData.trees && window.mlDetectionData.trees.length > 0) {
+      console.log(`DetectionSidebar: Found detection data with ${window.mlDetectionData.trees.length} trees`);
+      
+      // Only update if trees prop is empty but we have detection data
+      if ((!trees || trees.length === 0) && window.mlDetectionData.trees.length > 0) {
+        console.log('DetectionSidebar: Updating counter with trees from global mlDetectionData');
+        // Update the DOM counter directly
+        const counterEl = document.getElementById('detected-objects-count');
+        if (counterEl) {
+          counterEl.textContent = window.mlDetectionData.trees.length.toString();
+        }
+      }
     }
-  }, [visibleTrees]);
+  }, [visibleTrees, trees]);
   
   // =====================================================================
   // EMERGENCY FIX: COMPLETE REWRITE OF STATE MANAGEMENT TO PREVENT INFINITE UPDATES
@@ -161,13 +177,138 @@ const DetectionSidebar = ({
     
     window.detectionShowOverlay = true;
     window._mlSettingsInitialized = true;
+    
+    // CRITICAL FIX: Ensure our global settings reflect the working implementation
+    setTimeout(() => {
+      console.log('DetectionSidebar: FIXING ML OVERLAY IMPLEMENTATION');
+      
+      // Ensure global settings are initialized correctly
+      window.mlOverlaySettings = {
+        showOverlay: true,
+        showSegmentation: true,
+        opacity: 0.7
+      };
+      
+      window.detectionShowOverlay = true;
+      
+      // Make sure we have the correct functions registered globally
+      // If MLOverlayInitializer has done its job, these should already be available
+      if (typeof window.renderMLOverlay === 'function' && 
+          typeof window.updateMLOverlayOpacity === 'function' &&
+          typeof window.toggleMLOverlayVisibility === 'function') {
+        console.log('DetectionSidebar: Working overlay functions are available');
+      } else {
+        console.warn('DetectionSidebar: Working overlay functions not found, creating fallbacks');
+        
+        // Create fallback functions directly from integrated MLOverlay.js module
+        // Import the MLOverlay module and use its functions directly
+        import('./MLOverlay').then(MLOverlayModule => {
+          console.log('DetectionSidebar: Imported MLOverlay module, setting up global functions');
+          
+          // Set up global functions from the module
+          window.renderMLOverlay = MLOverlayModule.renderMLOverlay;
+          window.updateMLOverlayOpacity = MLOverlayModule.updateMLOverlayOpacity;
+          window.toggleMLOverlayVisibility = (visible) => {
+            console.log(`DetectionSidebar: toggleMLOverlayVisibility called with ${visible}`);
+            if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
+              window._mlDetectionOverlay.div.style.display = visible ? 'block' : 'none';
+              return true;
+            }
+            return false;
+          };
+          
+          console.log('DetectionSidebar: Global overlay functions set up from integrated module');
+        }).catch(err => {
+          console.error('DetectionSidebar: Failed to import MLOverlay module, using basic fallbacks', err);
+          
+          // Provide basic fallback implementations if module import fails
+          window.renderMLOverlay = (map, data, options = {}) => {
+            console.log('DetectionSidebar: renderMLOverlay fallback called');
+            // Basic implementation to register data
+            window.mlDetectionData = data;
+            return true;
+          };
+          
+          window.updateMLOverlayOpacity = (opacity) => {
+            console.log(`DetectionSidebar: updateMLOverlayOpacity fallback called with ${opacity}`);
+            // Basic implementation to update settings
+            window.mlOverlaySettings = window.mlOverlaySettings || {};
+            window.mlOverlaySettings.opacity = opacity;
+            
+            // Direct DOM update for simple overlay
+            const overlay = document.getElementById('ml-detection-overlay');
+            if (overlay) {
+              overlay.style.opacity = opacity;
+              return true;
+            }
+            return false;
+          };
+          
+          window.toggleMLOverlayVisibility = (visible) => {
+            console.log(`DetectionSidebar: toggleMLOverlayVisibility fallback called with ${visible}`);
+            // Basic implementation to update settings
+            window.mlOverlaySettings = window.mlOverlaySettings || {};
+            window.mlOverlaySettings.showOverlay = visible;
+            window.detectionShowOverlay = visible;
+            
+            // Direct DOM update for simple overlay
+            const overlay = document.getElementById('ml-detection-overlay');
+            if (overlay) {
+              overlay.style.display = visible ? 'block' : 'none';
+              return true;
+            }
+            return false;
+          };
+        });
+      }
+      
+      // Ensure a simple overlay always exists - this is a failsafe
+      const createSimpleOverlay = () => {
+        // Check if we already have a simple overlay
+        if (!document.getElementById('ml-detection-overlay')) {
+          console.log('DetectionSidebar: Creating simple overlay as a fallback');
+          const mapContainer = document.getElementById('map-container');
+          if (mapContainer) {
+            const overlay = document.createElement('div');
+            overlay.id = 'ml-detection-overlay';
+            overlay.style.position = 'absolute';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100%';
+            overlay.style.height = '100%';
+            overlay.style.backgroundColor = `rgba(0, 30, 60, ${window.mlOverlaySettings.opacity || 0.7})`;
+            overlay.style.pointerEvents = 'none';
+            overlay.style.zIndex = '50';
+            overlay.style.display = window.mlOverlaySettings.showOverlay ? 'block' : 'none';
+            mapContainer.appendChild(overlay);
+          }
+        }
+      };
+      
+      // Create the simple overlay if needed
+      createSimpleOverlay();
+      
+      // Dispatch an event to notify other components that the overlay is ready
+      window.dispatchEvent(new CustomEvent('mlOverlayReady', {
+        detail: { 
+          source: 'detection_sidebar',
+          showOverlay: window.mlOverlaySettings.showOverlay,
+          opacity: window.mlOverlaySettings.opacity
+        }
+      }));
+    }, 1000);
   }
   
   // Track last toggle timestamp to prevent duplicate events
   const lastToggleTimeRef = useRef(0);
   
-  // Use event handler for updating settings via UI controls
-  const handleToggleOverlay = (newValue) => {
+  /**
+   * Toggles the visibility of the ML overlay
+   * This is a simplified function that directly modifies the existing overlay
+   * without recreating it unnecessarily
+   * @param {boolean} newValue - Whether the overlay should be visible
+   */
+  const handleToggleOverlay = useCallback((newValue) => {
     // Prevent duplicate calls within short time window (debounce)
     const now = Date.now();
     if (now - lastToggleTimeRef.current < 100) {
@@ -176,36 +317,86 @@ const DetectionSidebar = ({
     }
     lastToggleTimeRef.current = now;
     
-    // Only update the global state, NOT the React state
+    console.log(`DetectionSidebar: Toggle overlay visibility to ${newValue ? 'visible' : 'hidden'}`);
+    
+    // Update local React state
+    setShowOverlay(newValue);
+    
+    // Update the global state
     window.mlOverlaySettings = {
       ...(window.mlOverlaySettings || {}),
       showOverlay: newValue
     };
     window.detectionShowOverlay = newValue;
     
-    // Dispatch event with source to prevent infinite loops
+    // Save to localStorage for persistence
+    try {
+      localStorage.setItem('ml-overlay-show', newValue ? 'true' : 'false');
+    } catch (e) {
+      console.error("Error saving overlay visibility to localStorage:", e);
+    }
+    
+    // APPROACH 1: Use direct access to the MLDetectionOverlay instance (most efficient)
+    if (window._mlDetectionOverlay) {
+      try {
+        if (window._mlDetectionOverlay.div) {
+          window._mlDetectionOverlay.div.style.display = newValue ? 'block' : 'none';
+          console.log(`Updated MLDetectionOverlay div visibility to ${newValue ? 'visible' : 'hidden'}`);
+        }
+      } catch (e) {
+        console.error("Error updating MLDetectionOverlay directly:", e);
+      }
+    }
+    
+    // APPROACH 2: Use the global toggleMLOverlayVisibility function if available
+    if (typeof window.toggleMLOverlayVisibility === 'function') {
+      try {
+        window.toggleMLOverlayVisibility(newValue);
+      } catch (e) {
+        console.error("Error calling toggleMLOverlayVisibility:", e);
+      }
+    }
+    
+    // APPROACH 3: Direct DOM manipulation as fallback
+    const overlay = document.getElementById('ml-detection-overlay');
+    if (overlay) {
+      overlay.style.display = newValue ? 'block' : 'none';
+    }
+    
+    // Also toggle detection badges visibility
+    const badges = [
+      document.getElementById('detection-debug'),
+      document.querySelector('.detection-badge')
+    ];
+    
+    badges.forEach(badge => {
+      if (badge) {
+        badge.style.display = newValue ? 'block' : 'none';
+        badge.style.opacity = newValue ? '1' : '0';
+      }
+    });
+    
+    // Notify other components about the change
     window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
       detail: { 
         showOverlay: newValue,
-        showSegmentation: window.mlOverlaySettings.showSegmentation,
-        opacity: window.mlOverlaySettings.opacity,
-        source: 'detection_sidebar', // Add source to identify event origin
-        timestamp: now // Add timestamp to make event unique
+        showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
+        opacity: window.mlOverlaySettings?.opacity || 0.7,
+        source: 'detection_sidebar_toggle_function',
+        timestamp: now
       }
     }));
-    
-    // Update DOM directly
-    const overlayEl = document.getElementById('ml-detection-overlay');
-    if (overlayEl) {
-      overlayEl.style.display = newValue ? 'block' : 'none';
-    }
-  };
+  }, []);
   
   // Track last segmentation toggle timestamp to prevent duplicate events
   const lastSegToggleTimeRef = useRef(0);
   
-  // Handle segmentation toggle
-  const handleToggleSegmentation = (newValue) => {
+  /**
+   * Toggles the visibility of segmentation masks in the ML overlay
+   * This is a simplified function that avoids recreating the overlay
+   * @param {boolean} newValue - Whether segmentation masks should be visible
+   */
+  const handleSegmentationToggle = useCallback((newValue) => {
     // Prevent duplicate calls within short time window (debounce)
     const now = Date.now();
     if (now - lastSegToggleTimeRef.current < 100) {
@@ -214,73 +405,170 @@ const DetectionSidebar = ({
     }
     lastSegToggleTimeRef.current = now;
     
-    // Update global state
+    console.log(`DetectionSidebar: Toggle segmentation mask visibility to ${newValue ? 'visible' : 'hidden'}`);
+    
+    // Update local state
+    setShowSegmentation(newValue);
+    
+    // Update global settings
     window.mlOverlaySettings = {
       ...(window.mlOverlaySettings || {}),
       showSegmentation: newValue
     };
     
-    // Dispatch event with source to prevent infinite loops
-    window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
-      detail: { 
-        showOverlay: window.mlOverlaySettings.showOverlay,
-        showSegmentation: newValue,
-        opacity: window.mlOverlaySettings.opacity,
-        source: 'detection_sidebar', // Add source to identify event origin
-        timestamp: now // Add timestamp to make event unique
-      }
-    }));
+    // APPROACH 1: Use the updateMLOverlayClasses function from MLOverlay.js
+    if (typeof window.updateMLOverlayClasses === 'function') {
+      window.updateMLOverlayClasses({
+        showSegmentation: newValue
+      });
+    }
     
-    // Update DOM directly
+    // APPROACH 2: Direct DOM update as fallback
     const masks = document.querySelectorAll('.segmentation-mask');
     masks.forEach(mask => {
       mask.style.display = newValue ? 'block' : 'none';
     });
-  };
+    
+    // Notify other components about the change
+    window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
+      detail: { 
+        showOverlay: window.mlOverlaySettings?.showOverlay !== false,
+        showSegmentation: newValue,
+        opacity: window.mlOverlaySettings?.opacity || overlayOpacity,
+        source: 'detection_sidebar_segmentation_function',
+        timestamp: now
+      }
+    }));
+  }, [overlayOpacity]);
   
   // Track last opacity change timestamp to prevent duplicate events
   const lastOpacityChangeTimeRef = useRef(0);
   
-  // Handle opacity change
-  const handleOpacityChange = (newValue) => {
+  // Update counter when detectionDataLoaded event is received
+  useEffect(() => {
+    const handleDetectionDataLoaded = (event) => {
+      if (event.detail && (event.detail.trees || event.detail.detections)) {
+        const data = event.detail;
+        const count = data.trees?.length || data.detections?.length || 0;
+        
+        console.log(`DetectionSidebar: Detection data loaded with ${count} objects`);
+        
+        // Update the counter directly
+        const counterEl = document.getElementById('detected-objects-count');
+        if (counterEl) {
+          counterEl.textContent = count.toString();
+          console.log(`DetectionSidebar: Updated Objects Found counter to ${count} from event`);
+        }
+      }
+    };
+    
+    // Listen for detection data events
+    window.addEventListener('detectionDataLoaded', handleDetectionDataLoaded);
+    window.addEventListener('fastInferenceResults', handleDetectionDataLoaded);
+    
+    return () => {
+      // Clean up event listeners
+      window.removeEventListener('detectionDataLoaded', handleDetectionDataLoaded);
+      window.removeEventListener('fastInferenceResults', handleDetectionDataLoaded);
+    };
+  }, []);
+  
+  /**
+   * Updates the opacity of the ML overlay - improved real-time implementation
+   * @param {number} newValue - The new opacity value (0-1)
+   */
+  const handleOpacityChange = useCallback((newValue) => {
     // Prevent duplicate calls within short time window (debounce)
     const now = Date.now();
-    if (now - lastOpacityChangeTimeRef.current < 100) {
+    if (now - lastOpacityChangeTimeRef.current < 50) { // Reduced to 50ms for better real-time feel
       console.log('DetectionSidebar: Ignoring rapid opacity change to prevent infinite loop');
       return;
     }
     lastOpacityChangeTimeRef.current = now;
     
-    // Update global state
+    console.log(`DetectionSidebar: Updating overlay opacity to ${newValue}`);
+    
+    // Update local React state
+    setOverlayOpacity(newValue);
+    
+    // APPROACH 1: Use the setMLOverlayOpacity helper function if available
+    if (typeof window.setMLOverlayOpacity === 'function') {
+      window.setMLOverlayOpacity(newValue);
+      return; // This function handles everything we need
+    }
+    
+    // APPROACH 2: Use updateMLOverlayOpacity directly
+    if (typeof window.updateMLOverlayOpacity === 'function') {
+      window.updateMLOverlayOpacity(newValue);
+    }
+    
+    // APPROACH 3: Update the MLDetectionOverlay instance directly
+    if (window._mlDetectionOverlay) {
+      if (typeof window._mlDetectionOverlay.updateOpacity === 'function') {
+        window._mlDetectionOverlay.updateOpacity(newValue);
+      } else if (window._mlDetectionOverlay.div) {
+        window._mlDetectionOverlay.div.style.opacity = newValue.toString();
+      }
+    }
+    
+    // APPROACH 4: Direct DOM manipulation as fallback
+    const overlay = document.getElementById('ml-detection-overlay');
+    if (overlay) {
+      overlay.style.opacity = newValue.toString();
+      
+      // Also update any tint layers
+      const tintLayers = overlay.querySelectorAll('.tint-layer');
+      if (tintLayers.length > 0) {
+        tintLayers.forEach(layer => {
+          layer.style.opacity = newValue;
+        });
+      } else {
+        // If no tint layers, update background color directly
+        overlay.style.backgroundColor = `rgba(0, 30, 60, ${newValue})`;
+      }
+    }
+    
+    // APPROACH 5: Update all segmentation masks
+    const masks = document.querySelectorAll('.segmentation-mask');
+    if (masks.length > 0) {
+      masks.forEach(mask => {
+        mask.style.opacity = Math.min(newValue * 1.2, 0.8); // Slightly adjust for better visibility
+      });
+    }
+    
+    // Update global settings for other components
     window.mlOverlaySettings = {
       ...(window.mlOverlaySettings || {}),
       opacity: newValue
     };
     
-    // Dispatch event with source to prevent infinite loops
+    // Save to localStorage for persistence
+    try {
+      localStorage.setItem('ml-overlay-opacity', newValue.toString());
+    } catch (e) {
+      console.error("Error saving opacity to localStorage:", e);
+    }
+    
+    // Dispatch event for other components
     window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
       detail: { 
-        showOverlay: window.mlOverlaySettings.showOverlay,
-        showSegmentation: window.mlOverlaySettings.showSegmentation,
+        showOverlay: window.mlOverlaySettings?.showOverlay !== false,
+        showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
         opacity: newValue,
-        source: 'detection_sidebar', // Add source to identify event origin
-        timestamp: now // Add timestamp to make event unique
+        source: 'detection_sidebar_opacity_slider',
+        timestamp: now
       }
     }));
     
-    // Update opacity directly
-    if (typeof window.updateMLOverlayOpacity === 'function') {
-      window.updateMLOverlayOpacity(newValue);
-    } else if (typeof window.updateOverlayOpacity === 'function') {
-      window.updateOverlayOpacity(newValue);
-    }
-    
-    // Update overlay element directly
-    const overlay = document.getElementById('ml-detection-overlay');
-    if (overlay) {
-      overlay.style.backgroundColor = `rgba(0, 30, 60, ${newValue})`;
-    }
-  };
+    // Also dispatch a specific opacity update event that other components can listen for
+    window.dispatchEvent(new CustomEvent('mlOverlayOpacityUpdated', {
+      detail: { 
+        opacity: newValue,
+        source: 'detection_sidebar_opacity_slider',
+        timestamp: now
+      }
+    }));
+  }, []);
   
   // Adjust top position based on header state
   const sidebarTopPosition = headerCollapsed ? '0px' : '60px';
@@ -363,13 +651,87 @@ const DetectionSidebar = ({
         backgroundColor: '#f8fafc'
       }}
     >
-      {/* Objects count display */}
-      <div className="px-3 pt-2 mb-0">
+      {/* Streamlined Detection Header with Close Button */}
+      <div className="px-3 pt-3 pb-2 mb-1 border-b border-slate-200">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-blue-900 font-medium">Objects Found:</span>
-          <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full font-semibold" id="detected-objects-count">
-            {filteredTrees.length}
-          </span>
+          <div className="flex items-center">
+            <T4StatusIndicator />
+          </div>
+          
+          <div className="flex items-center">
+            <button 
+              className="flex items-center bg-white px-2 py-1 rounded border border-blue-100 hover:bg-blue-50 transition-colors mr-2"
+              onClick={() => {
+                // When clicking the Objects Found button, show the detection preview
+                if (window.mlDetectionData && typeof window.showDetectionPreview === 'function') {
+                  console.log('DetectionSidebar: Showing detection preview from Objects Found counter');
+                  
+                  // CRITICAL FIX: Ensure the ML overlay is visible and has the data
+                  // Force visibility with explicit display
+                  const overlay = document.getElementById('ml-detection-overlay');
+                  if (overlay) {
+                    overlay.style.display = 'block';
+                    overlay.style.opacity = '1';
+                    
+                    // Try to use stored opacity from localStorage
+                    try {
+                      const savedOpacity = localStorage.getItem('ml-overlay-opacity');
+                      if (savedOpacity !== null) {
+                        const opacity = parseFloat(savedOpacity);
+                        overlay.style.backgroundColor = `rgba(0, 30, 60, ${opacity})`;
+                        console.log(`DetectionSidebar: Applied stored opacity to overlay: ${opacity}`);
+                      }
+                    } catch (e) {
+                      console.error("DetectionSidebar: Error applying stored opacity:", e);
+                    }
+                  }
+                  
+                  // Also ensure the ML overlay has the data by explicitly calling renderMLOverlay
+                  const mapInstance = window.map || window.googleMapsInstance || window._googleMap;
+                  if (mapInstance && typeof window.renderMLOverlay === 'function') {
+                    // This triggers the overlay to render with existing data
+                    window.renderMLOverlay(
+                      mapInstance,
+                      window.mlDetectionData,
+                      {
+                        opacity: window.mlOverlaySettings?.opacity || 0.7,
+                        showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
+                        forceVisible: true // Added flag to force visibility
+                      }
+                    );
+                    
+                    console.log('DetectionSidebar: Forced ML overlay visibility with existing data');
+                  }
+                  
+                  // Show the preview with detection data
+                  window.showDetectionPreview(window.mlDetectionData);
+                } else if (typeof window.checkAndShowDetectionPreview === 'function') {
+                  console.log('DetectionSidebar: Checking for detection data to show preview');
+                  window.checkAndShowDetectionPreview();
+                }
+              }}
+              title="Click to show detection results"
+            >
+              <span className="text-xs text-blue-700 font-medium mr-2">Objects:</span>
+              <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded font-semibold" id="detected-objects-count">
+                {window.mlDetectionData?.trees?.length || window.mlDetectionData?.detections?.length || filteredTrees.length || 0}
+              </span>
+            </button>
+            
+            {/* Close Button */}
+            <button
+              className="text-gray-500 hover:text-blue-700 focus:outline-none"
+              onClick={() => {
+                // Dispatch event to close the detection sidebar
+                window.dispatchEvent(new CustomEvent('forceCloseObjectDetection', {
+                  detail: { source: 'detection_sidebar_close_button' }
+                }));
+              }}
+              title="Close detection panel"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
       </div>
       
@@ -518,31 +880,9 @@ const DetectionSidebar = ({
           /* Parameters Panel */
           <div className="px-3 py-2">
             <Card className="p-3">
-              <h3 className="font-semibold text-sm mb-1">Detection Parameters</h3>
-              
-              <div className="space-y-2">
-                <div>
-                  <label className="text-sm text-gray-600 block mb-1">Detection Mode</label>
-                  <select
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                    value={geminiParams.detailLevel}
-                    onChange={(e) => setGeminiParams(prev => ({
-                      ...prev,
-                      detailLevel: e.target.value
-                    }))}
-                  >
-                    <option value="high">High Quality (Slower)</option>
-                    <option value="medium">Balanced</option>
-                    <option value="low">Fast Detection</option>
-                  </select>
-                </div>
-                
-                
-                {/* Use the React component for Detection Categories */}
-                <DetectionCategories />
-                
+              <div className="space-y-4">
                 {/* ML Overlay Controls (direct implementation) */}
-                <div className="mt-4">
+                <div>
                   <h3 className="text-sm font-semibold mb-2">ML Overlay Settings</h3>
                   <div className="ml-overlay-controls">
                     <div className="control-section">
@@ -559,64 +899,8 @@ const DetectionSidebar = ({
                               className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
                               checked={window.mlOverlaySettings?.showOverlay || showOverlay}
                               onChange={() => {
-                                const newValue = !showOverlay;
-                                console.log(`DetectionSidebar: Toggling overlay visibility to ${newValue ? 'visible' : 'hidden'}`);
-                                
-                                // Use our global handler instead of React state updates
-                                handleToggleOverlay(newValue);
-                                
-                                // Also update the local state to keep the UI in sync
-                                // This won't cause infinite loops since we don't update global state in useEffect
-                                setShowOverlay(newValue);
-                                
-                                // Function to find and update the DETECTION badge
-                                const updateBadgeVisibility = () => {
-                                  // First try by ID
-                                  const badge = document.getElementById('detection-debug');
-                                  
-                                  if (badge) {
-                                    badge.style.display = newValue ? 'block' : 'none';
-                                    badge.style.opacity = newValue ? '1' : '0';
-                                    console.log(`DetectionSidebar: Badge visibility set to ${newValue ? 'visible' : 'hidden'} via ID`);
-                                    return true;
-                                  }
-                                  
-                                  // If not found by ID, try class-based selectors
-                                  const badgeByClass = document.querySelector('.detection-badge');
-                                  if (badgeByClass) {
-                                    badgeByClass.style.display = newValue ? 'block' : 'none';
-                                    badgeByClass.style.opacity = newValue ? '1' : '0';
-                                    console.log(`DetectionSidebar: Badge visibility set to ${newValue ? 'visible' : 'hidden'} via class`);
-                                    return true;
-                                  }
-                                  
-                                  // If still not found, log warning
-                                  console.warn('DetectionSidebar: Could not find detection badge to update visibility');
-                                  return false;
-                                };
-                                
-                                // Update badge visibility
-                                updateBadgeVisibility();
-                                
-                                // Create badge if needed and overlay is visible
-                                if (!updateBadgeVisibility() && newValue) {
-                                  console.log('DetectionSidebar: Badge not found, creating new one');
-                                  // Try to create the badge via event
-                                  window.dispatchEvent(new CustomEvent('createDetectionBadge', {
-                                    detail: { width: width, headerCollapsed: headerCollapsed }
-                                  }));
-                                }
-                                
-                                // Dispatch event for other components
-                                window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
-                                  detail: { 
-                                    showOverlay: newValue, 
-                                    showSegmentation, 
-                                    opacity: overlayOpacity
-                                  }
-                                }));
-                                
-                                console.log(`DetectionSidebar: ML Overlay and badge visibility update completed`);
+                                // Simply call our reusable toggle function with the inverse of current state
+                                handleToggleOverlay(!showOverlay);
                               }}
                               style={{
                                 right: showOverlay ? '0' : '4px',
@@ -649,15 +933,8 @@ const DetectionSidebar = ({
                               className="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer"
                               checked={window.mlOverlaySettings?.showSegmentation || showSegmentation}
                               onChange={() => {
-                                const newValue = !showSegmentation;
-                                
-                                // Use global handler instead of React state updates
-                                handleToggleSegmentation(newValue);
-                                
-                                // Also update local state to keep UI in sync
-                                setShowSegmentation(newValue);
-                                
-                                console.log(`DetectionSidebar: Segmentation mask visibility set to ${newValue ? 'visible' : 'hidden'}`);
+                                // Simply call our reusable segmentation toggle function with the inverse of current state
+                                handleSegmentationToggle(!showSegmentation);
                               }}
                               style={{
                                 right: showSegmentation ? '0' : '4px',
@@ -690,19 +967,9 @@ const DetectionSidebar = ({
                           step="0.05"
                           value={window.mlOverlaySettings?.opacity || overlayOpacity}
                           onChange={(e) => {
-                            const newValue = parseFloat(e.target.value);
-                            
-                            // Use global handler instead of React state updates
-                            handleOpacityChange(newValue);
-                            
-                            // Also update local state to keep UI in sync
-                            setOverlayOpacity(newValue);
-                            
-                            console.log(`DetectionSidebar: Updating overlay opacity to ${newValue}`);
-                          }}
-                          onMouseUp={() => {
-                            // Use our handler for the final update when the slider is released
-                            handleOpacityChange(overlayOpacity);
+                            // Get the opacity value and update
+                            const newOpacity = parseFloat(e.target.value);
+                            handleOpacityChange(newOpacity);
                           }}
                           className="w-full"
                         />
@@ -711,45 +978,48 @@ const DetectionSidebar = ({
                   </div>
                 </div>
                 
-                {/* Detection preview is now a modal popup, not rendered in sidebar */}
-                
-                <div>
-                  <label className="text-sm text-gray-600 block mb-1">Analytics Categories</label>
-                  <div className="grid grid-cols-2 gap-1">
-                    <div className="flex items-center text-xs bg-gray-50 rounded p-1">
-                      <input 
-                        type="checkbox" 
-                        id="risk-analysis" 
-                        checked={geminiParams.includeRiskAnalysis} 
-                        onChange={(e) => setGeminiParams(prev => ({
-                          ...prev,
-                          includeRiskAnalysis: e.target.checked
-                        }))}
-                        className="mr-1 h-3 w-3" 
-                      />
-                      <label htmlFor="risk-analysis" className="text-xs">Risk Assessment</label>
-                    </div>
-                    <div className="flex items-center text-xs bg-gray-50 rounded p-1">
-                      <input 
-                        type="checkbox" 
-                        id="species-detection" 
-                        defaultChecked={true} 
-                        className="mr-1 h-3 w-3" 
-                      />
-                      <label htmlFor="species-detection" className="text-xs">Species Detection</label>
-                    </div>
-                    <div className="flex items-center text-xs bg-gray-50 rounded p-1">
-                      <input 
-                        type="checkbox" 
-                        id="health-assessment" 
-                        defaultChecked={true} 
-                        className="mr-1 h-3 w-3" 
-                      />
-                      <label htmlFor="health-assessment" className="text-xs">Health Assessment</label>
+                {/* T4 GPU Integration Status Section */}
+                <div className="mt-4 mb-2">
+                  <h3 className="text-sm font-semibold mb-2">ML Engine Status</h3>
+                  <div className="bg-gray-50 p-3 rounded border border-gray-200">
+                    <div>
+                      <T4StatusIndicator />
+                      
+                      <div className="mt-2 text-xs text-gray-600">
+                        <p>Tree detection can run on the local CPU, local GPU, or remote T4 GPU for faster processing.</p>
+                      </div>
                     </div>
                   </div>
                 </div>
                 
+                {/* Detection Parameters section moved below overlay settings */}
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold mb-2">Detection Parameters</h3>
+                  
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm text-gray-600 block mb-1">Detection Mode</label>
+                      <select
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-blue-50 text-blue-700 font-medium"
+                        value={geminiParams.detailLevel}
+                        onChange={(e) => setGeminiParams(prev => ({
+                          ...prev,
+                          detailLevel: e.target.value
+                        }))}
+                      >
+                        <option value="high">Grounded SAM</option>
+                        <option value="medium" disabled>Gemini (coming soon)</option>
+                      </select>
+                    </div>
+                    
+                    {/* Detection Categories */}
+                    <div>
+                      <label className="text-sm text-gray-600 block mb-1">Categories</label>
+                      <DetectionCategories />
+                    </div>
+                    
+                  </div>
+                </div>
               </div>
             </Card>
           </div>
@@ -990,7 +1260,7 @@ const DetectionSidebar = ({
               <div className="space-y-2 mt-2">
                 {/* Category selection from DetectionCategories */}
                 <select
-                  className="w-full border border-gray-300 rounded text-xs py-1"
+                  className="w-full border border-gray-300 rounded text-xs py-1 bg-blue-50 text-blue-700"
                   onChange={(e) => {
                     const selectedValue = e.target.value;
                     // Set object type for manual placement
@@ -1034,7 +1304,7 @@ const DetectionSidebar = ({
           <Button
             variant="outline"
             size="sm"
-            className="flex-none px-4"
+            className="flex-none px-4 bg-blue-700 hover:bg-blue-800 text-white border-blue-600"
             id="detect-trees-btn"
             onClick={e => {
               console.log("DetectionSidebar: Detect button clicked - starting ML pipeline");
@@ -1091,7 +1361,13 @@ const DetectionSidebar = ({
               const jobId = window.currentDetectionJobId || `detection_${Date.now()}`;
               // Store it globally so other components can access it
               window.currentDetectionJobId = jobId;
+              window._lastDetectionJobId = jobId; // Save a backup copy
               console.log(`DetectionSidebar: Using job ID: ${jobId}`);
+              
+              // Also dispatch an event with the job ID
+              window.dispatchEvent(new CustomEvent('detectionJobIdUpdated', {
+                detail: { job_id: jobId }
+              }));
               
               // Helper to update progress
               const updateProgress = (percent, message) => {
@@ -1125,6 +1401,103 @@ const DetectionSidebar = ({
                 updateProgress(100, "Detection complete!");
                 cleanupDetection();
                 
+                // After detection completes, explicitly show the detection preview
+                setTimeout(() => {
+                  console.log("DetectionSidebar: Showing detection preview with ML detection data");
+                  
+                  // Get the detection data from the global variable
+                  const detectionData = window.mlDetectionData;
+                  
+                  if (detectionData) {
+                    console.log("DetectionSidebar: Found detection data with:", {
+                      jobId: detectionData.job_id,
+                      treesCount: detectionData.trees?.length || 0,
+                      hasDetections: !!detectionData.detections,
+                      detectionsCount: detectionData.detections?.length || 0
+                    });
+                    
+                    // CRITICAL FIX: Update the Objects Found counter when detection completes
+                    // IMPORTANT: Preserve the existing count if we had previous detections
+                    const counterEl = document.getElementById('detected-objects-count');
+                    if (counterEl) {
+                      // Get new detection count
+                      const newCount = detectionData.trees?.length || detectionData.detections?.length || 0;
+                      
+                      // Get previous detection count
+                      const previousCount = window._previousMLDetectionData?.trees?.length || 
+                                           window._previousMLDetectionData?.detections?.length || 0;
+                      
+                      // Only replace the count if it makes sense - avoid random resets to lower values
+                      if (newCount > 0) {
+                        // If we're continuing a session, we should keep the max count
+                        // This ensures we don't randomly drop to a lower number when doing multiple detections
+                        const finalCount = Math.max(newCount, previousCount);
+                        counterEl.textContent = finalCount.toString();
+                        console.log(`DetectionSidebar: Updated Objects Found counter to ${finalCount} (new: ${newCount}, previous: ${previousCount})`);
+                      } else if (previousCount > 0) {
+                        // If new count is 0 but we had previous detections, keep previous count
+                        counterEl.textContent = previousCount.toString();
+                        console.log(`DetectionSidebar: Keeping previous count ${previousCount} (new count was 0)`);
+                      }
+                    }
+                    
+                    // Always make the overlay settings visible
+                    window.mlOverlaySettings = {
+                      ...(window.mlOverlaySettings || {}),
+                      showOverlay: true,
+                      opacity: 0.7,
+                      showSegmentation: true
+                    };
+                    window.detectionShowOverlay = true;
+                    
+                    // Also make sure ML overlay is visible with the data
+                    if (typeof window.renderMLOverlay === 'function') {
+                      const mapInstance = window.map || window.googleMapsInstance || window._googleMap;
+                      if (mapInstance) {
+                        console.log("DetectionSidebar: Ensuring ML overlay is visible with detection data");
+                        
+                        // Force ML overlay to be visible with latest data
+                        window.renderMLOverlay(
+                          mapInstance, 
+                          detectionData,
+                          {
+                            opacity: window.mlOverlaySettings?.opacity || 0.7,
+                            showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
+                            forceRenderBoxes: true
+                          }
+                        );
+                        
+                        // Ensure the ML overlay is visible (in case it was hidden)
+                        const overlay = document.getElementById('ml-detection-overlay');
+                        if (overlay) {
+                          overlay.style.display = 'block';
+                          overlay.style.opacity = '1';
+                        }
+                        
+                        // Also dispatch an event to ensure the overlay is visible
+                        window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
+                          detail: { 
+                            showOverlay: true, 
+                            showSegmentation: true, 
+                            opacity: window.mlOverlaySettings?.opacity || 0.7,
+                            source: 'detection_completion'
+                          }
+                        }));
+                      }
+                    }
+                    
+                    // Show the detection preview
+                    if (typeof window.showDetectionPreview === 'function') {
+                      console.log("DetectionSidebar: Showing detection preview");
+                      window.showDetectionPreview(detectionData);
+                    } else {
+                      console.warn("DetectionSidebar: showDetectionPreview function not available");
+                    }
+                  } else {
+                    console.warn("DetectionSidebar: No detection data available after detection complete");
+                  }
+                }, 1000); // Wait a second to ensure data is loaded
+                
                 // Remove this event listener
                 window.removeEventListener('treeDetectionComplete', handleDetectionComplete);
                 window.removeEventListener('treeDetectionError', handleDetectionError);
@@ -1143,7 +1516,60 @@ const DetectionSidebar = ({
               window.addEventListener('treeDetectionComplete', handleDetectionComplete);
               window.addEventListener('treeDetectionError', handleDetectionError);
               
-              // Dispatch event to trigger detection
+              // ENHANCED: Make overlay immediately visible before dispatching detection event
+              console.log("DetectionSidebar: Making overlay immediately visible before detection starts");
+              
+              // Preserve the current detection data and its counter before starting a new detection
+              // This ensures we don't lose or reset existing counts during the detection process
+              if (window.mlDetectionData) {
+                // Save a backup of current detection data
+                window._previousMLDetectionData = JSON.parse(JSON.stringify(window.mlDetectionData));
+                
+                // Update the objects counter with current data to ensure consistency
+                const counterEl = document.getElementById('detected-objects-count');
+                if (counterEl) {
+                  const count = window.mlDetectionData.trees?.length || window.mlDetectionData.detections?.length || 0;
+                  console.log(`DetectionSidebar: Preserving current object count: ${count}`);
+                  // We'll use the stored data rather than updating DOM directly to maintain React state integrity
+                }
+                
+                // Force overlay to be visible with existing data
+                const mapInstance = window.map || window.googleMapsInstance || window._googleMap;
+                if (mapInstance && typeof window.renderMLOverlay === 'function') {
+                  // Force immediate overlay display with existing data
+                  window.renderMLOverlay(
+                    mapInstance,
+                    window.mlDetectionData,
+                    {
+                      opacity: window.mlOverlaySettings?.opacity || 0.7,
+                      showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
+                      forceRenderBoxes: true,
+                      preserveExistingDetections: true // Flag to preserve existing detection data
+                    }
+                  );
+                }
+              }
+              
+              // 2. Manually ensure the overlay is visible if it exists
+              if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
+                window._mlDetectionOverlay.div.style.display = 'block';
+              }
+              
+              // 3. Update any overlay element directly as a fallback
+              const overlay = document.getElementById('ml-detection-overlay');
+              if (overlay) {
+                overlay.style.display = 'block';
+              }
+              
+              // 4. Update global settings to show overlay
+              window.mlOverlaySettings = {
+                ...(window.mlOverlaySettings || {}),
+                showOverlay: true,
+                opacity: window.mlOverlaySettings?.opacity || 0.7
+              };
+              window.detectionShowOverlay = true;
+              
+              // 5. Now dispatch the detection event
               window.dispatchEvent(new CustomEvent('openTreeDetection', {
                 detail: {
                   useSatelliteImagery: true,
@@ -1151,9 +1577,9 @@ const DetectionSidebar = ({
                   saveToResponseJson: true,
                   geminiParams: geminiParams,
                   job_id: jobId,
-                  buttonTriggered: true  // Flag to indicate this was triggered by button click
-                },
-                buttonTriggered: true  // Add flag at event level too for backwards compatibility
+                  source: "detect_button",  // CRITICAL: Required for MapControls to identify this as a detection request
+                  forceOverlayVisible: true // Flag to indicate the overlay should be immediately visible
+                }
               }));
               
               // Simulate progress updates

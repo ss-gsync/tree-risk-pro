@@ -6,8 +6,8 @@
 // Enhanced version with performance optimizations and improved initialization
 
 import React, { useEffect, useState } from 'react';
-// Import MLOverlay without destructuring to ensure we get the full module
-import MLOverlayModule from './MLOverlay';
+// Import MLOverlay with named imports
+import * as MLOverlayModule from './MLOverlay';
 
 /**
  * MLOverlayInitializer Component
@@ -28,138 +28,298 @@ const MLOverlayInitializer = () => {
   
   // Setup ML Overlay initialization
   useEffect(() => {
-    // Check if MLOverlay has an ensureInitialized method
-    if (typeof MLOverlayModule.ensureInitialized === 'function') {
-      console.log('MLOverlayInitializer: Checking MLOverlay initialization...');
+    console.log('MLOverlayInitializer: Starting initialization...');
+    
+    // Define a function to attempt initialization with a fallback mechanism
+    const attemptInitialization = () => {
+      // Directly use the integrated MLOverlay.js module
+      console.log('MLOverlayInitializer: Using integrated MLOverlay.js module');
       
-      // Check initialization status
-      const isInitialized = MLOverlayModule.ensureInitialized();
-      
-      // If already initialized, just log success and update state
-      if (isInitialized) {
-        console.log('MLOverlayInitializer: MLOverlay already initialized');
-        setInitialized(true);
-        
-        // Ensure we also initialize the overlay with any existing data
-        initializeWithExistingData();
-        return;
-      }
-      
-      console.log('MLOverlayInitializer: MLOverlay not initialized, setting up event listeners');
-      
-      // Set up event listeners to initialize MLOverlay when Maps API is ready
-      
-      // First, try window.google check with interval
-      const checkInterval = setInterval(() => {
-        // Check if Google Maps is available now
-        if (typeof google !== 'undefined' && google.maps && google.maps.OverlayView) {
-          console.log('MLOverlayInitializer: Google Maps API detected, initializing MLOverlay');
-          clearInterval(checkInterval);
-          
-          // Try initializing MLOverlay
-          const success = MLOverlayModule.ensureInitialized();
-          setInitialized(success);
-          
-          if (success) {
-            initializeWithExistingData();
+      const initializeWithIntegratedModule = () => {
+        return new Promise((resolve, reject) => {
+          try {
+            console.log('MLOverlayInitializer: Setting up global functions from MLOverlay module');
+            
+            // Expose the functions from MLOverlayModule globally
+            window.MLDetectionOverlay = MLOverlayModule.MLDetectionOverlay;
+            window.renderMLOverlay = MLOverlayModule.renderMLOverlay;
+            window.removeMLOverlay = MLOverlayModule.removeMLOverlay;
+            window.updateMLOverlayOpacity = MLOverlayModule.updateMLOverlayOpacity;
+            window.updateMLOverlayClasses = MLOverlayModule.updateMLOverlayClasses;
+            window.toggleMLOverlayVisibility = (visible) => {
+              console.log(`MLOverlayInitializer: toggleMLOverlayVisibility called with visible=${visible}`);
+              if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
+                window._mlDetectionOverlay.div.style.display = visible ? 'block' : 'none';
+                return true;
+              }
+              return false;
+            };
+            
+            // Verify that the functions are available
+            if (typeof window.MLDetectionOverlay === 'function' && 
+                typeof window.renderMLOverlay === 'function' &&
+                typeof window.updateMLOverlayOpacity === 'function') {
+              console.log('MLOverlayInitializer: MLOverlay functions are now available globally');
+              resolve(true);
+            } else {
+              console.warn('MLOverlayInitializer: Module loaded but functions not properly exported');
+              reject(new Error('Module functions not available'));
+            }
+          } catch (err) {
+            console.error('MLOverlayInitializer: Error initializing with integrated module', err);
+            reject(err);
           }
-        }
-      }, 500);
-      
-      // Clear interval after 10 seconds max to prevent memory leaks
-      setTimeout(() => {
-        clearInterval(checkInterval);
-      }, 10000);
-      
-      // Also listen for explicit initialization events
-      const handleMapsApiInitialized = () => {
-        console.log('MLOverlayInitializer: Maps API initialized event received');
-        clearInterval(checkInterval);
-        
-        // Wait a short delay to ensure full initialization
-        setTimeout(() => {
-          const success = MLOverlayModule.ensureInitialized();
-          setInitialized(success);
-          
-          if (success) {
-            initializeWithExistingData();
-          }
-        }, 100);
+        });
       };
       
-      // Listen for custom map initialization events
-      window.addEventListener('mapsApiInitialized', handleMapsApiInitialized);
-      window.addEventListener('googleMapReady', handleMapsApiInitialized);
-      window.addEventListener('mapInitialized', handleMapsApiInitialized);
+      // Initialize with the integrated module
+      initializeWithIntegratedModule()
+        .then(() => {
+          console.log('MLOverlayInitializer: Successfully initialized with integrated module');
+          setInitialized(true);
+          initializeWithExistingData();
+          return true;
+        })
+        .catch(() => {
+          console.warn('MLOverlayInitializer: Failed to initialize with integrated module, falling back to standard methods');
+          
+          // Continue with standard initialization methods
+          // 1. Try the new unified function from index.js
+          if (typeof window.ensureMLOverlayInitialized === 'function') {
+            console.log('MLOverlayInitializer: Found ensureMLOverlayInitialized function in window');
+            const isInitialized = window.ensureMLOverlayInitialized();
+            
+            if (isInitialized) {
+              console.log('MLOverlayInitializer: Successfully initialized via window.ensureMLOverlayInitialized');
+              setInitialized(true);
+              initializeWithExistingData();
+              return true;
+            }
+          }
+          
+          // 2. Try the module's function
+          if (typeof MLOverlayModule.ensureInitialized === 'function') {
+            console.log('MLOverlayInitializer: Found ensureInitialized method in module');
+            
+            // Check initialization status
+            const isInitialized = MLOverlayModule.ensureInitialized();
+            
+            // If already initialized, just log success and update state
+            if (isInitialized) {
+              console.log('MLOverlayInitializer: MLOverlay already initialized via module method');
+              setInitialized(true);
+              
+              // Ensure we also initialize the overlay with any existing data
+              initializeWithExistingData();
+              return true;
+            }
+          } 
+          
+          // 3. Check for global ensureInitialized function
+          if (typeof window.ensureInitialized === 'function') {
+            console.log('MLOverlayInitializer: Found global ensureInitialized function');
+            
+            // Use the global function instead
+            const isInitialized = window.ensureInitialized();
+            
+            if (isInitialized) {
+              console.log('MLOverlayInitializer: MLOverlay initialized via global function');
+              setInitialized(true);
+              
+              // Ensure we also initialize the overlay with any existing data
+              initializeWithExistingData();
+              return true;
+            }
+          }
+          
+          // 4. Check window.treeDetection
+          if (window.treeDetection && typeof window.treeDetection.ensureInitialized === 'function') {
+            console.log('MLOverlayInitializer: Found ensureInitialized in window.treeDetection');
+            const isInitialized = window.treeDetection.ensureInitialized();
+            
+            if (isInitialized) {
+              console.log('MLOverlayInitializer: MLOverlay initialized via treeDetection.ensureInitialized');
+              setInitialized(true);
+              initializeWithExistingData();
+              return true;
+            }
+          }
+          
+          // 5. Try direct initialization of the class as a last resort
+          console.log('MLOverlayInitializer: Attempting direct initialization');
+          
+          // Access the module's default export directly
+          if (MLOverlayModule && typeof MLOverlayModule === 'object') {
+            // Store MLOverlay functions on window for easier access
+            window.renderMLOverlay = MLOverlayModule.renderMLOverlay;
+            window.removeMLOverlay = MLOverlayModule.removeMLOverlay;
+            window.updateMLOverlayOpacity = MLOverlayModule.updateMLOverlayOpacity;
+            window.updateMLOverlayClasses = MLOverlayModule.updateMLOverlayClasses;
+            
+            // Mark as initialized
+            setInitialized(true);
+            initializeWithExistingData();
+            return true;
+          }
+          
+          // If all methods fail, return false
+          return false;
+        });
       
-      // Clean up event listeners
-      return () => {
-        clearInterval(checkInterval);
-        window.removeEventListener('mapsApiInitialized', handleMapsApiInitialized);
-        window.removeEventListener('googleMapReady', handleMapsApiInitialized);
-        window.removeEventListener('mapInitialized', handleMapsApiInitialized);
-      };
-    } else {
-      console.error('MLOverlayInitializer: MLOverlay module does not have ensureInitialized method');
+      // Return true to indicate we're handling initialization asynchronously
+      return true;
+    };
+    
+    // Try immediate initialization
+    if (attemptInitialization()) {
+      return; // Already initialized successfully
     }
+    
+    console.log('MLOverlayInitializer: Initial initialization attempt failed, setting up event listeners');
+    
+    // First, try window.google check with interval
+    const checkInterval = setInterval(() => {
+      // Check if Google Maps is available now
+      if (typeof google !== 'undefined' && google.maps && google.maps.OverlayView) {
+        console.log('MLOverlayInitializer: Google Maps API detected, attempting initialization');
+        
+        if (attemptInitialization()) {
+          clearInterval(checkInterval);
+        }
+      }
+    }, 500);
+    
+    // Clear interval after 10 seconds max to prevent memory leaks
+    setTimeout(() => {
+      clearInterval(checkInterval);
+    }, 10000);
+    
+    // Also listen for explicit initialization events
+    const handleMapsApiInitialized = () => {
+      console.log('MLOverlayInitializer: Maps API initialized event received');
+      clearInterval(checkInterval);
+      
+      // Wait a short delay to ensure full initialization
+      setTimeout(() => {
+        attemptInitialization();
+      }, 100);
+    };
+    
+    // Listen for custom map initialization events
+    window.addEventListener('mapsApiInitialized', handleMapsApiInitialized);
+    window.addEventListener('googleMapReady', handleMapsApiInitialized);
+    window.addEventListener('mapInitialized', handleMapsApiInitialized);
+    
+    // Clean up event listeners
+    return () => {
+      clearInterval(checkInterval);
+      window.removeEventListener('mapsApiInitialized', handleMapsApiInitialized);
+      window.removeEventListener('googleMapReady', handleMapsApiInitialized);
+      window.removeEventListener('mapInitialized', handleMapsApiInitialized);
+    };
   }, []);
   
-  // Function to initialize overlay with existing data - now strictly respects user control
+  // Function to initialize overlay with existing data - make it visible by default
   const initializeWithExistingData = () => {
-    // IMPORTANT: Don't automatically initialize overlay with existing data - let user control with Detect button
-    console.log('MLOverlayInitializer: Initialized, but waiting for Detect button to show overlay');
+    // CRITICAL FIX: Make overlay visible by default when Detection button is clicked
+    console.log('MLOverlayInitializer: Setting overlay to visible by default');
     
-    // Check if we already have a flag set to show the overlay (from previous Detect button click)
-    const shouldShowOverlay = window.detectionShowOverlay === true || 
-                             window.mlOverlaySettings?.showOverlay === true;
+    // ALWAYS default to showing the overlay for better UX - users should see something when they click Detection
+    const shouldShowOverlay = true; // Force visible always
     
-    // Only clear detection data if we don't have a request to show the overlay
-    if (!shouldShowOverlay && window.mlDetectionData) {
-      console.log('MLOverlayInitializer: Clearing existing detection data to prevent auto-rendering');
-      // Save a backup copy in case we need to restore it later, but don't render it
-      window._savedMlDetectionData = { ...window.mlDetectionData };
-      window.mlDetectionData = null;
+    // NEVER clear detection data - preserve all markers and detection results
+    if (window.mlDetectionData) {
+      console.log('MLOverlayInitializer: Preserving existing detection data');
+      // Just ensure we have a backup copy if needed
+      window._savedMlDetectionData = window.mlDetectionData;
     }
     
-    // Explicitly mark overlay as hidden by default UNLESS we've already clicked the Detect button
-    if (!shouldShowOverlay) {
-      window.detectionShowOverlay = false;
-      window.mlOverlaySettings = {
-        ...(window.mlOverlaySettings || {}),
-        showOverlay: false,
-        pendingButtonTrigger: true  // Indicate we're waiting for explicit button trigger
-      };
-      
-      // Remove any existing overlay to prevent it from showing
-      if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
-        console.log('MLOverlayInitializer: Hiding existing overlay');
-        window._mlDetectionOverlay.div.style.display = 'none';
-      }
+    // Make overlay visible by default - this is the key fix
+    console.log('MLOverlayInitializer: Setting overlay to visible state');
+    window.mlOverlaySettings = {
+      ...(window.mlOverlaySettings || {}),
+      showOverlay: true,
+      initialVisibility: true,
+      pendingButtonTrigger: false  // Don't wait for explicit trigger
+    };
+    window.detectionShowOverlay = true;
+    
+    // Dispatch event to make sure overlay is immediately visible
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
+        detail: {
+          showOverlay: true,
+          showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
+          opacity: window.mlOverlaySettings?.opacity || 0.7,
+          source: 'initialization'
+        }
+      }));
+    }, 100);
+    
+    // Try to make the overlay visible if it exists
+    if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
+      console.log('MLOverlayInitializer: Making existing overlay div visible');
+      window._mlDetectionOverlay.div.style.display = 'block';
     } else {
-      console.log('MLOverlayInitializer: Detect button already clicked, overlay should be visible');
+      // Create an overlay even if we don't have data - this is critical for first click to work
+      const mapInstance = window.map || window.googleMapsInstance || window._googleMap;
+      
+      if (mapInstance && typeof window.renderMLOverlay === 'function') {
+        try {
+          if (window.mlDetectionData) {
+            // If we have data, use it
+            console.log('MLOverlayInitializer: Creating overlay with existing data');
+            window.renderMLOverlay(
+              mapInstance,
+              window.mlDetectionData,
+              {
+                opacity: window.mlOverlaySettings?.opacity || 0.7,
+                showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
+                forceRenderBoxes: true
+              }
+            );
+          } else {
+            // No data yet - create empty placeholder overlay
+            console.log('MLOverlayInitializer: Creating placeholder overlay with no data');
+            window.renderMLOverlay(
+              mapInstance,
+              { trees: [], metadata: window.mapViewInfo?.viewData || {} },
+              {
+                opacity: window.mlOverlaySettings?.opacity || 0.7,
+                showSegmentation: false,
+                placeholderMode: true
+              }
+            );
+          }
+        } catch (e) {
+          console.error('MLOverlayInitializer: Error creating overlay:', e);
+        }
+      } else {
+        console.warn('MLOverlayInitializer: Map or renderMLOverlay not available yet');
+      }
     }
     
     // Listen for openTreeDetection events to handle button triggers
     const handleOpenTreeDetection = (event) => {
-      // Check if this was triggered by button click
-      const isButtonTriggered = event.buttonTriggered === true || 
-                             (event.detail && event.detail.buttonTriggered === true);
+      // Always ensure the overlay is visible when detection is triggered
+      console.log('MLOverlayInitializer: Detection triggered, ensuring overlay is visible');
       
-      if (isButtonTriggered) {
-        console.log('MLOverlayInitializer: Detect button clicked, setting showOverlay flag');
-        
-        // Set the global flag for showing the overlay
-        window.detectionShowOverlay = true;
-        window.mlOverlaySettings = {
-          ...(window.mlOverlaySettings || {}),
-          showOverlay: true,
-          pendingButtonTrigger: false
-        };
-        
-        // If we have saved data, restore it
-        if (!window.mlDetectionData && window._savedMlDetectionData) {
-          window.mlDetectionData = window._savedMlDetectionData;
-        }
+      // Set the global flag for showing the overlay
+      window.detectionShowOverlay = true;
+      window.mlOverlaySettings = {
+        ...(window.mlOverlaySettings || {}),
+        showOverlay: true,
+        pendingButtonTrigger: false
+      };
+      
+      // Make sure we have any saved data available
+      if (!window.mlDetectionData && window._savedMlDetectionData) {
+        window.mlDetectionData = window._savedMlDetectionData;
+      }
+      
+      // Make overlay visible if it exists but is hidden
+      if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
+        window._mlDetectionOverlay.div.style.display = 'block';
       }
     };
     
@@ -181,57 +341,19 @@ const MLOverlayInitializer = () => {
     };
   };
   
-  // Create mock data for testing if needed
+  // Placeholder for test data handling
   const createMockDataIfNeeded = () => {
-    // Only create mock data if we're in development and user has enabled test mode
-    const isTestMode = localStorage.getItem('enable_ml_test_mode') === 'true';
-    if (process.env.NODE_ENV !== 'development' && !isTestMode) return;
-    
-    console.log('MLOverlayInitializer: Creating mock data for testing ML overlay');
-    
-    // Create basic mock data with random tree positions
-    const mockData = {
-      job_id: `mock_${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      trees: []
-    };
-    
-    // Generate random trees of different categories
-    const categories = [
-      'healthy_tree',
-      'hazardous_tree',
-      'dead_tree',
-      'low_canopy_tree',
-      'pest_disease_tree'
-    ];
-    
-    // Generate 15 random trees
-    for (let i = 0; i < 15; i++) {
-      const category = categories[Math.floor(Math.random() * categories.length)];
-      
-      mockData.trees.push({
-        id: `mock-tree-${i}`,
-        category,
-        class: category,
-        confidence: 0.7 + (Math.random() * 0.2),
-        box: {
-          x: 0.3 + (Math.random() * 0.5), // Center around the view
-          y: 0.3 + (Math.random() * 0.5),
-          width: 0.05 + (Math.random() * 0.05),
-          height: 0.05 + (Math.random() * 0.05)
-        }
-      });
-    }
-    
-    // Store in global scope
-    window.mlDetectionData = mockData;
-    console.log('MLOverlayInitializer: Created mock data with', mockData.trees.length, 'trees');
-    
-    // Try to render the overlay with mock data
-    setTimeout(() => {
-      initializeWithExistingData();
-    }, 1000);
+    // Mock data creation has been disabled
+    console.log('MLOverlayInitializer: Mock data creation disabled');
+    return;
   };
+  
+  // Store these event handlers in refs to maintain references between hooks
+  const handlersRef = React.useRef({
+    handleOverlaySettingsChange: null,
+    handleDetectionDataUpdate: null,
+    cleanupInitialization: null
+  });
   
   // Setup visibility toggle handling
   useEffect(() => {
@@ -274,17 +396,78 @@ const MLOverlayInitializer = () => {
           }
         }
         
-        // Update opacity if specified
-        if (typeof MLOverlayModule.updateMLOverlayOpacity === 'function' && 
-            opacity !== undefined) {
-          // Apply to the ML overlay
-          MLOverlayModule.updateMLOverlayOpacity(opacity);
+        // Update opacity if specified - enhanced with more robust handling
+        if (opacity !== undefined) {
+          console.log(`MLOverlayInitializer: Handling opacity change to ${opacity}`);
           
-          // Also update the element directly
-          const overlay = document.getElementById('ml-detection-overlay');
-          if (overlay) {
-            overlay.style.backgroundColor = `rgba(0, 30, 60, ${opacity})`;
+          // Update global settings for consistency
+          window.mlOverlaySettings = {
+            ...(window.mlOverlaySettings || {}),
+            opacity: opacity
+          };
+          
+          // Save to localStorage for persistence
+          try {
+            localStorage.setItem('ml-overlay-opacity', opacity.toString());
+          } catch (e) {
+            console.error("Error saving opacity to localStorage:", e);
           }
+          
+          // APPROACH 1: Use the module function if available
+          if (typeof MLOverlayModule.updateMLOverlayOpacity === 'function') {
+            MLOverlayModule.updateMLOverlayOpacity(opacity);
+          }
+          
+          // APPROACH 2: Use the global function if available
+          if (typeof window.updateMLOverlayOpacity === 'function') {
+            window.updateMLOverlayOpacity(opacity);
+          }
+          
+          // APPROACH 3: Update the MLDetectionOverlay instance directly
+          if (window._mlDetectionOverlay) {
+            // Use updateOpacity method if available
+            if (typeof window._mlDetectionOverlay.updateOpacity === 'function') {
+              window._mlDetectionOverlay.updateOpacity(opacity);
+            } 
+            // Direct access to div if method not available
+            else if (window._mlDetectionOverlay.div) {
+              window._mlDetectionOverlay.div.style.opacity = opacity.toString();
+            }
+          }
+          
+          // APPROACH 4: Update DOM elements directly as fallback
+          const overlayElement = document.getElementById('ml-detection-overlay');
+          if (overlayElement) {
+            overlayElement.style.opacity = opacity.toString();
+            
+            // Also update background color for any tint elements
+            const tintElements = overlayElement.querySelectorAll('.tint-layer') || [];
+            if (tintElements.length > 0) {
+              tintElements.forEach(tint => {
+                tint.style.backgroundColor = `rgba(0, 30, 60, ${opacity})`;
+              });
+            } else {
+              // If no tint elements, update the overlay background directly
+              overlayElement.style.backgroundColor = `rgba(0, 30, 60, ${opacity})`;
+            }
+          }
+          
+          // APPROACH 5: Update segmentation masks directly
+          const masks = document.querySelectorAll('.segmentation-mask');
+          if (masks.length > 0) {
+            masks.forEach(mask => {
+              mask.style.opacity = Math.min(opacity * 1.2, 0.8); // Adjust for better visibility
+            });
+          }
+          
+          // Dispatch event for other components
+          window.dispatchEvent(new CustomEvent('mlOverlayOpacityUpdated', {
+            detail: { 
+              opacity: opacity,
+              source: 'ml_overlay_initializer',
+              timestamp: Date.now()
+            }
+          }));
         }
         
         // Update segmentation if specified
@@ -345,8 +528,12 @@ const MLOverlayInitializer = () => {
       };
     };
     
+    // Store handler in ref for reference stability
+    handlersRef.current.handleOverlaySettingsChange = handleOverlaySettingsChange;
+    
     // Initialize overlay with any existing data and get cleanup function
     const cleanupInitialization = initializeWithExistingData();
+    handlersRef.current.cleanupInitialization = cleanupInitialization;
     
     // Event listener for visibility toggle
     window.addEventListener('mlOverlaySettingsChanged', handleOverlaySettingsChange);
@@ -374,6 +561,16 @@ const MLOverlayInitializer = () => {
           if (showOverlay) {
             console.log('MLOverlayInitializer: Rendering overlay with detection data');
             
+            // IMPORTANT: Merge with existing data instead of replacing it
+            // This ensures we don't lose existing markers when adding new ones
+            if (window.mlDetectionData && window.mlDetectionData.trees && event.detail.trees) {
+              console.log('MLOverlayInitializer: Merging new detection data with existing data');
+              // Create new trees array with both existing and new trees
+              const mergedTrees = [...window.mlDetectionData.trees, ...event.detail.trees];
+              // Update the event data with merged trees
+              event.detail.trees = mergedTrees;
+            }
+            
             // Store data globally for access by other components
             window.mlDetectionData = event.detail;
             
@@ -384,7 +581,8 @@ const MLOverlayInitializer = () => {
               {
                 opacity: settings.opacity !== undefined ? settings.opacity : 0.7,
                 showSegmentation: settings.showSegmentation !== undefined ? settings.showSegmentation : true,
-                forceRenderBoxes: true
+                forceRenderBoxes: true,
+                appendMode: true  // Use append mode to add to existing overlay
               }
             );
             
@@ -399,13 +597,41 @@ const MLOverlayInitializer = () => {
             console.log('MLOverlayInitializer: Not showing overlay automatically - waiting for Detect button');
           }
         }
+        
+        // Always show the detection preview with the new data, regardless of overlay visibility
+        // This ensures the user can see the detection results even if the overlay is hidden
+        console.log('MLOverlayInitializer: Showing detection preview with new data');
+        try {
+          if (typeof window.showDetectionPreview === 'function') {
+            window.showDetectionPreview(event.detail);
+          } else {
+            console.warn('MLOverlayInitializer: window.showDetectionPreview not available, trying after delay');
+            // Try again after a short delay in case it's not defined yet
+            setTimeout(() => {
+              if (typeof window.showDetectionPreview === 'function') {
+                window.showDetectionPreview(event.detail);
+              }
+            }, 500);
+          }
+        } catch (err) {
+          console.error('MLOverlayInitializer: Error showing detection preview:', err);
+        }
       }
     };
+    
+    // Store handler in ref for reference stability
+    handlersRef.current.handleDetectionDataUpdate = handleDetectionDataUpdate;
     
     window.addEventListener('detectionDataLoaded', handleDetectionDataUpdate);
     
     return () => {
-      window.removeEventListener('detectionDataLoaded', handleDetectionDataUpdate);
+      window.removeEventListener('mlOverlaySettingsChanged', handlersRef.current.handleOverlaySettingsChange);
+      window.removeEventListener('detectionDataLoaded', handlersRef.current.handleDetectionDataUpdate);
+      
+      // Call the cleanup function from initializeWithExistingData
+      if (typeof handlersRef.current.cleanupInitialization === 'function') {
+        handlersRef.current.cleanupInitialization();
+      }
     };
   }, [initialized]);
   
@@ -442,16 +668,7 @@ const MLOverlayInitializer = () => {
     
     // Clean up
     return () => {
-      window.removeEventListener('mlOverlaySettingsChanged', handleOverlaySettingsChange);
-      window.removeEventListener('detectionDataLoaded', handleDetectionDataUpdate);
       window.removeEventListener('mlOverlayDrawComplete', handleDraw);
-      
-      // Call the cleanup functions for the event handlers
-      
-      // Call the cleanup function from initializeWithExistingData
-      if (typeof cleanupInitialization === 'function') {
-        cleanupInitialization();
-      }
       
       if (fpsInterval) clearInterval(fpsInterval);
     };
@@ -482,23 +699,80 @@ const MLOverlayInitializer = () => {
       };
       
       window.setMLOverlayOpacity = (opacity) => {
+        console.log(`MLOverlayInitializer: setMLOverlayOpacity called with ${opacity}`);
+        
+        // Update global settings for consistency
+        window.mlOverlaySettings = {
+          ...(window.mlOverlaySettings || {}),
+          opacity: opacity
+        };
+        
+        // Save to localStorage for persistence
+        try {
+          localStorage.setItem('ml-overlay-opacity', opacity.toString());
+        } catch (e) {
+          console.error("Error saving opacity to localStorage:", e);
+        }
+        
+        // APPROACH 1: Use the module function if available
         if (typeof MLOverlayModule.updateMLOverlayOpacity === 'function') {
           MLOverlayModule.updateMLOverlayOpacity(opacity);
         }
         
-        // Also update global settings
-        window.mlOverlaySettings = {
-          ...(window.mlOverlaySettings || {}),
-          opacity
-        };
+        // APPROACH 2: Use the global function if available
+        if (typeof window.updateMLOverlayOpacity === 'function') {
+          window.updateMLOverlayOpacity(opacity);
+        }
         
+        // APPROACH 3: Update the MLDetectionOverlay instance directly
+        if (window._mlDetectionOverlay) {
+          // Use updateOpacity method if available
+          if (typeof window._mlDetectionOverlay.updateOpacity === 'function') {
+            window._mlDetectionOverlay.updateOpacity(opacity);
+          } 
+          // Direct access to div if method not available
+          else if (window._mlDetectionOverlay.div) {
+            window._mlDetectionOverlay.div.style.opacity = opacity.toString();
+          }
+        }
+        
+        // APPROACH 4: Update DOM elements directly as fallback
+        const overlayElement = document.getElementById('ml-detection-overlay');
+        if (overlayElement) {
+          overlayElement.style.opacity = opacity.toString();
+          
+          // Also update background color for any tint elements
+          const tintElements = overlayElement.querySelectorAll('.tint-layer') || [];
+          if (tintElements.length > 0) {
+            tintElements.forEach(tint => {
+              tint.style.backgroundColor = `rgba(0, 30, 60, ${opacity})`;
+            });
+          } else {
+            // If no tint elements, update the overlay background directly
+            overlayElement.style.backgroundColor = `rgba(0, 30, 60, ${opacity})`;
+          }
+        }
+        
+        // APPROACH 5: Update segmentation masks directly
+        const masks = document.querySelectorAll('.segmentation-mask');
+        if (masks.length > 0) {
+          masks.forEach(mask => {
+            mask.style.opacity = Math.min(opacity * 1.2, 0.8); // Adjust for better visibility
+          });
+        }
+        
+        // Dispatch event for other components
         window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
           detail: { 
-            opacity,
+            opacity: opacity,
             showOverlay: window.mlOverlaySettings?.showOverlay,
-            showSegmentation: window.mlOverlaySettings?.showSegmentation 
+            showSegmentation: window.mlOverlaySettings?.showSegmentation,
+            source: 'set_ml_overlay_opacity',
+            timestamp: Date.now()
           }
         }));
+        
+        return true;
       };
       
       // Listen for tree detection events to properly handle button-triggered detection
