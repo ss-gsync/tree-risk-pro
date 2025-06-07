@@ -102,7 +102,7 @@ class GroundedSAMServer:
                 # Import the required modules
                 # Grounding DINO
                 from groundingdino.util.inference import load_model as load_grounding_dino
-                from groundingdino.config import SLConfig
+                from groundingdino.util.slconfig import SLConfig
                 
                 # Segment Anything
                 from segment_anything import sam_model_registry, SamPredictor
