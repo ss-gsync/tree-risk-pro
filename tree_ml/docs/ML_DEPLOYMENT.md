@@ -549,8 +549,8 @@ After=network.target
 [Service]
 User=${SERVICE_USER}
 WorkingDirectory=${REPO_PATH}
-# If using a system-wide virtual environment
-ExecStart=~/tree_ml_venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
+# If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
+ExecStart=/home/${SERVICE_USER}/tree_ml_venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
 # If using Poetry's virtual environment
 # ExecStart=${REPO_PATH}/.venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
 Restart=on-failure

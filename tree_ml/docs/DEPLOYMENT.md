@@ -310,8 +310,8 @@ sudo chmod -R 755 /opt/tree-ml/model-server/weights
 Create a systemd service file for the model server:
 
 ```bash
-# If using a system-wide virtual environment
-VENV_PATH=~/tree_ml_venv
+# If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
+VENV_PATH=/home/$USER/tree_ml_venv  # Replace with your actual home directory path
 
 # If using Poetry's virtual environment
 # cd /opt/tree-ml
@@ -438,8 +438,8 @@ sudo systemctl restart nginx
 ### 12. Create Backend Systemd Service
 
 ```bash
-# If using a system-wide virtual environment
-VENV_PATH=~/tree_ml_venv
+# If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
+VENV_PATH=/home/$USER/tree_ml_venv  # Replace with your actual home directory path
 
 # If using Poetry's virtual environment
 # cd /opt/tree-ml
