@@ -162,6 +162,10 @@ cat > .env << EOF
 VITE_API_URL=
 VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 VITE_GOOGLE_MAPS_MAP_ID=your_map_id
+# Enable T4 status indicator in the UI
+VITE_ENABLE_T4_STATUS=true
+# Display CUDA version in status indicator
+VITE_T4_CUDA_VERSION=12.8
 EOF
 
 # Backend environment (backend/.env)
@@ -175,6 +179,8 @@ GEMINI_MODEL=gemini-2.0-flash
 # Configure for unified deployment (model server on same machine)
 USE_EXTERNAL_MODEL_SERVER=false
 MODEL_SERVER_URL=http://localhost:8000
+# Enable T4 GPU monitoring
+ENABLE_GPU_MONITORING=true
 EOF
 ```
 

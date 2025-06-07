@@ -44,26 +44,55 @@ The v0.2.3 release introduces significant architectural improvements with two de
 - At least 100GB storage
 - Ubuntu 20.04 LTS or later
 
-### 1.2. CUDA Installation
+### 1.2. CUDA Setup
+
+#### For newer GCP T4 instances (with CUDA pre-installed)
+
+Recent GCP instances with T4 GPUs come with CUDA 12.x pre-installed. You can verify this with:
 
 ```bash
-# Add NVIDIA package repositories
-wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
-sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
-wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
-sudo dpkg -i cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
-sudo cp /var/cuda-repo-ubuntu2004-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
+# Check if NVIDIA drivers are installed
+nvidia-smi
+
+# Check CUDA compiler version
+nvcc --version
+```
+
+If you see output showing your T4 GPU and CUDA version (12.x), you can skip the CUDA installation step.
+
+#### For instances without CUDA (or with older versions)
+
+```bash
+# Add NVIDIA package repositories using the newer keyring method
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-keyring_1.0-1_all.deb
+sudo dpkg -i cuda-keyring_1.0-1_all.deb
 sudo apt-get update
-sudo apt-get -y install cuda-11-8
+
+# Install CUDA toolkit and drivers
+sudo apt-get install -y cuda
+
+# Alternative installation method using specific CUDA 11.8 version
+# wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/cuda-ubuntu2004.pin
+# sudo mv cuda-ubuntu2004.pin /etc/apt/preferences.d/cuda-repository-pin-600
+# wget https://developer.download.nvidia.com/compute/cuda/11.8.0/local_installers/cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
+# sudo dpkg -i cuda-repo-ubuntu2004-11-8-local_11.8.0-520.61.05-1_amd64.deb
+# sudo cp /var/cuda-repo-ubuntu2004-11-8-local/cuda-*-keyring.gpg /usr/share/keyrings/
+# sudo apt-get update
+# sudo apt-get -y install cuda-11-8
 ```
 
 ### 1.3. System Dependencies
 
 ```bash
-# Install system dependencies
+# Install system dependencies (Ubuntu)
 sudo apt-get update
 sudo apt-get install -y build-essential python3-dev python3-pip
 sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 nginx
+
+# For Debian-based systems (if packages aren't found)
+# sudo apt-get install -y build-essential python3-dev python3-pip
+# sudo apt-get install -y libgl1 libglib2.0-0 nginx
+# sudo apt-get install -y libgl1-mesa-dev  # Alternative OpenGL package
 
 # Install Python package manager
 pip install --upgrade pip
@@ -87,8 +116,11 @@ cd /opt/tree_ml
 poetry config virtualenvs.in-project true
 poetry install
 
-# Install Pytorch with CUDA support (if not handled by poetry)
-poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+# Install PyTorch with CUDA support for CUDA 12.x (for newer GCP T4 instances)
+poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu121
+
+# Alternative for CUDA 11.8 (for older GCP instances)
+# poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 ### 1.6. Download Model Weights
@@ -219,9 +251,29 @@ If `nvidia-smi` works but CUDA isn't detected in Python:
 # Check CUDA environment
 echo $LD_LIBRARY_PATH
 
-# Add CUDA to path if missing
-echo 'export LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+# Check CUDA version
+ls -la /usr/local/cuda
+
+# For CUDA 12.x (common in newer GCP instances)
+echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
+echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
 source ~/.bashrc
+
+# For CUDA 11.8 (if specifically installed)
+# echo 'export LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+# source ~/.bashrc
+```
+
+#### PyTorch CUDA Version Mismatch
+
+If you get PyTorch CUDA version compatibility errors:
+
+```bash
+# For CUDA 12.x (common in newer GCP instances)
+pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu121
+
+# For CUDA 11.8
+# pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
 ```
 
 #### Model Loading Failures
