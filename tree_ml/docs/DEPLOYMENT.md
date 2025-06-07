@@ -194,17 +194,29 @@ poetry run pip install torch torchvision --index-url https://download.pytorch.or
 # poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
 ```
 
-### 4. Download ML Model Weights
+### 4. Install Grounded-SAM and Download ML Model Weights
 
 ```bash
+# Activate your virtual environment
+source ~/tree_ml/bin/activate
+
 # Create model directories
 mkdir -p tree_ml/pipeline/model/weights
+mkdir -p tree_ml/pipeline/grounded-sam/weights
+
+# Clone the Grounded-SAM repository (required external dependency)
+cd tree_ml/pipeline
+git clone https://github.com/IDEA-Research/GroundingDINO.git grounded-sam
+
+# Install Grounded-SAM package
+cd grounded-sam
+pip install -e .
+cd ../..  # Back to project root
 
 # Download SAM model weights
 wget -O tree_ml/pipeline/model/weights/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 
 # Download GroundingDINO weights
-mkdir -p tree_ml/pipeline/grounded-sam/weights
 wget -O tree_ml/pipeline/grounded-sam/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
 ```
 
@@ -292,9 +304,15 @@ sudo cp ~/tree-ml/pyproject.toml /opt/tree-ml/
 sudo cp ~/tree-ml/.env /opt/tree-ml/
 sudo cp ~/tree-ml/tree_ml/dashboard/backend/.env /opt/tree-ml/backend/
 
-# Copy model weights
+# Copy model weights and Grounded-SAM code
 sudo cp -r ~/tree-ml/tree_ml/pipeline/model/weights/* /opt/tree-ml/model-server/weights/
-sudo cp -r ~/tree-ml/tree_ml/pipeline/grounded-sam/weights/* /opt/tree-ml/model-server/weights/
+sudo cp -r ~/tree-ml/tree_ml/pipeline/grounded-sam/* /opt/tree-ml/model-server/grounded-sam/
+
+# Install Grounded-SAM in deployment environment
+source ~/tree_ml/bin/activate
+cd /opt/tree-ml/model-server/grounded-sam
+pip install -e .
+deactivate
 
 # Set permissions
 sudo chmod -R 755 /opt/tree-ml/backend/logs

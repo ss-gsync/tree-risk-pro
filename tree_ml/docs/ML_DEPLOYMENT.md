@@ -133,17 +133,33 @@ poetry run pip install torch torchvision --index-url https://download.pytorch.or
 # poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
 ```
 
-### 1.6. Download Model Weights
+### 1.6. Install Grounded-SAM and Download Model Weights
 
 ```bash
+# Activate your virtual environment
+source ~/tree_ml/bin/activate
+
 # Create model directories
 mkdir -p /opt/tree_ml/tree_ml/pipeline/model/weights
+mkdir -p /opt/tree_ml/tree_ml/pipeline/grounded-sam/weights
+
+# Clone the Grounded-SAM repository (required external dependency)
+cd /opt/tree_ml/tree_ml/pipeline
+git clone https://github.com/IDEA-Research/GroundingDINO.git grounded-sam
+
+# Install Grounded-SAM package
+cd grounded-sam
+pip install -e .
+cd ..  # Back to pipeline directory
 
 # Download SAM model weights
 wget -O /opt/tree_ml/tree_ml/pipeline/model/weights/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 
-# Download DeepForest model weights (if not already included)
-# Use the included deepforest weights or download as needed
+# Download GroundingDINO weights
+wget -O /opt/tree_ml/tree_ml/pipeline/grounded-sam/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+
+# Deactivate virtual environment when done
+deactivate
 ```
 
 ### 1.7. Run Deployment Script
