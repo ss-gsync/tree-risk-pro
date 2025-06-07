@@ -346,7 +346,7 @@ poetry run pip install numpy opencv-python matplotlib timm tensorboard transform
 sudo chmod -R 755 /opt/tree-ml/backend/logs
 sudo chmod -R 755 /opt/tree-ml/backend/data
 sudo chmod -R 755 /opt/tree-ml/model-server/logs
-sudo chmod -R 755 /opt/tree-ml/model-server/weights
+sudo chmod -R 755 /opt/tree-ml/model-server/model
 ```
 
 **IMPORTANT**: The step to clear previous deployment files is critical to ensure no cached or outdated files remain from previous versions.
@@ -376,7 +376,7 @@ After=network.target
 User=root
 WorkingDirectory=/opt/tree-ml/model-server
 ExecStart=$VENV_PATH/bin/python model_server.py --port 8000 --host 0.0.0.0
-Environment="PYTHONPATH=/opt/tree-ml:/opt/tree-ml/model-server/grounded-sam"
+Environment="PYTHONPATH=/opt/tree-ml:/opt/tree-ml/model-server/grounded-sam:/opt/tree-ml/model-server/grounded-sam/GroundingDINO:/opt/tree-ml/model-server/grounded-sam/segment_anything"
 Environment="MODEL_DIR=/opt/tree-ml/model-server/model"
 Environment="LOG_DIR=/opt/tree-ml/model-server/logs"
 Restart=on-failure
@@ -731,8 +731,11 @@ The Grounded-SAM module requires special handling during deployment:
 
 1. **Do not install with pip**: The package has a problematic setup.py that tries to install dependencies in a way that fails on many systems
 2. **Directory structure is critical**: The module expects config files in a specific location, which we've handled with the directory structure setup
-3. **PYTHONPATH must include Grounded-SAM**: The systemd service environment must include the path to the Grounded-SAM directory
-4. **Model server has been updated**: The model_server.py file has been updated to handle the config file format properly
+3. **PYTHONPATH must include ALL Grounded-SAM paths**: The systemd service environment must include paths to:
+   - Grounded-SAM base directory
+   - GroundingDINO directory
+   - segment_anything directory
+4. **Import paths are fixed**: The model_server.py now correctly imports SLConfig from `groundingdino.util.slconfig` instead of `groundingdino.config`
 
 ### Complete Checklist for Grounded-SAM Setup
 
@@ -755,7 +758,7 @@ When deploying to /opt/tree-ml/, ensure:
 
 3. **PYTHONPATH includes Grounded-SAM** in systemd service:
    ```
-   Environment="PYTHONPATH=/opt/tree-ml:/opt/tree-ml/model-server/grounded-sam"
+   Environment="PYTHONPATH=/opt/tree-ml:/opt/tree-ml/model-server/grounded-sam:/opt/tree-ml/model-server/grounded-sam/GroundingDINO:/opt/tree-ml/model-server/grounded-sam/segment_anything"
    ```
 
 4. **Dependencies are installed**:

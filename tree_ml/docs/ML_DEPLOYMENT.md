@@ -289,8 +289,11 @@ The Grounded-SAM module requires special handling during deployment:
 
 1. **Do not install with pip**: The package has a problematic setup.py that tries to install dependencies in a way that fails on many systems
 2. **Directory structure is critical**: The module expects config files in a specific location, which we've handled with the directory structure setup
-3. **PYTHONPATH must include Grounded-SAM**: The systemd service environment must include the path to the Grounded-SAM directory
-4. **Model server has been updated**: The model_server.py file has been updated to handle the config file format properly
+3. **PYTHONPATH must include ALL Grounded-SAM paths**: The systemd service environment must include paths to:
+   - Grounded-SAM base directory
+   - GroundingDINO directory
+   - segment_anything directory
+4. **Import paths are fixed**: The model_server.py now correctly imports SLConfig from `groundingdino.util.slconfig` instead of `groundingdino.config`
 
 If you encounter issues with the model server related to Grounded-SAM, check:
 - The config file exists at the expected path (`/opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py`)
@@ -609,7 +612,7 @@ ExecStart=/home/yourusername/tree_ml/bin/python ${REPO_PATH}/tree_ml/pipeline/ru
 # If using Poetry's virtual environment
 # ExecStart=${REPO_PATH}/.venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
 Restart=on-failure
-Environment=PYTHONPATH=${REPO_PATH}
+Environment=PYTHONPATH=${REPO_PATH}:${REPO_PATH}/tree_ml/pipeline/grounded-sam:${REPO_PATH}/tree_ml/pipeline/grounded-sam/GroundingDINO:${REPO_PATH}/tree_ml/pipeline/grounded-sam/segment_anything
 Environment=MODEL_DIR=${MODEL_DIR}
 Environment=PORT=${MODEL_SERVER_PORT}
 Environment=LOG_DIR=${LOG_DIR}
