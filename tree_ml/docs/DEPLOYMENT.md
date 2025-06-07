@@ -351,6 +351,33 @@ sudo systemctl status tree-ml-model-server
 
 ### 10. Install Backend Dependencies
 
+You have two options for managing dependencies - choose ONE approach:
+
+#### Option 1: Using the system-wide virtual environment (recommended if you already set it up)
+
+```bash
+# Activate your virtual environment
+source ~/tree_ml_venv/bin/activate
+
+# Navigate to the deployment directory
+cd /opt/tree-ml
+
+# Install dependencies from requirements file or pyproject.toml
+pip install -e .  # This installs the current package in development mode
+
+# Install PyTorch with CUDA support
+# For CUDA 12.x (common in newer GCP instances)
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+
+# For CUDA 11.8 (if specifically installed)
+# pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+
+# Deactivate when done
+deactivate
+```
+
+#### Option 2: Using Poetry's virtual environment management
+
 ```bash
 cd /opt/tree-ml
 sudo pip install poetry
