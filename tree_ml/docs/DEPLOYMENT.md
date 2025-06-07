@@ -201,8 +201,8 @@ poetry run pip install torch torchvision --index-url https://download.pytorch.or
 source ~/tree_ml/bin/activate
 
 # Create model directories
-mkdir -p tree_ml/pipeline/model/weights
-mkdir -p tree_ml/pipeline/grounded-sam/weights
+mkdir -p tree_ml/pipeline/model
+mkdir -p tree_ml/pipeline/grounded-sam
 
 # Clone the Grounded-SAM repository (required external dependency)
 cd tree_ml/pipeline
@@ -221,10 +221,10 @@ cp tree_ml/pipeline/grounded-sam/GroundingDINO/config/GroundingDINO_SwinT_OGC.py
 pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
 
 # Download SAM model weights
-wget -O tree_ml/pipeline/model/weights/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+wget -O tree_ml/pipeline/model/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 
 # Download GroundingDINO weights
-wget -O tree_ml/pipeline/model/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+wget -O tree_ml/pipeline/model/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
 
 # Ensure the Python path includes the Grounded-SAM directory
 export PYTHONPATH=$PYTHONPATH:$(pwd)/tree_ml/pipeline/grounded-sam
@@ -315,8 +315,20 @@ sudo cp ~/tree-risk-pro/tree_ml/dashboard/.env /opt/tree-ml/
 sudo cp ~/tree-risk-pro/tree_ml/dashboard/backend/.env /opt/tree-ml/backend/
 
 # Copy model weights and Grounded-SAM code
-sudo cp -r ~/tree-risk-pro/tree_ml/pipeline/model/weights/* /opt/tree-ml/model-server/weights/
+sudo mkdir -p /opt/tree-ml/model-server/model/
+sudo cp -r ~/tree-risk-pro/tree_ml/pipeline/model/* /opt/tree-ml/model-server/model/
 sudo cp -r ~/tree-risk-pro/tree_ml/pipeline/grounded-sam/* /opt/tree-ml/model-server/grounded-sam/
+
+# Make sure the GroundingDINO weights are in the model-server/model directory 
+# Only download if the file doesn't exist after the copy
+if [ ! -f "/opt/tree-ml/model-server/model/groundingdino_swint_ogc.pth" ]; then
+    sudo wget -O /opt/tree-ml/model-server/model/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+fi
+
+# Same for SAM model weights
+if [ ! -f "/opt/tree-ml/model-server/model/sam_vit_h_4b8939.pth" ]; then
+    sudo wget -O /opt/tree-ml/model-server/model/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+fi
 
 # Create the expected config directory structure for Grounded-SAM
 sudo mkdir -p /opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/
@@ -365,7 +377,7 @@ User=root
 WorkingDirectory=/opt/tree-ml/model-server
 ExecStart=$VENV_PATH/bin/python model_server.py --port 8000 --host 0.0.0.0
 Environment="PYTHONPATH=/opt/tree-ml:/opt/tree-ml/model-server/grounded-sam"
-Environment="MODEL_DIR=/opt/tree-ml/model-server/weights"
+Environment="MODEL_DIR=/opt/tree-ml/model-server/model"
 Environment="LOG_DIR=/opt/tree-ml/model-server/logs"
 Restart=on-failure
 RestartSec=10
@@ -633,10 +645,10 @@ If tree detection is not working properly:
 1. **Check model weights**:
    ```bash
    # Verify SAM model weights exist
-   ls -la /opt/tree-ml/model-server/weights/sam_vit_h_4b8939.pth
+   ls -la /opt/tree-ml/model-server/model/sam_vit_h_4b8939.pth
    
    # Verify GroundingDINO weights exist
-   ls -la /opt/tree-ml/model-server/weights/groundingdino_swint_ogc.pth
+   ls -la /opt/tree-ml/model-server/model/groundingdino_swint_ogc.pth
    ```
 
 2. **Test the model server API directly**:
@@ -722,10 +734,39 @@ The Grounded-SAM module requires special handling during deployment:
 3. **PYTHONPATH must include Grounded-SAM**: The systemd service environment must include the path to the Grounded-SAM directory
 4. **Model server has been updated**: The model_server.py file has been updated to handle the config file format properly
 
+### Complete Checklist for Grounded-SAM Setup
+
+When deploying to /opt/tree-ml/, ensure:
+
+1. **Correct directory structure**:
+   ```
+   /opt/tree-ml/model-server/grounded-sam/              # Base Grounded-SAM directory
+   /opt/tree-ml/model-server/grounded-sam/GroundingDINO/config/  # Original config directory
+   /opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/  # Expected config path
+   /opt/tree-ml/model-server/model/                     # Weights directory (not weights/)
+   ```
+
+2. **Required files exist**:
+   ```
+   /opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py
+   /opt/tree-ml/model-server/model/groundingdino_swint_ogc.pth
+   /opt/tree-ml/model-server/model/sam_vit_h_4b8939.pth
+   ```
+
+3. **PYTHONPATH includes Grounded-SAM** in systemd service:
+   ```
+   Environment="PYTHONPATH=/opt/tree-ml:/opt/tree-ml/model-server/grounded-sam"
+   ```
+
+4. **Dependencies are installed**:
+   ```bash
+   pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
+   ```
+
 If you encounter issues with the model server related to Grounded-SAM, check:
-- The config file exists at the expected path (`/opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py`)
-- The model weights exist at the expected path (`/opt/tree-ml/model-server/weights/groundingdino_swint_ogc.pth`)
-- The PYTHONPATH environment variable in the systemd service includes the Grounded-SAM directory
+- All paths in the checklist above
+- That the model_server.py file has the updated code to handle config file loading
+- The model server logs for specific error messages
 
 ## Security Checklist
 

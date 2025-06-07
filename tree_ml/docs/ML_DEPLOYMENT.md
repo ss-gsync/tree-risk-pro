@@ -140,8 +140,8 @@ poetry run pip install torch torchvision --index-url https://download.pytorch.or
 source ~/tree_ml/bin/activate
 
 # Create model directories
-mkdir -p /opt/tree_ml/tree_ml/pipeline/model/weights
-mkdir -p /opt/tree_ml/tree_ml/pipeline/grounded-sam/weights
+mkdir -p /opt/tree_ml/tree_ml/pipeline/model
+mkdir -p /opt/tree_ml/tree_ml/pipeline/grounded-sam
 
 # Clone the Grounded-SAM repository (required external dependency)
 cd /opt/tree_ml/tree_ml/pipeline
@@ -160,10 +160,15 @@ cp /opt/tree_ml/tree_ml/pipeline/grounded-sam/GroundingDINO/config/GroundingDINO
 pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
 
 # Download SAM model weights
-wget -O /opt/tree_ml/tree_ml/pipeline/model/weights/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+wget -O /opt/tree_ml/tree_ml/pipeline/model/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 
 # Download GroundingDINO weights
-wget -O /opt/tree_ml/tree_ml/pipeline/model/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+wget -O /opt/tree_ml/tree_ml/pipeline/model/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+
+# Create additional directories needed for deployment
+mkdir -p /opt/tree_ml/model-server/model/
+cp /opt/tree_ml/tree_ml/pipeline/model/groundingdino_swint_ogc.pth /opt/tree_ml/model-server/model/
+cp /opt/tree_ml/tree_ml/pipeline/model/sam_vit_h_4b8939.pth /opt/tree_ml/model-server/model/
 
 # Ensure the Python path includes the Grounded-SAM directory
 echo 'export PYTHONPATH=$PYTHONPATH:/opt/tree_ml/tree_ml/pipeline/grounded-sam' >> ~/.bashrc
@@ -289,7 +294,7 @@ The Grounded-SAM module requires special handling during deployment:
 
 If you encounter issues with the model server related to Grounded-SAM, check:
 - The config file exists at the expected path (`/opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py`)
-- The model weights exist at the expected path (`/opt/tree-ml/model-server/weights/groundingdino_swint_ogc.pth`)
+- The model weights exist at the expected path (`/opt/tree-ml/model-server/model/groundingdino_swint_ogc.pth`)
 - The PYTHONPATH environment variable in the systemd service includes the Grounded-SAM directory
 
 ## 5. Troubleshooting
@@ -559,7 +564,7 @@ SERVICE_NAME="tree-detection"
 SERVICE_USER=$(whoami)
 REPO_PATH=$(pwd)
 LOG_DIR="${REPO_PATH}/logs"
-MODEL_DIR="${REPO_PATH}/tree_ml/pipeline/model/weights"
+MODEL_DIR="${REPO_PATH}/tree_ml/pipeline/model"
 
 # Create necessary directories
 mkdir -p $LOG_DIR
@@ -579,6 +584,10 @@ echo "Checking for model weights..."
 if [ ! -f "${MODEL_DIR}/sam_vit_h_4b8939.pth" ]; then
     echo "SAM model weights not found. Downloading..."
     wget -O "${MODEL_DIR}/sam_vit_h_4b8939.pth" https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+fi
+if [ ! -f "${MODEL_DIR}/groundingdino_swint_ogc.pth" ]; then
+    echo "GroundingDINO model weights not found. Downloading..."
+    wget -O "${MODEL_DIR}/groundingdino_swint_ogc.pth" https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
 fi
 
 echo "Creating systemd service..."
