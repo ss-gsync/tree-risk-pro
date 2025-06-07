@@ -126,9 +126,46 @@ class GroundedSAMServer:
                     return False
                 
                 # Load model
-                args = SLConfig.fromfile(grounding_dino_config_path)
-                args.device = self.device
-                self.grounding_dino = load_grounding_dino(grounding_dino_weights_path, args, self.device)
+                try:
+                    # Try the original method first
+                    args = SLConfig.fromfile(grounding_dino_config_path)
+                    args.device = self.device
+                    self.grounding_dino = load_grounding_dino(grounding_dino_weights_path, args, self.device)
+                except OSError as e:
+                    if "Only py/yml/yaml/json type are supported now!" in str(e):
+                        logger.info("Using alternative config loading method for GroundingDINO...")
+                        # Manually create args from the config file
+                        import sys
+                        import importlib.util
+                        
+                        # Import the config as a module
+                        spec = importlib.util.spec_from_file_location("config", grounding_dino_config_path)
+                        config = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(config)
+                        
+                        # Create a dict-like object with the config values
+                        class Args:
+                            def __init__(self, **kwargs):
+                                self.__dict__.update(kwargs)
+                        
+                        # Extract all variables from the config module
+                        config_dict = {k: v for k, v in vars(config).items() if not k.startswith('__')}
+                        args = Args(**config_dict)
+                        args.device = self.device
+                        
+                        # Now try loading with our custom args
+                        from groundingdino.models import build_model
+                        from groundingdino.util.utils import clean_state_dict
+                        import torch
+                        
+                        model = build_model(args)
+                        checkpoint = torch.load(grounding_dino_weights_path, map_location=self.device)
+                        model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
+                        model.eval()
+                        self.grounding_dino = model
+                    else:
+                        # If it's some other error, re-raise it
+                        raise
                 
                 # Load SAM
                 logger.info("Loading SAM model...")

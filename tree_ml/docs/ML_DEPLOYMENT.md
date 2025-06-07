@@ -147,20 +147,33 @@ mkdir -p /opt/tree_ml/tree_ml/pipeline/grounded-sam/weights
 cd /opt/tree_ml/tree_ml/pipeline
 git clone https://github.com/IDEA-Research/GroundingDINO.git grounded-sam
 
-# Install Grounded-SAM package
-cd grounded-sam
-pip install -e .
-cd ..  # Back to pipeline directory
+# Important: Do NOT attempt to install Grounded-SAM with pip install -e .
+# Instead, set up the correct directory structure for the config files
+
+# Create the expected config directory structure
+mkdir -p /opt/tree_ml/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
+
+# Copy the config files to the expected location
+cp /opt/tree_ml/tree_ml/pipeline/grounded-sam/GroundingDINO/config/GroundingDINO_SwinT_OGC.py /opt/tree_ml/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
+
+# Install required dependencies for Grounded-SAM
+pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
 
 # Download SAM model weights
 wget -O /opt/tree_ml/tree_ml/pipeline/model/weights/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 
 # Download GroundingDINO weights
-wget -O /opt/tree_ml/tree_ml/pipeline/grounded-sam/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+wget -O /opt/tree_ml/tree_ml/pipeline/model/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+
+# Ensure the Python path includes the Grounded-SAM directory
+echo 'export PYTHONPATH=$PYTHONPATH:/opt/tree_ml/tree_ml/pipeline/grounded-sam' >> ~/.bashrc
+source ~/.bashrc
 
 # Deactivate virtual environment when done
 deactivate
 ```
+
+> **Note**: The model server has been updated to handle the Grounded-SAM config file format without requiring direct installation of the package.
 
 ### 1.7. Run Deployment Script
 
@@ -265,9 +278,23 @@ The unified service selection logic:
 - Maintains backward compatibility
 - Provides a consistent interface for all detection services
 
-## 4. Troubleshooting
+## 4. Grounded-SAM Configuration Note
 
-### 4.1. Model Server Issues
+The Grounded-SAM module requires special handling during deployment:
+
+1. **Do not install with pip**: The package has a problematic setup.py that tries to install dependencies in a way that fails on many systems
+2. **Directory structure is critical**: The module expects config files in a specific location, which we've handled with the directory structure setup
+3. **PYTHONPATH must include Grounded-SAM**: The systemd service environment must include the path to the Grounded-SAM directory
+4. **Model server has been updated**: The model_server.py file has been updated to handle the config file format properly
+
+If you encounter issues with the model server related to Grounded-SAM, check:
+- The config file exists at the expected path (`/opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py`)
+- The model weights exist at the expected path (`/opt/tree-ml/model-server/weights/groundingdino_swint_ogc.pth`)
+- The PYTHONPATH environment variable in the systemd service includes the Grounded-SAM directory
+
+## 5. Troubleshooting
+
+### 5.1. Model Server Issues
 
 #### CUDA Not Available
 
@@ -324,7 +351,7 @@ nvidia-smi
 # Look for BATCH_SIZE parameter
 ```
 
-### 4.2. Communication Issues
+### 5.2. Communication Issues
 
 #### Connection Refused
 
@@ -351,7 +378,7 @@ htop
 nvidia-smi -l 1
 ```
 
-### 4.3. Dashboard Integration Issues
+### 5.3. Dashboard Integration Issues
 
 If detection preview doesn't update:
 
@@ -365,9 +392,9 @@ tail -f /path/to/tree_ml/tree_ml/dashboard/backend/logs/app.log
 grep -r "get_unified_model_service" /path/to/tree_ml/tree_ml/dashboard/backend/
 ```
 
-## 5. Performance Optimization
+## 6. Performance Optimization
 
-### 5.1. Model Quantization
+### 6.1. Model Quantization
 
 For improved inference speed:
 
@@ -377,7 +404,7 @@ For improved inference speed:
 model = model.half()  # Convert to FP16
 ```
 
-### 5.2. Batch Processing
+### 6.2. Batch Processing
 
 For multiple images:
 
@@ -386,7 +413,7 @@ For multiple images:
 # Look for MAX_BATCH_SIZE constant
 ```
 
-### 5.3. Nginx Configuration
+### 6.3. Nginx Configuration
 
 For better throughput, edit `/etc/nginx/sites-available/tree-ml`:
 
@@ -398,9 +425,9 @@ client_max_body_size 20M;
 proxy_cache_path /var/cache/nginx/tree_ml levels=1:2 keys_zone=tree_ml:10m max_size=1g inactive=60m;
 ```
 
-## 6. Monitoring and Maintenance
+## 7. Monitoring and Maintenance
 
-### 6.1. Log Rotation
+### 7.1. Log Rotation
 
 ```bash
 # Set up log rotation
@@ -418,7 +445,7 @@ sudo nano /etc/logrotate.d/tree-ml
 }
 ```
 
-### 6.2. Service Monitoring
+### 7.2. Service Monitoring
 
 ```bash
 # Check service health
@@ -428,7 +455,7 @@ systemctl status tree-detection
 echo '*/5 * * * * curl -s http://localhost:8000/health | grep -q "models_loaded\":true" || systemctl restart tree-detection' | sudo tee /etc/cron.d/check-tree-detection
 ```
 
-### 6.3. Updating Models
+### 7.3. Updating Models
 
 To update model weights:
 
@@ -436,9 +463,9 @@ To update model weights:
 2. Update configuration in `model_server.py` if needed
 3. Restart the service: `sudo systemctl restart tree-detection`
 
-## 7. Security Considerations
+## 8. Security Considerations
 
-### 7.1. API Access Control
+### 8.1. API Access Control
 
 By default, the model server has no authentication. For production:
 
@@ -457,7 +484,7 @@ By default, the model server has no authentication. For production:
    MODEL_SERVER_API_KEY=your-secure-random-key
    ```
 
-### 7.2. HTTPS Configuration
+### 8.2. HTTPS Configuration
 
 For secure communication:
 
@@ -482,9 +509,9 @@ server {
 }
 ```
 
-## 8. Testing
+## 9. Testing
 
-### 8.1. Integration Test
+### 9.1. Integration Test
 
 ```bash
 # Run integration test
@@ -493,7 +520,7 @@ chmod +x test_external_model_service.py
 ./test_external_model_service.py --image /opt/tree_ml/data/tests/test_images/sample.jpg --server http://localhost:8000
 ```
 
-### 8.2. Load Testing
+### 9.2. Load Testing
 
 ```bash
 # Install wrk for HTTP benchmarking
@@ -510,7 +537,7 @@ wrk.body = "file=@/path/to/test/image.jpg"
 wrk.headers["Content-Type"] = "multipart/form-data"
 ```
 
-## 9. References
+## 10. References
 
 - [NVIDIA T4 Documentation](https://www.nvidia.com/en-us/data-center/tesla-t4/)
 - [CUDA Installation Guide](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html)
@@ -518,7 +545,7 @@ wrk.headers["Content-Type"] = "multipart/form-data"
 - [DeepForest Documentation](https://deepforest.readthedocs.io/)
 - [Segment Anything Model (SAM)](https://segment-anything.com/)
 
-## 10. Appendix: Full Deployment Script
+## 11. Appendix: Full Deployment Script
 
 Below is a reference implementation of the `deploy_t4.sh` script:
 

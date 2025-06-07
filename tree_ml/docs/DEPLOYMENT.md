@@ -208,16 +208,26 @@ mkdir -p tree_ml/pipeline/grounded-sam/weights
 cd tree_ml/pipeline
 git clone https://github.com/IDEA-Research/GroundingDINO.git grounded-sam
 
-# Install Grounded-SAM package
-cd grounded-sam
-pip install -e .
-cd ../..  # Back to project root
+# Important: Do NOT attempt to install Grounded-SAM with pip install -e .
+# Instead, set up the correct directory structure for the config files
+
+# Create the expected config directory structure
+mkdir -p tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
+
+# Copy the config files to the expected location
+cp tree_ml/pipeline/grounded-sam/GroundingDINO/config/GroundingDINO_SwinT_OGC.py tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
+
+# Install required dependencies for Grounded-SAM
+pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
 
 # Download SAM model weights
 wget -O tree_ml/pipeline/model/weights/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 
 # Download GroundingDINO weights
-wget -O tree_ml/pipeline/grounded-sam/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+wget -O tree_ml/pipeline/model/weights/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+
+# Ensure the Python path includes the Grounded-SAM directory
+export PYTHONPATH=$PYTHONPATH:$(pwd)/tree_ml/pipeline/grounded-sam
 ```
 
 ### 5. Configure Environment
@@ -277,7 +287,7 @@ sudo apt-get update
 sudo apt-get install -y npm
 
 # Install project dependencies and build
-cd ~/tree-ml/tree_ml/dashboard
+cd ~/tree-risk-pro/tree_ml/dashboard
 npm install  # This installs all dependencies including build tools like Vite
 npm run build
 ```
@@ -297,22 +307,28 @@ sudo mkdir -p /opt/tree-ml/backend/{logs,data/temp,data/zarr,data/reports,data/e
 sudo mkdir -p /opt/tree-ml/model-server/{logs,weights}
 
 # Copy files
-sudo cp -r ~/tree-ml/tree_ml/dashboard/dist/* /opt/tree-ml/dist/
-sudo cp -r ~/tree-ml/tree_ml/dashboard/backend/* /opt/tree-ml/backend/
-sudo cp -r ~/tree-ml/tree_ml/pipeline/* /opt/tree-ml/model-server/
-sudo cp ~/tree-ml/pyproject.toml /opt/tree-ml/
-sudo cp ~/tree-ml/.env /opt/tree-ml/
-sudo cp ~/tree-ml/tree_ml/dashboard/backend/.env /opt/tree-ml/backend/
+sudo cp -r ~/tree-risk-pro/tree_ml/dashboard/dist/* /opt/tree-ml/dist/
+sudo cp -r ~/tree-risk-pro/tree_ml/dashboard/backend/* /opt/tree-ml/backend/
+sudo cp -r ~/tree-risk-pro/tree_ml/pipeline/* /opt/tree-ml/model-server/
+sudo cp ~/tree-risk-pro/pyproject.toml /opt/tree-ml/
+sudo cp ~/tree-risk-pro/tree_ml/dashboard/.env /opt/tree-ml/
+sudo cp ~/tree-risk-pro/tree_ml/dashboard/backend/.env /opt/tree-ml/backend/
 
 # Copy model weights and Grounded-SAM code
-sudo cp -r ~/tree-ml/tree_ml/pipeline/model/weights/* /opt/tree-ml/model-server/weights/
-sudo cp -r ~/tree-ml/tree_ml/pipeline/grounded-sam/* /opt/tree-ml/model-server/grounded-sam/
+sudo cp -r ~/tree-risk-pro/tree_ml/pipeline/model/weights/* /opt/tree-ml/model-server/weights/
+sudo cp -r ~/tree-risk-pro/tree_ml/pipeline/grounded-sam/* /opt/tree-ml/model-server/grounded-sam/
 
-# Install Grounded-SAM in deployment environment
+# Create the expected config directory structure for Grounded-SAM
+sudo mkdir -p /opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/
+sudo cp /opt/tree-ml/model-server/grounded-sam/GroundingDINO/config/GroundingDINO_SwinT_OGC.py /opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/
+
+# Install deployment environment
 source ~/tree_ml/bin/activate
-cd /opt/tree-ml/model-server/grounded-sam
-pip install -e .
-deactivate
+cd /opt/tree-ml
+poetry install
+
+# Install required dependencies for Grounded-SAM (do NOT install the package directly)
+poetry run pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
 
 # Set permissions
 sudo chmod -R 755 /opt/tree-ml/backend/logs
@@ -348,7 +364,7 @@ After=network.target
 User=root
 WorkingDirectory=/opt/tree-ml/model-server
 ExecStart=$VENV_PATH/bin/python model_server.py --port 8000 --host 0.0.0.0
-Environment="PYTHONPATH=/opt/tree-ml"
+Environment="PYTHONPATH=/opt/tree-ml:/opt/tree-ml/model-server/grounded-sam"
 Environment="MODEL_DIR=/opt/tree-ml/model-server/weights"
 Environment="LOG_DIR=/opt/tree-ml/model-server/logs"
 Restart=on-failure
@@ -696,6 +712,20 @@ sudo tar -xzf /tmp/tree-ml-backup-20250607.tar.gz -C /
 sudo systemctl restart tree-ml-backend
 sudo systemctl restart tree-ml-model-server
 ```
+
+## Grounded-SAM Configuration Note
+
+The Grounded-SAM module requires special handling during deployment:
+
+1. **Do not install with pip**: The package has a problematic setup.py that tries to install dependencies in a way that fails on many systems
+2. **Directory structure is critical**: The module expects config files in a specific location, which we've handled with the directory structure setup
+3. **PYTHONPATH must include Grounded-SAM**: The systemd service environment must include the path to the Grounded-SAM directory
+4. **Model server has been updated**: The model_server.py file has been updated to handle the config file format properly
+
+If you encounter issues with the model server related to Grounded-SAM, check:
+- The config file exists at the expected path (`/opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py`)
+- The model weights exist at the expected path (`/opt/tree-ml/model-server/weights/groundingdino_swint_ogc.pth`)
+- The PYTHONPATH environment variable in the systemd service includes the Grounded-SAM directory
 
 ## Security Checklist
 
