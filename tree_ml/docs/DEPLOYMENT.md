@@ -312,8 +312,8 @@ Create a systemd service file for the model server:
 **IMPORTANT**: When creating systemd service files, you must use absolute paths. The tilde character (`~`) is not expanded in systemd service files and will cause errors.
 
 ```bash
-# If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
-VENV_PATH=/home/$USER/tree_ml  # Replace with your actual home directory path
+# If using a system-wide virtual environment (IMPORTANT: use absolute path with actual username, not variables)
+VENV_PATH=/home/yourusername/tree_ml  # Replace 'yourusername' with your actual username (e.g., /home/ss/tree_ml)
 
 # If using Poetry's virtual environment
 # cd /opt/tree-ml
@@ -428,8 +428,8 @@ sudo systemctl restart nginx
 **IMPORTANT**: Remember to use absolute paths in systemd service files. The tilde character (`~`) is not expanded and will cause errors.
 
 ```bash
-# If using a system-wide virtual environment (IMPORTANT: use absolute path, not ~/...)
-VENV_PATH=/home/$USER/tree_ml  # Replace with your actual home directory path
+# If using a system-wide virtual environment (IMPORTANT: use absolute path with actual username, not variables)
+VENV_PATH=/home/yourusername/tree_ml  # Replace 'yourusername' with your actual username (e.g., /home/ss/tree_ml)
 
 # If using Poetry's virtual environment
 # cd /opt/tree-ml
