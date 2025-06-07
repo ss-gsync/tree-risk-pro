@@ -70,25 +70,16 @@ class TestBasic(unittest.TestCase):
         except ImportError as e:
             self.fail(f"Failed to import segment_anything: {e}")
     
-    def test_sample_data_exists(self):
-        """Test that sample data exists."""
-        sample_job_id = "detection_1748997756"
-        sample_job_dir = os.path.join(ROOT_DIR, "data/ml", sample_job_id)
+    def test_sample_image_exists(self):
+        """Test that sample test image exists for model testing."""
+        sample_image_path = os.path.join(ROOT_DIR, "data/tests/test_images/sample.jpg")
         
-        self.assertTrue(os.path.exists(sample_job_dir), 
-                      f"Sample job directory exists: {sample_job_dir}")
+        self.assertTrue(os.path.exists(sample_image_path), 
+                      f"Sample test image exists: {sample_image_path}")
         
-        ml_response_dir = os.path.join(sample_job_dir, "ml_response")
-        self.assertTrue(os.path.exists(ml_response_dir),
-                      f"ML response directory exists: {ml_response_dir}")
-        
-        metadata_path = os.path.join(ml_response_dir, "metadata.json")
-        self.assertTrue(os.path.exists(metadata_path),
-                      f"Metadata file exists: {metadata_path}")
-        
-        trees_path = os.path.join(ml_response_dir, "trees.json")
-        self.assertTrue(os.path.exists(trees_path),
-                      f"Trees file exists: {trees_path}")
+        # Basic check that it's a valid image file with non-zero size
+        self.assertTrue(os.path.getsize(sample_image_path) > 0,
+                      f"Sample image has valid size: {sample_image_path}")
         
 if __name__ == "__main__":
     unittest.main()
