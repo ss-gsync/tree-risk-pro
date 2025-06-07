@@ -260,9 +260,13 @@ poetry run python tests/model_server/test_basic.py
 ### 7. Build Frontend
 
 ```bash
-# Install dependencies and build
+# Ensure npm is installed
+sudo apt-get update
+sudo apt-get install -y npm
+
+# Install project dependencies and build
 cd ~/tree-ml/tree_ml/dashboard
-npm install
+npm install  # This installs all dependencies including build tools like Vite
 npm run build
 ```
 
