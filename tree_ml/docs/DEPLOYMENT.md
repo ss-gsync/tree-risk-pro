@@ -349,49 +349,8 @@ sudo systemctl start tree-ml-model-server
 sudo systemctl status tree-ml-model-server
 ```
 
-### 10. Install Backend Dependencies
 
-You have two options for managing dependencies - choose ONE approach:
-
-#### Option 1: Using the system-wide virtual environment (recommended if you already set it up)
-
-```bash
-# Activate your virtual environment
-source ~/tree_ml_venv/bin/activate
-
-# Navigate to the deployment directory
-cd /opt/tree-ml
-
-# Install dependencies from requirements file or pyproject.toml
-pip install -e .  # This installs the current package in development mode
-
-# Install PyTorch with CUDA support
-# For CUDA 12.x (common in newer GCP instances)
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-
-# For CUDA 11.8 (if specifically installed)
-# pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
-
-# Deactivate when done
-deactivate
-```
-
-#### Option 2: Using Poetry's virtual environment management
-
-```bash
-cd /opt/tree-ml
-sudo pip install poetry
-sudo poetry install
-
-# Install PyTorch with CUDA support in the deployment environment
-# For CUDA 12.x (common in newer GCP instances)
-sudo poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-
-# For CUDA 11.8 (if specifically installed)
-# sudo poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
-```
-
-### 11. Configure Nginx
+### 10. Configure Nginx
 
 ```bash
 # Generate self-signed certificate if needed
@@ -464,7 +423,7 @@ sudo nginx -t
 sudo systemctl restart nginx
 ```
 
-### 12. Create Backend Systemd Service
+### 11. Create Backend Systemd Service
 
 **IMPORTANT**: Remember to use absolute paths in systemd service files. The tilde character (`~`) is not expanded and will cause errors.
 
@@ -507,7 +466,7 @@ sudo systemctl enable tree-ml-backend
 sudo systemctl start tree-ml-backend
 ```
 
-### 13. Verify Deployment
+### 12. Verify Deployment
 
 ```bash
 # Check services status
