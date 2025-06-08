@@ -13,6 +13,7 @@ import time
 import logging
 import argparse
 import threading
+import traceback
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from datetime import datetime
@@ -20,14 +21,11 @@ from datetime import datetime
 import numpy as np
 import cv2
 import torch
-import torch.nn.functional as F
-from torchvision import transforms
 from PIL import Image
 import uvicorn
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(
@@ -50,9 +48,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "ground
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "grounded-sam/segment_anything"))
 
 class GroundedSAMServer:
-    """
-    Server for Grounded-SAM model with zero-fallback error handling
-    """
+    """Server for Grounded-SAM model with zero-fallback error handling"""
     
     def __init__(self, 
                  model_dir: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model"),
@@ -69,9 +65,9 @@ class GroundedSAMServer:
         self.model_dir = model_dir
         self.output_dir = output_dir
         self.device = device
-        self.initialized = False
-        self.grounding_dino = None
+        self.ready = False
         self.sam_predictor = None
+        self.grounding_dino = None
         self.init_lock = threading.Lock()
         
         # Create output directory if it doesn't exist
@@ -94,11 +90,14 @@ class GroundedSAMServer:
         # Use a lock to prevent multiple threads from initializing simultaneously
         with self.init_lock:
             # Skip if already initialized
-            if self.initialized:
+            if self.ready:
+                logger.info("Models already initialized, skipping initialization")
                 return True
             
             try:
-                logger.info("Initializing Grounded-SAM model...")
+                logger.info("=="*40)
+                logger.info("INITIALIZING GROUNDED-SAM MODEL")
+                logger.info("=="*40)
                 start_time = time.time()
                 
                 # Import the required modules
@@ -133,6 +132,7 @@ class GroundedSAMServer:
                     args = SLConfig.fromfile(grounding_dino_config_path)
                     args.device = self.device
                     self.grounding_dino = load_grounding_dino(grounding_dino_weights_path, args, self.device)
+                    logger.info("Successfully loaded GroundingDINO with standard method")
                 except OSError as e:
                     if "Only py/yml/yaml/json type are supported now!" in str(e):
                         logger.info("Using alternative config loading method for GroundingDINO...")
@@ -207,19 +207,37 @@ class GroundedSAMServer:
                     logger.error(f"SAM model weights not found at {sam_weights_path}")
                     return False
                 
+                logger.info(f"Loading SAM model from {sam_weights_path}")
                 sam = sam_model_registry["vit_h"](checkpoint=sam_weights_path)
                 sam.to(device=self.device)
                 self.sam_predictor = SamPredictor(sam)
+                logger.info(f"Successfully loaded SAM model to {self.device}")
                 
-                # Mark as initialized
-                self.initialized = True
-                logger.info(f"Model initialization completed in {time.time() - start_time:.2f} seconds")
-                logger.info(f"Initialization status: self.initialized={self.initialized}, SAM={self.sam_predictor is not None}, GroundingDINO={self.grounding_dino is not None}")
+                # Mark as ready
+                self.ready = True
+                
+                # Print detailed status report
+                logger.info("=="*40)
+                logger.info(f"MODEL INITIALIZATION COMPLETE in {time.time() - start_time:.2f} seconds")
+                logger.info(f"Device: {self.device}")
+                logger.info(f"CUDA available: {torch.cuda.is_available()}")
+                if torch.cuda.is_available():
+                    logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
+                    logger.info(f"CUDA memory: {torch.cuda.memory_allocated()/1024**3:.2f}GB / {torch.cuda.max_memory_allocated()/1024**3:.2f}GB")
+                logger.info(f"SAM model loaded: {self.sam_predictor is not None}")
+                logger.info(f"GroundingDINO model loaded: {self.grounding_dino is not None}")
+                logger.info(f"Server ready: {self.ready}")
+                logger.info("=="*40)
+                
+                # Always return True if we've reached this point
                 return True
                 
             except Exception as e:
-                logger.error(f"Error initializing model: {str(e)}", exc_info=True)
-                self.initialized = False
+                logger.error("=="*40)
+                logger.error(f"CRITICAL ERROR INITIALIZING MODEL: {str(e)}")
+                logger.error(traceback.format_exc())
+                logger.error("=="*40)
+                self.ready = False
                 return False
     
     def detect_trees(self, image_path: str, job_id: str = None) -> Dict:
@@ -233,12 +251,12 @@ class GroundedSAMServer:
         Returns:
             Dict containing detection results or error information
         """
-        # Check if model is initialized
-        if not self.initialized:
-            logger.error("Model not initialized for detection")
+        # Check if model is ready
+        if not self.ready:
+            logger.error("Model not ready for detection")
             return {
                 "success": False,
-                "error": "Model not initialized"
+                "error": "Model not ready"
             }
         
         # Validate image path
@@ -304,6 +322,7 @@ class GroundedSAMServer:
                 # Get bounding boxes
                 logger.info("Running GroundingDINO for object detection...")
                 # Convert numpy array to PyTorch tensor
+                from torchvision import transforms
                 image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
                 # Normalize using ImageNet mean and std
                 image_tensor = transforms.Normalize(
@@ -438,9 +457,9 @@ class GroundedSAMServer:
             }
     
     def generate_visualization(self, 
-                               image_path: str, 
-                               detection_result: Dict, 
-                               output_path: str = None) -> Dict:
+                             image_path: str, 
+                             detection_result: Dict, 
+                             output_path: str = None) -> Dict:
         """
         Generate visualization of detection results
         
@@ -452,11 +471,11 @@ class GroundedSAMServer:
         Returns:
             Dict with result information
         """
-        if not self.initialized:
-            logger.error("Model not initialized for visualization")
+        if not self.ready:
+            logger.error("Model not ready for visualization")
             return {
                 "success": False,
-                "error": "Model not initialized"
+                "error": "Model not ready"
             }
         
         if not os.path.exists(image_path):
@@ -518,7 +537,7 @@ class GroundedSAMServer:
                 confidence = detection.get("confidence", 0)
                 label = f"{obj_class}: {confidence:.2f}"
                 cv2.putText(image, label, (x1, y1 - 10), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
             # Convert back to BGR for saving
             output_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
@@ -582,7 +601,7 @@ class GroundedSAMServer:
         os.makedirs(output_dir, exist_ok=True)
         
         # Ensure model is initialized
-        if not self.initialized:
+        if not self.ready:
             success = self.initialize()
             if not success:
                 return {
@@ -640,7 +659,7 @@ class GroundedSAMServer:
 # Create FastAPI app
 app = FastAPI(title="Tree Detection Model Server", 
               description="API for tree detection using Grounded-SAM model",
-              version="1.0.0")
+              version="0.2.3")
 
 # Add CORS middleware
 app.add_middleware(
@@ -651,61 +670,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize model server and global references
-# These global references are CRITICAL to prevent garbage collection of model objects
+# Initialize model server
 model_server = None
-sam_model_ref = None
-grounding_dino_ref = None
 
 @app.on_event("startup")
 async def startup_event():
-    global model_server, sam_model_ref, grounding_dino_ref
+    global model_server
     
     # Create the model server instance
     model_server = GroundedSAMServer()
     
-    # SAM model weights found, pre-setting initialized flag
-    sam_weights_path = os.path.join(model_server.model_dir, "sam_vit_h_4b8939.pth")
-    if os.path.exists(sam_weights_path):
-        logger.info("SAM model weights found, pre-setting initialized flag")
-        model_server.initialized = True
-    
-    # Let the background thread initialize the model
-    # We'll capture references to the model objects after they're loaded
-    
-    # Set up a monitoring thread to store global references to model objects
-    # This prevents garbage collection from removing them
-    def monitor_and_store_references():
-        # Need to declare the variables as global to modify them
-        global sam_model_ref, grounding_dino_ref
-        
-        # Wait for initialization to complete
-        while True:
-            time.sleep(5)  # Check every 5 seconds
-            
-            # Once initialization is complete, store references
-            if hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None:
-                logger.info("Storing global reference to SAM model to prevent garbage collection")
-                sam_model_ref = model_server.sam_predictor
-            
-            if hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None:
-                logger.info("Storing global reference to GroundingDINO model to prevent garbage collection")
-                grounding_dino_ref = model_server.grounding_dino
-                
-            # Check if both references have been stored
-            if sam_model_ref is not None and grounding_dino_ref is not None:
-                logger.info("All model references stored successfully")
-                break
-    
-    # Start the monitoring thread
-    threading.Thread(target=monitor_and_store_references, daemon=True).start()
+    # Initialize model in background
+    logger.info("Starting model initialization in background thread")
+    threading.Thread(target=model_server.initialize, daemon=True).start()
 
 @app.get("/")
 async def root():
-    # Only report the model_initialized flag which is what the detection code checks
     return {"message": "Tree Detection Model Server", 
             "status": "running", 
-            "model_initialized": model_server.initialized}
+            "ready": model_server.ready}
             
 @app.get("/health")
 async def health():
@@ -713,27 +696,12 @@ async def health():
     Health endpoint for the ExternalModelService to check.
     This is used by the backend to determine if the model server is available.
     """
-    global model_server, sam_model_ref, grounding_dino_ref
+    global model_server
     
-    # Check if the models are loaded
-    sam_loaded = sam_model_ref is not None
-    dino_loaded = grounding_dino_ref is not None
-    
-    # If models disappeared, reconnect them from our global references
-    if model_server.initialized and not hasattr(model_server, 'sam_predictor') and sam_model_ref is not None:
-        logger.warning("SAM predictor reference lost but global reference exists - reconnecting")
-        model_server.sam_predictor = sam_model_ref
-        
-    if model_server.initialized and not hasattr(model_server, 'grounding_dino') and grounding_dino_ref is not None:
-        logger.warning("GroundingDINO reference lost but global reference exists - reconnecting")
-        model_server.grounding_dino = grounding_dino_ref
-    
+    # One simple Boolean that indicates if the server is ready
     return {
-        "status": "healthy",
-        "initialized": model_server.initialized,
-        "models_loaded": sam_loaded or dino_loaded,  # At least one model loaded
-        "sam_loaded": sam_loaded,
-        "grounding_dino_loaded": dino_loaded,
+        "status": "ready" if model_server.ready else "initializing",
+        "ready": model_server.ready,
         "device": model_server.device,
         "cuda_available": torch.cuda.is_available(),
         "api_version": "0.2.3",
@@ -742,55 +710,12 @@ async def health():
 
 @app.get("/status")
 async def status():
-    global model_server, sam_model_ref, grounding_dino_ref
+    global model_server
     
-    # Check the actual model object references - this is what matters
-    try:
-        sam_exists = hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None
-    except:
-        sam_exists = False
-        
-    try:
-        dino_exists = hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None
-    except:
-        dino_exists = False
-    
-    # Check our global references
-    sam_ref_exists = sam_model_ref is not None
-    dino_ref_exists = grounding_dino_ref is not None
-    
-    # CRITICALLY IMPORTANT: If model references are missing but global refs exist, restore them
-    if not sam_exists and sam_ref_exists:
-        logger.warning("SAM predictor missing but global reference exists - RESTORING")
-        model_server.sam_predictor = sam_model_ref
-        sam_exists = True
-        
-    if not dino_exists and dino_ref_exists:
-        logger.warning("GroundingDINO missing but global reference exists - RESTORING")
-        model_server.grounding_dino = dino_ref_exists
-        dino_exists = True
-    
-    # If we have global references but they don't match the model's references, update them
-    if sam_exists and sam_ref_exists and id(model_server.sam_predictor) != id(sam_model_ref):
-        logger.warning("SAM predictor reference mismatch - updating global reference")
-        sam_model_ref = model_server.sam_predictor
-        
-    if dino_exists and dino_ref_exists and id(model_server.grounding_dino) != id(grounding_dino_ref):
-        logger.warning("GroundingDINO reference mismatch - updating global reference")
-        grounding_dino_ref = model_server.grounding_dino
-    
-    # Log the actual model state
-    logger.info(f"Status check: initialized={model_server.initialized}, "
-                f"sam_exists={sam_exists}, "
-                f"dino_exists={dino_exists}, "
-                f"sam_ref_exists={sam_ref_exists}, "
-                f"dino_ref_exists={dino_ref_exists}")
-    
+    # One simple Boolean that indicates if the server is ready
     return {
-        "status": "running",
-        "model_initialized": model_server.initialized,
-        "sam_loaded": sam_exists,
-        "grounding_dino_loaded": dino_exists,
+        "status": "ready" if model_server.ready else "initializing",
+        "ready": model_server.ready,
         "device": model_server.device,
         "cuda_available": torch.cuda.is_available(),
         "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
@@ -806,46 +731,14 @@ async def detect_trees(
     """
     Detect trees in an image
     """
-    global model_server, sam_model_ref, grounding_dino_ref
-
-    # CRITICAL: Check if models are missing and restore from global references if possible
-    try:
-        sam_exists = hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None
-    except:
-        sam_exists = False
-        
-    try:
-        dino_exists = hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None
-    except:
-        dino_exists = False
+    global model_server
     
-    # Restore model references if they're lost but our global refs exist
-    if not sam_exists and sam_model_ref is not None:
-        logger.warning("CRITICAL: SAM predictor missing during detection - RESTORING from global reference")
-        model_server.sam_predictor = sam_model_ref
-        sam_exists = True
-        
-    if not dino_exists and grounding_dino_ref is not None:
-        logger.warning("CRITICAL: GroundingDINO missing during detection - RESTORING from global reference")
-        model_server.grounding_dino = grounding_dino_ref
-        dino_exists = True
-
-    # If we couldn't restore the models, try reinitialization as a last resort
-    if not sam_exists or not dino_exists:
-        logger.error(f"CRITICAL: Models missing (SAM: {sam_exists}, DINO: {dino_exists}) and can't be restored - attempting reinitialization")
-        model_server.initialized = False
+    # Ensure model is ready
+    if not model_server.ready:
+        logger.info("Model not ready, running initialization")
         success = model_server.initialize()
         if not success:
             raise HTTPException(status_code=503, detail="Model initialization failed - cannot process request")
-            
-        # Update global references after reinitialization
-        if hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None:
-            sam_model_ref = model_server.sam_predictor
-            logger.info("Updated global SAM reference after reinitialization")
-            
-        if hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None:
-            grounding_dino_ref = model_server.grounding_dino
-            logger.info("Updated global GroundingDINO reference after reinitialization")
 
     # Generate job ID if not provided
     if job_id is None:
@@ -874,7 +767,7 @@ async def detect_trees(
         output_dir = os.path.join(model_server.output_dir, job_id, "ml_response")
         logger.info(f"Processing complete. Output directory: {output_dir}")
         
-        # CRITICAL: Verify output files were created
+        # Verify output files were created
         trees_json = os.path.join(output_dir, "trees.json")
         metadata_json = os.path.join(output_dir, "metadata.json")
         
@@ -978,7 +871,23 @@ def main():
     parser.add_argument("--model-dir", type=str, default=None, help="Directory containing model weights")
     parser.add_argument("--output-dir", type=str, default=None, help="Directory for storing outputs")
     parser.add_argument("--device", type=str, default=None, help="Device to run model on (cuda or cpu)")
+    parser.add_argument("--log-level", type=str, default="INFO", help="Logging level (DEBUG, INFO, WARNING, ERROR)")
     args = parser.parse_args()
+    
+    # Set logging level
+    if args.log_level:
+        log_level = getattr(logging, args.log_level.upper())
+        logger.setLevel(log_level)
+        logging.getLogger().setLevel(log_level)
+        logger.info(f"Setting log level to {args.log_level.upper()}")
+    
+    # Display startup banner
+    logger.info("="*80)
+    logger.info("Starting Tree Detection Model Server v0.2.3")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")
+    logger.info("="*80)
     
     # Initialize model server if not already initialized
     if model_server is None:
@@ -996,10 +905,8 @@ def main():
     if args.device:
         model_server.device = args.device
     
-    # Initialize model in background
-    threading.Thread(target=model_server.initialize).start()
-    
     # Run server
+    logger.info(f"Starting FastAPI server on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port)
 
 if __name__ == "__main__":

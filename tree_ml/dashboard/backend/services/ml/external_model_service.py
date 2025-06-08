@@ -67,29 +67,31 @@ class ExternalModelService:
                 
                 if response.status_code == 200:
                     self.health_status = response.json()
-                    self.models_loaded = self.health_status.get("models_loaded", False) or self.health_status.get("model_initialized", False)
-                    logger.info(f"T4 model server health check (new API): {self.health_status}")
+                    # New API uses a single 'ready' flag to indicate if the server is ready
+                    self.models_loaded = self.health_status.get("ready", False)
+                    logger.info(f"T4 model server health check: {self.health_status}")
                     
                     if self.models_loaded:
-                        logger.info("T4 model server is healthy and models are loaded")
+                        logger.info("T4 model server is healthy and ready for requests")
                     else:
-                        logger.warning("T4 model server is healthy but models are not loaded")
+                        logger.warning("T4 model server is healthy but not ready for requests")
                     return  # Success, no need to try alternative endpoint
             except Exception as health_error:
-                logger.warning(f"New health endpoint not available, trying status endpoint: {str(health_error)}")
+                logger.warning(f"Health endpoint not available, trying status endpoint: {str(health_error)}")
             
-            # Fall back to /status endpoint (old API)
+            # Fall back to /status endpoint (alternative endpoint)
             response = requests.get(f"{self.server_url}/status", timeout=5)
             
             if response.status_code == 200:
                 self.health_status = response.json()
-                self.models_loaded = self.health_status.get("model_initialized", False)
-                logger.info(f"T4 model server status check (fallback): {self.health_status}")
+                # Status endpoint also uses the 'ready' flag
+                self.models_loaded = self.health_status.get("ready", False)
+                logger.info(f"T4 model server status check: {self.health_status}")
                 
                 if self.models_loaded:
-                    logger.info("T4 model server is healthy and models are loaded (via status endpoint)")
+                    logger.info("T4 model server is ready for requests (via status endpoint)")
                 else:
-                    logger.warning("T4 model server is available but models are not loaded (via status endpoint)")
+                    logger.warning("T4 model server is available but not ready for requests (via status endpoint)")
             else:
                 logger.error(f"T4 model server health/status check failed: {response.status_code}")
                 self.models_loaded = False
