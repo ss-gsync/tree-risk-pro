@@ -727,6 +727,8 @@ def main():
     """
     Run the model server
     """
+    global model_server
+    
     parser = argparse.ArgumentParser(description="Tree Detection Model Server")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to run server on")
     parser.add_argument("--port", type=int, default=8000, help="Port to run server on")
@@ -734,6 +736,10 @@ def main():
     parser.add_argument("--output-dir", type=str, default=None, help="Directory for storing outputs")
     parser.add_argument("--device", type=str, default=None, help="Device to run model on (cuda or cpu)")
     args = parser.parse_args()
+    
+    # Initialize model server if not already initialized
+    if model_server is None:
+        model_server = GroundedSAMServer()
     
     # Set model directory
     if args.model_dir:
@@ -746,6 +752,9 @@ def main():
     # Set device
     if args.device:
         model_server.device = args.device
+    
+    # Initialize model in background
+    threading.Thread(target=model_server.initialize).start()
     
     # Run server
     uvicorn.run(app, host=args.host, port=args.port)
