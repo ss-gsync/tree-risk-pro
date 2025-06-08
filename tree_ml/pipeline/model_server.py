@@ -709,39 +709,45 @@ async def detect_trees(
     Detect trees in an image
     """
     global model_server
-    
-    # Check if model is initialized
-    if not model_server.initialized:
-        # Try to initialize model
+
+    # Always check if the actual model objects exist, not just the flag
+    sam_exists = hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None
+    dino_exists = hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None
+
+    # If models aren't loaded, force re-initialization
+    if not sam_exists or not dino_exists:
+        logger.warning(f"Models not fully loaded (SAM: {sam_exists}, DINO: {dino_exists}), forcing re-initialization")
+        # Force re-initialization
+        model_server.initialized = False
         success = model_server.initialize()
         if not success:
-            raise HTTPException(status_code=503, detail="Model not initialized and initialization failed")
-    
+            raise HTTPException(status_code=503, detail="Model initialization failed")
+
     # Generate job ID if not provided
     if job_id is None:
         job_id = f"detection_{int(time.time() * 1000)}"
-    
+
     # Create temporary directory for processing
     temp_dir = os.path.join(model_server.output_dir, job_id)
     os.makedirs(temp_dir, exist_ok=True)
-    
+
     # Save uploaded image
     image_path = os.path.join(temp_dir, f"satellite_{job_id}.jpg")
     with open(image_path, "wb") as f:
         f.write(await image.read())
-    
-    # Process image in background
-    async def process_image_task():
-        try:
-            model_server.process_image(image_path, job_id)
-        except Exception as e:
-            logger.error(f"Error processing image: {str(e)}", exc_info=True)
-    
-    # Schedule background task
-    background_tasks.add_task(process_image_task)
-    
-    # Return job ID for client to check status later
-    return {"job_id": job_id, "status": "processing"}
+
+    # Process image immediately instead of in background
+    try:
+        # Process synchronously to catch any errors
+        result = model_server.process_image(image_path, job_id)
+        if not result.get("success", False):
+            raise HTTPException(status_code=500, detail=result.get("error", "Unknown error during detection"))
+
+        # Return success with job ID
+        return {"job_id": job_id, "status": "complete", "detection_count": result.get("detection_result", {}).get("detection_count", 0)}
+    except Exception as e:
+        logger.error(f"Error processing image: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/results/{job_id}")
 async def get_results(job_id: str):
