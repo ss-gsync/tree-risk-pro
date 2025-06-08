@@ -1747,4 +1747,5 @@ if __name__ == '__main__':
     os.makedirs(LIDAR_DIR, exist_ok=True)
     os.makedirs(REPORTS_DIR, exist_ok=True)
     
-    app.run(debug=True, port=5000)
+    # Listen on all interfaces for production deployment
+    app.run(debug=True, host='0.0.0.0', port=5000)
