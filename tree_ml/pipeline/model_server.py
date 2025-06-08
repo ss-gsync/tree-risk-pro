@@ -651,23 +651,31 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize model server
+# Initialize model server and global references to prevent garbage collection
 model_server = None
+sam_model_ref = None
+grounding_dino_ref = None
 
 @app.on_event("startup")
 async def startup_event():
     global model_server
     model_server = GroundedSAMServer()
     
-    # Pre-set the initialized flag to True if we have SAM model weights
-    # This lets the API report as initialized even if the background thread is still loading
-    sam_weights_path = os.path.join(model_server.model_dir, "sam_vit_h_4b8939.pth")
-    if os.path.exists(sam_weights_path):
-        logger.info("SAM model weights found, pre-setting initialized flag")
-        model_server.initialized = True
+    # DO NOT pre-set the initialized flag before models are actually loaded
+    # This was causing a false initialization state
     
-    # Initialize model in background
-    threading.Thread(target=model_server.initialize).start()
+    # Initialize model directly, not in background thread to ensure models stay in memory
+    logger.info("Initializing model server directly (not in background)")
+    success = model_server.initialize()
+    
+    if success:
+        logger.info("Model server initialized successfully")
+        # Store references to models in global variables to prevent garbage collection
+        global sam_model_ref, grounding_dino_ref
+        sam_model_ref = model_server.sam_predictor
+        grounding_dino_ref = model_server.grounding_dino
+    else:
+        logger.error("Failed to initialize model server")
 
 @app.get("/")
 async def root():
@@ -678,21 +686,34 @@ async def root():
 
 @app.get("/status")
 async def status():
-    global model_server
+    global model_server, sam_model_ref, grounding_dino_ref
     
-    # The model server is considered operational as soon as initialization flag is set
-    # The detection code only checks model_server.initialized and provides fallbacks
-    # It doesn't actually require sam_predictor or grounding_dino to be present
-    # So we should report the same status as what affects the actual operation
+    # Directly check if our global references are intact
+    sam_loaded = sam_model_ref is not None
+    dino_loaded = grounding_dino_ref is not None
     
-    # Log the actual attribute check for debugging purposes
-    logger.info(f"Status check: initialized={model_server.initialized}, "
-                f"attributes: sam_predictor={getattr(model_server, 'sam_predictor', None) is not None}, "
-                f"grounding_dino={getattr(model_server, 'grounding_dino', None) is not None}")
+    # Only consider initialized if the actual model objects exist
+    truly_initialized = model_server.initialized and sam_loaded
+    
+    # Log the actual status
+    logger.info(f"Status check: truly_initialized={truly_initialized}, "
+                f"sam_loaded={sam_loaded}, "
+                f"grounding_dino={dino_loaded}")
+    
+    # If models disappeared, reconnect them from our global references
+    if model_server.initialized and not hasattr(model_server, 'sam_predictor') and sam_model_ref is not None:
+        logger.warning("SAM predictor reference lost but global reference exists - reconnecting")
+        model_server.sam_predictor = sam_model_ref
+        
+    if model_server.initialized and not hasattr(model_server, 'grounding_dino') and grounding_dino_ref is not None:
+        logger.warning("GroundingDINO reference lost but global reference exists - reconnecting")
+        model_server.grounding_dino = grounding_dino_ref
     
     return {
         "status": "running",
-        "model_initialized": model_server.initialized,
+        "model_initialized": truly_initialized,
+        "sam_loaded": sam_loaded,
+        "grounding_dino_loaded": dino_loaded,
         "device": model_server.device,
         "cuda_available": torch.cuda.is_available(),
         "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
@@ -708,43 +729,95 @@ async def detect_trees(
     """
     Detect trees in an image
     """
-    global model_server
+    global model_server, sam_model_ref, grounding_dino_ref
 
-    # Always check if the actual model objects exist, not just the flag
+    # Check if models exist and restore from global references if needed
     sam_exists = hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None
     dino_exists = hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None
+    
+    # Restore model references if they're lost but our global refs are intact
+    if not sam_exists and sam_model_ref is not None:
+        logger.warning("SAM predictor missing but global reference exists - restoring")
+        model_server.sam_predictor = sam_model_ref
+        sam_exists = True
+        
+    if not dino_exists and grounding_dino_ref is not None:
+        logger.warning("GroundingDINO missing but global reference exists - restoring")
+        model_server.grounding_dino = grounding_dino_ref
+        dino_exists = True
 
-    # If models aren't loaded, force re-initialization
+    # If models aren't loaded and can't be restored, reinitialize
     if not sam_exists or not dino_exists:
-        logger.warning(f"Models not fully loaded (SAM: {sam_exists}, DINO: {dino_exists}), forcing re-initialization")
+        logger.warning(f"Models not fully loaded (SAM: {sam_exists}, DINO: {dino_exists}) and can't be restored - reinitializing")
         # Force re-initialization
         model_server.initialized = False
         success = model_server.initialize()
         if not success:
             raise HTTPException(status_code=503, detail="Model initialization failed")
+            
+        # Update global references
+        sam_model_ref = model_server.sam_predictor
+        grounding_dino_ref = model_server.grounding_dino
 
     # Generate job ID if not provided
     if job_id is None:
         job_id = f"detection_{int(time.time() * 1000)}"
+    
+    logger.info(f"Processing detection request for job ID: {job_id}")
 
     # Create temporary directory for processing
     temp_dir = os.path.join(model_server.output_dir, job_id)
     os.makedirs(temp_dir, exist_ok=True)
+    logger.info(f"Created output directory: {temp_dir}")
 
     # Save uploaded image
     image_path = os.path.join(temp_dir, f"satellite_{job_id}.jpg")
     with open(image_path, "wb") as f:
         f.write(await image.read())
+    logger.info(f"Saved uploaded image to: {image_path}")
 
     # Process image immediately instead of in background
     try:
         # Process synchronously to catch any errors
+        logger.info(f"Starting image processing for job: {job_id}")
         result = model_server.process_image(image_path, job_id)
+        
+        # Log output directory
+        output_dir = os.path.join(model_server.output_dir, job_id, "ml_response")
+        logger.info(f"Processing complete. Output directory: {output_dir}")
+        
+        # Check if key files were created
+        trees_json = os.path.join(output_dir, "trees.json")
+        metadata_json = os.path.join(output_dir, "metadata.json")
+        
+        if os.path.exists(trees_json):
+            logger.info(f"trees.json created: {trees_json} ({os.path.getsize(trees_json)} bytes)")
+        else:
+            logger.error(f"trees.json NOT created at expected path: {trees_json}")
+            
+        if os.path.exists(metadata_json):
+            logger.info(f"metadata.json created: {metadata_json} ({os.path.getsize(metadata_json)} bytes)")
+        else:
+            logger.error(f"metadata.json NOT created at expected path: {metadata_json}")
+        
+        # Check for success
         if not result.get("success", False):
+            logger.error(f"Processing failed: {result.get('error', 'Unknown error')}")
             raise HTTPException(status_code=500, detail=result.get("error", "Unknown error during detection"))
 
-        # Return success with job ID
-        return {"job_id": job_id, "status": "complete", "detection_count": result.get("detection_result", {}).get("detection_count", 0)}
+        # Return success with job ID and output information
+        response = {
+            "job_id": job_id, 
+            "status": "complete", 
+            "detection_count": len(result.get("detection_result", {}).get("detections", [])),
+            "output_dir": output_dir,
+            "files_created": {
+                "trees_json": os.path.exists(trees_json),
+                "metadata_json": os.path.exists(metadata_json)
+            }
+        }
+        logger.info(f"Returning success response: {response}")
+        return response
     except Exception as e:
         logger.error(f"Error processing image: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
