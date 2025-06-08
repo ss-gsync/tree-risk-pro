@@ -402,12 +402,31 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    sudo systemctl restart nginx
    ```
 
-12. **Verify Installation**:
+12. **Verify Complete Installation**:
     ```bash
-    # Check service status
+    # Check model server status
     sudo systemctl status tree-detection
+    curl http://localhost:8000/status
     
-    # View logs
+    # Check backend service status
+    sudo systemctl status tree-backend
+    curl http://localhost:5000/health
+    
+    # Check if frontend is being served through Nginx
+    curl -I http://localhost
+    
+    # Check CUDA status on the model server
+    nvidia-smi
+    
+    # Test model inference with a sample image
+    cd /ttt/tree_ml/pipeline
+    curl -X POST -F "image=@/ttt/data/tests/test_images/sample.jpg" -F "job_id=test_deployment" http://localhost:8000/detect
+    
+    # Check if the result was generated
+    ls -la /ttt/data/ml/test_deployment/ml_response/
+    
+    # Verify the dashboard is accessible in a browser
+    echo "Open http://$(hostname -I | awk '{print $1}') in a browser to verify the dashboard"
     sudo journalctl -u tree-detection -n 100
     
     # Test API endpoint
@@ -560,10 +579,53 @@ cd /ttt/tree_ml
 poetry run python tests/model_server/test_basic.py
 
 # Check model server health
-curl http://localhost:8000/health
+curl http://localhost:8000/status
 ```
 
 If all these checks pass, your T4 GPU deployment should be working correctly.
+
+### Known Issues and Workarounds
+
+During deployment, you might encounter these issues that we've identified and fixed:
+
+#### 1. GroundingDINO Meta Tensor Errors
+
+If you see errors like "Cannot copy out of meta tensor; no data!" when loading the GroundingDINO model:
+
+```bash
+# Edit model_server.py to load models on CPU first, then move to GPU
+# First load the model on CPU to avoid meta tensor issues
+with torch.device('cpu'):
+    model = build_model(args)
+    checkpoint = torch.load(grounding_dino_weights_path, map_location='cpu')
+    model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
+    model.eval()
+    
+# Then move to desired device after initialization
+model = model.to(self.device)
+```
+
+#### 2. Model Initialization Status Issues
+
+Sometimes the model may show as not initialized in status checks even when it is. We solved this by:
+
+1. Pre-setting the initialization flag when weights are found
+2. Improving the attribute checking logic in status endpoints
+3. Adding diagnostic logs during initialization
+
+#### 3. Optional Components
+
+The backend may show warnings about missing database or Gemini connections:
+
+```
+Failed to connect to master database: [Errno 111] Connect call failed
+Skipping Gemini initialization to avoid event loop conflicts
+```
+
+These are non-critical services and the application will still function for tree detection. If you need these services:
+
+- For database: Update the `.env` file in the backend directory with correct connection details
+- For Gemini: Add a valid Gemini API key to the `.env` file
 
 ## Security Considerations
 
