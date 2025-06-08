@@ -78,6 +78,10 @@ def create_app():
     # Initialize Flask app
     app = Flask(__name__)
     
+    # Create shared detection service instance to avoid duplicate model loading
+    from services.detection_service import DetectionService
+    app.detection_service = DetectionService()
+    
     # Enable basic CORS for all routes with minimal configuration
     # This allows cross-origin requests from the frontend
     CORS(app, supports_credentials=True)
@@ -147,9 +151,8 @@ def create_app():
                     'message': 'Tree detection requires valid map center coordinates.'
                 }), 400
                 
-            # Process image with ML detection
-            from services.detection_service import DetectionService
-            detection_service = DetectionService()
+            # Process image with ML detection - use the shared detection service
+            detection_service = app.detection_service
             
             # Run the detection using the satellite image path
             result = await detection_service.detect_trees_from_image(
@@ -242,8 +245,8 @@ def create_app():
             
             # Get ML status before running detection
             try:
-                from services.detection_service import DetectionService
-                detection_service = DetectionService()
+                # Use the shared detection service
+                detection_service = app.detection_service
                 
                 # Check ML service status for debugging
                 if hasattr(detection_service, 'ml_service') and detection_service.ml_service:
@@ -258,9 +261,8 @@ def create_app():
             logger.info(f"Starting ML detection pipeline for job {job_id}")
             start_time = time.time()
             
-            # Get detection service instance
-            from services.detection_service import DetectionService
-            detection_service = DetectionService()
+            # Get detection service instance - use the shared instance
+            detection_service = app.detection_service
             
             # Set ML settings in the request, but preserve any existing coordinates
             map_view_info['use_gemini'] = False
@@ -348,9 +350,8 @@ def create_app():
             logger.info(f"ML detection request received - job_id: {job_id}")
             logger.info(f"Map view bounds: {map_view_info.get('viewData', {}).get('bounds')}")
             
-            # Import the detection service
-            from services.detection_service import DetectionService
-            detection_service = DetectionService()
+            # Import the detection service - use the shared instance
+            detection_service = app.detection_service
             
             # Run detection in an async context
             loop = asyncio.new_event_loop()
@@ -412,19 +413,19 @@ def create_app():
                         status = app.ml_service.get_model_status()
                         logger.info(f"Existing ML model status: {status}")
                 else:
-                    # Create new service instance
-                    from services.ml import get_model_service
-                    logger.info("Initializing ML model service - this will load models to GPU")
-                    app.ml_service = get_model_service(use_gpu=True)
+                    # Use the shared detection service's ml_service
+                    # This avoids initializing both external and local services
+                    logger.info("Using shared detection service to access the ML model service")
+                    detection_service = app.detection_service
                     
-                    # Wait for models to load - give them time to load in background
-                    logger.info("ML service initialization started, waiting for models to load (timeout: 60s)")
-                    if hasattr(app.ml_service, 'wait_for_models'):
-                        models_ready = app.ml_service.wait_for_models(timeout=60)
-                        if models_ready:
-                            logger.info("ML models loaded successfully and ready for inference")
+                    if detection_service.ml_service is not None:
+                        app.ml_service = detection_service.ml_service
+                        
+                        # Check if models are already loaded
+                        if app.ml_service.models_loaded:
+                            logger.info("ML models already loaded via detection service")
                             
-                            # Verify model is on GPU and in eval mode
+                            # Verify model status
                             if hasattr(app.ml_service, 'get_model_status'):
                                 status = app.ml_service.get_model_status()
                                 logger.info(f"ML model status: {status}")
@@ -435,7 +436,21 @@ def create_app():
                                 else:
                                     logger.warning("CUDA is not available, models using CPU")
                         else:
-                            logger.warning("ML models failed to load in the timeout period")
+                            # Wait for models to load if not already loaded
+                            logger.info("ML service initialization started, waiting for models to load (timeout: 60s)")
+                            if hasattr(app.ml_service, 'wait_for_models'):
+                                models_ready = app.ml_service.wait_for_models(timeout=60)
+                                if models_ready:
+                                    logger.info("ML models loaded successfully and ready for inference")
+                                    
+                                    # Verify model status
+                                    if hasattr(app.ml_service, 'get_model_status'):
+                                        status = app.ml_service.get_model_status()
+                                        logger.info(f"ML model status: {status}")
+                                else:
+                                    logger.warning("ML models failed to load in the timeout period")
+                    else:
+                        logger.warning("ML service not available from detection service")
             except Exception as ml_e:
                 logger.error(f"Error initializing ML service: {ml_e}")
                 app.ml_service = None
@@ -1035,9 +1050,8 @@ def create_app():
                 # Define async detection function
                 async def run_ml_detection():
                     try:
-                        # Use the ML detection service
-                        from services.detection_service import DetectionService
-                        detection_service = DetectionService()
+                        # Use the shared ML detection service
+                        detection_service = app.detection_service
                         
                         # Call detection service for tree detection
                         detection_result = await detection_service.detect_trees_from_map_view(
@@ -1587,8 +1601,8 @@ def create_app():
         
         # Check ML models status
         try:
-            from services.detection_service import DetectionService
-            detection_service = DetectionService()
+            # Use the shared detection service
+            detection_service = app.detection_service
             if detection_service.ml_service:
                 ml_status = detection_service.ml_service.models_loaded
         except Exception:
@@ -1611,15 +1625,24 @@ def create_app():
     async def get_ml_status():
         """Get status of ML models (DeepForest and SAM)"""
         try:
-            # Import the detection service
-            from services.detection_service import DetectionService
-            detection_service = DetectionService()
+            # Use the shared detection service - this will only have the configured model service
+            # (either external or local, but not both)
+            detection_service = app.detection_service
             
-            # Get ML model status
+            # Get ML model status from the detection service's ML service
             try:
                 if hasattr(detection_service, 'ml_service') and detection_service.ml_service:
                     status = detection_service.ml_service.get_model_status()
                     logger.info(f"ML status check: {status}")
+                    
+                    # Determine service type
+                    if hasattr(detection_service.ml_service, 'server_url'):
+                        service_type = "external_t4"
+                    else:
+                        service_type = "local"
+                        
+                    # Add service type
+                    status["service_type"] = service_type
                 else:
                     logger.warning("ML service not available for status check")
                     status = {
@@ -1644,6 +1667,13 @@ def create_app():
                 "zarr_exists": os.path.exists(ZARR_DIR),
                 "temp_path": TEMP_DIR,
                 "zarr_path": ZARR_DIR
+            }
+            
+            # Add config info
+            from config import USE_EXTERNAL_MODEL_SERVER, MODEL_SERVER_URL
+            status["config"] = {
+                "use_external_model_server": USE_EXTERNAL_MODEL_SERVER,
+                "model_server_url": MODEL_SERVER_URL
             }
             
             # Add ML pipeline info

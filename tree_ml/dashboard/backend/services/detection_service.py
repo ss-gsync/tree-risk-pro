@@ -302,12 +302,15 @@ class DetectionService:
             logger.info("Initializing ML pipeline components...")
             sys.path.append('/ttt')
             
-            # First try importing the in-memory ML service
-            # This is our preferred approach as it's much faster
+            # Import the ML service based on configuration - this uses the updated __init__.py
+            # which will only import the appropriate model service
             try:
                 from .ml import get_model_service
+                
+                # Get the appropriate model service (external or local)
                 self.ml_service = get_model_service()
-                logger.info("In-memory ML service initialized - waiting for models to load...")
+                service_type = "External T4" if hasattr(self.ml_service, 'server_url') else "Local"
+                logger.info(f"{service_type} ML service initialized - waiting for models to load...")
                 
                 # Wait for models to load with a 30 second timeout - CRITICAL STEP
                 timeout = 30
@@ -316,14 +319,14 @@ class DetectionService:
                     time.sleep(1)
                     
                 if self.ml_service.models_loaded:
-                    logger.info("In-memory ML models successfully loaded")
+                    logger.info(f"{service_type} ML models successfully loaded")
                     self.detect_trees = self.ml_service.detect_trees
                 else:
                     logger.warning(f"ML models did not load within {timeout} seconds")
                     self.detect_trees = None
                     
             except (ImportError, AttributeError) as e:
-                logger.warning(f"In-memory ML service not available: {e}")
+                logger.warning(f"ML service not available: {e}")
                 self.ml_service = None
                 self.detect_trees = None
                 
