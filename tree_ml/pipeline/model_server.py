@@ -56,7 +56,7 @@ class GroundedSAMServer:
     
     def __init__(self, 
                  model_dir: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "model"),
-                 output_dir: str = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../data/ml"),
+                 output_dir: str = "/ttt/data/ml",
                  device: str = "cuda" if torch.cuda.is_available() else "cpu") -> None:
         """
         Initialize the Grounded-SAM model server
