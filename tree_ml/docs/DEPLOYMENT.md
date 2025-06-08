@@ -208,9 +208,21 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    #!/bin/bash
    # T4 Model Server Launch Script
    
+   # Activate the Python virtual environment
+   source /home/ss/tree_ml/bin/activate
+   
    # Set the environment
    export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:\$PYTHONPATH
    export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
+   
+   # Set LD_LIBRARY_PATH to include PyTorch libraries
+   if python -c "import torch" &>/dev/null; then
+       PYTORCH_PATH=\$(python -c "import torch, os; print(os.path.dirname(torch.__file__))")
+       if [ -d "\$PYTORCH_PATH/lib" ]; then
+           export LD_LIBRARY_PATH=\$PYTORCH_PATH/lib:\$LD_LIBRARY_PATH
+           echo "Added PyTorch libraries to LD_LIBRARY_PATH: \$PYTORCH_PATH/lib"
+       fi
+   fi
    
    # Verify CUDA setup
    if [ -x "\$(command -v nvidia-smi)" ]; then
@@ -221,29 +233,24 @@ This section provides a detailed, step-by-step guide for manually deploying the 
        echo "WARNING: CUDA not found! Running in CPU mode only."
    fi
    
+   # Make sure we have NumPy 1.x (PyTorch requirement)
+   if python -c "import numpy; v=numpy.__version__; exit(0 if int(v.split('.')[0]) <= 1 else 1)" &>/dev/null; then
+       echo "NumPy version is compatible with PyTorch"
+   else
+       echo "WARNING: NumPy version may be incompatible with PyTorch. Installing NumPy 1.26.4..."
+       pip install numpy==1.26.4
+   fi
+   
+   # Build GroundingDINO extension if needed
+   if ! python -c "from groundingdino import _C" &>/dev/null; then
+       echo "Building GroundingDINO CUDA extension..."
+       cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
+       python setup.py build develop
+       cd /ttt/tree_ml
+   fi
+   
    # Create log directory
    mkdir -p /ttt/tree_ml/logs
-   
-   # Verify NumPy compatibility (should be 1.x, not 2.x)
-   python -c "import numpy; ver = numpy.__version__; major = int(ver.split('.')[0]); 
-   if major > 1:
-       print(f'WARNING: NumPy {ver} detected. PyTorch requires NumPy 1.x');
-       exit(1)
-   else:
-       print(f'NumPy {ver} is compatible with PyTorch');"
-   
-   # Check if CUDA extension exists
-   python -c "
-   try:
-       from groundingdino import _C
-       print('GroundingDINO CUDA extension loaded successfully')
-   except Exception as e:
-       print(f'Error loading GroundingDINO CUDA extension: {e}')
-       print('Building CUDA extension...')
-       import os, sys
-       os.chdir('/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO')
-       os.system('python setup.py build develop')
-   "
    
    # Start the model server
    echo "Starting Model Server..."
@@ -257,7 +264,97 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    chmod +x /ttt/tree_ml/pipeline/run_model_server.sh
    ```
 
-9. **Configure Nginx for the Dashboard**:
+9. **Build and Deploy Frontend**:
+   ```bash
+   # Install Node.js if not already installed
+   curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+   sudo apt-get install -y nodejs
+   
+   # Verify Node.js installation
+   node -v  # Should be v18.x or later
+   npm -v   # Should be 8.x or later
+   
+   # Navigate to dashboard directory
+   cd /ttt/tree_ml/dashboard
+   
+   # Install dependencies
+   npm ci
+   
+   # Set environment variables for production build
+   cat > .env.production << EOL
+   VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+   VITE_GOOGLE_MAPS_MAP_ID=your_map_id
+   VITE_API_BASE_URL=/api
+   VITE_MODEL_API_URL=/model-api
+   EOL
+   
+   # Build the frontend
+   npm run build
+   
+   # Check if build was successful
+   ls -la dist/
+   ```
+
+10. **Setup and Deploy Backend**:
+   ```bash
+   # Navigate to backend directory
+   cd /ttt/tree_ml/dashboard/backend
+   
+   # Setup Python environment if not using the same as ML model
+   source ~/tree_ml/bin/activate
+   
+   # Install backend dependencies
+   pip install fastapi uvicorn python-dotenv
+   npm ci  # For Node.js backend components
+   
+   # Create .env file for backend configuration
+   cat > .env << EOL
+   DEBUG=False
+   SECRET_KEY=your_secret_key_here
+   GEMINI_API_KEY=your_gemini_api_key
+   MODEL_SERVER_URL=http://localhost:8000
+   EOL
+   
+   # Create backend service file
+   sudo tee /etc/systemd/system/tree-backend.service > /dev/null << EOL
+   [Unit]
+   Description=Tree ML Backend API Service
+   After=network.target
+   
+   [Service]
+   User=root
+   WorkingDirectory=/ttt/tree_ml/dashboard/backend
+   ExecStart=/bin/bash -c "source ~/tree_ml/bin/activate && python server.js"
+   Restart=always
+   RestartSec=10
+   Environment=PYTHONUNBUFFERED=1
+   Environment=NODE_ENV=production
+   
+   # Limit resource usage
+   CPUWeight=70
+   IOWeight=70
+   MemoryHigh=4G
+   MemoryMax=6G
+   
+   # Security settings
+   ProtectSystem=full
+   PrivateTmp=true
+   NoNewPrivileges=true
+   
+   [Install]
+   WantedBy=multi-user.target
+   EOL
+   
+   # Enable and start the backend service
+   sudo systemctl daemon-reload
+   sudo systemctl enable tree-backend
+   sudo systemctl start tree-backend
+   
+   # Check backend service status
+   sudo systemctl status tree-backend
+   ```
+
+11. **Configure Nginx for the Dashboard**:
    ```bash
    # Create Nginx configuration
    sudo tee /etc/nginx/sites-available/tree-ml.conf > /dev/null << EOL
@@ -276,6 +373,10 @@ This section provides a detailed, step-by-step guide for manually deploying the 
            proxy_pass http://localhost:5000;
            proxy_set_header Host \$host;
            proxy_set_header X-Real-IP \$remote_addr;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade \$http_upgrade;
+           proxy_set_header Connection "upgrade";
+           proxy_read_timeout 120s;
        }
        
        # Model Server API
@@ -286,6 +387,11 @@ This section provides a detailed, step-by-step guide for manually deploying the 
            proxy_read_timeout 300;
            client_max_body_size 20M;
        }
+       
+       # Add security headers
+       add_header X-Content-Type-Options "nosniff";
+       add_header X-Frame-Options "SAMEORIGIN";
+       add_header X-XSS-Protection "1; mode=block";
    }
    EOL
    
@@ -296,7 +402,7 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    sudo systemctl restart nginx
    ```
 
-10. **Verify Installation**:
+12. **Verify Installation**:
     ```bash
     # Check service status
     sudo systemctl status tree-detection
@@ -333,6 +439,8 @@ python -c "from groundingdino.models.GroundingDINO.ms_deform_attn import _C; pri
 sudo systemctl restart tree-detection
 ```
 
+### Common Deployment Issues and Solutions
+
 #### Error: "Numpy is not available"
 
 This error occurs due to NumPy 2.x compatibility issues with PyTorch. PyTorch 2.2.0 was compiled with NumPy 1.x but is trying to run with NumPy 2.x.
@@ -357,6 +465,66 @@ sudo systemctl restart tree-detection
 ```
 
 You may see this warning: "A module that was compiled using NumPy 1.x cannot be run in NumPy 2.1.1 as it may crash." This is exactly what's causing the "Numpy is not available" error, and downgrading to NumPy 1.x resolves it.
+
+#### Error: "libc10.so: cannot open shared object file"
+
+This error occurs when PyTorch's CUDA libraries can't be found in the system's library path.
+
+**Solution**:
+```bash
+# Find the PyTorch library directory
+PYTORCH_LIB=$(python -c "import torch, os; print(os.path.dirname(torch.__file__))")
+echo "PyTorch lib directory: $PYTORCH_LIB"
+
+# Add the directory to LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=$PYTORCH_LIB/lib:$LD_LIBRARY_PATH
+
+# Add it permanently to your environment
+echo "export LD_LIBRARY_PATH=$PYTORCH_LIB/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
+source ~/.bashrc
+
+# Update the systemd service file to include the LD_LIBRARY_PATH
+sudo systemctl edit tree-detection
+# Add the following lines:
+# [Service]
+# Environment=LD_LIBRARY_PATH=/home/yourusername/tree_ml/lib/python3.12/site-packages/torch/lib
+
+# Reload and restart the service
+sudo systemctl daemon-reload
+sudo systemctl restart tree-detection
+```
+
+#### Error: "AttributeError: 'NoneType' object has no attribute 'model_dir'"
+
+This error occurs in model_server.py when the model_server variable is None at the time of accessing its attributes.
+
+**Solution**:
+
+Edit the model_server.py file to initialize the model_server in the main() function:
+
+```python
+def main():
+    """
+    Run the model server
+    """
+    global model_server
+    
+    # Parse arguments...
+    
+    # Initialize model server if not already initialized
+    if model_server is None:
+        model_server = GroundedSAMServer()
+    
+    # Set properties...
+    
+    # Initialize model in background
+    threading.Thread(target=model_server.initialize).start()
+    
+    # Run server
+    uvicorn.run(app, host=args.host, port=args.port)
+```
+
+This ensures the model_server is properly initialized regardless of how it's started.
 
 #### Error: PyTorch CUDA version mismatch
 
@@ -463,4 +631,130 @@ sudo tar -czf /tmp/tree-ml-weights-$(date +%Y%m%d).tar.gz /ttt/tree_ml/pipeline/
 
 # Backup detection data
 sudo tar -czf /tmp/tree-ml-data-$(date +%Y%m%d).tar.gz /ttt/data/ml
+```
+
+## Updating and Redeploying the Application
+
+When you need to update the application with new code:
+
+### 1. Pulling Updates
+
+```bash
+# Navigate to repository directory
+cd /ttt/tree_ml
+
+# Backup current code (optional but recommended)
+tar -czf /tmp/tree-ml-backup-$(date +%Y%m%d).tar.gz --exclude=node_modules --exclude=.git .
+
+# Pull latest changes
+git pull origin main
+
+# Check what changed
+git log -p -1
+```
+
+### 2. Updating Frontend
+
+```bash
+# Navigate to dashboard directory
+cd /ttt/tree_ml/dashboard
+
+# Install dependencies (in case there are changes)
+npm ci
+
+# Build the frontend
+npm run build
+
+# Verify the build
+ls -la dist/
+```
+
+### 3. Updating Backend
+
+```bash
+# Navigate to backend directory
+cd /ttt/tree_ml/dashboard/backend
+
+# Install any new dependencies
+source ~/tree_ml/bin/activate
+pip install -r requirements.txt
+npm ci
+
+# Restart the backend service
+sudo systemctl restart tree-backend
+```
+
+### 4. Updating ML Model Server
+
+```bash
+# If model weights were updated, download them
+cd /ttt/tree_ml/pipeline/model
+# Add wget commands for updated model files if necessary
+
+# Restart the model server service
+sudo systemctl restart tree-detection
+```
+
+### 5. Complete System Restart
+
+If you need to do a full system restart:
+
+```bash
+# Stop all services
+sudo systemctl stop tree-detection
+sudo systemctl stop tree-backend
+sudo systemctl stop nginx
+
+# Clear any cached data (if necessary)
+rm -rf /ttt/data/ml/temp/*
+
+# Start services in the right order
+sudo systemctl start tree-detection
+sudo systemctl start tree-backend
+sudo systemctl start nginx
+
+# Verify all services are running
+sudo systemctl status tree-detection
+sudo systemctl status tree-backend
+sudo systemctl status nginx
+```
+
+### 6. Troubleshooting Common Update Issues
+
+#### Frontend Build Failures
+
+```bash
+# Check for Node.js/npm errors
+cd /ttt/tree_ml/dashboard
+npm ci --verbose
+
+# Try clearing npm cache
+npm cache clean --force
+npm ci
+npm run build
+```
+
+#### Backend Update Issues
+
+```bash
+# Check Python dependencies
+pip list | grep -E 'fastapi|uvicorn|sqlalchemy'
+
+# Manually restart with verbose output
+cd /ttt/tree_ml/dashboard/backend
+source ~/tree_ml/bin/activate
+python server.js
+```
+
+#### ML Model Server Issues
+
+```bash
+# Manually start the model server to see errors
+cd /ttt/tree_ml
+source ~/tree_ml/bin/activate
+bash /ttt/tree_ml/pipeline/run_model_server.sh
+
+# Check logs
+sudo journalctl -u tree-detection -n 100
+cat /ttt/tree_ml/logs/model_server.log
 ```
