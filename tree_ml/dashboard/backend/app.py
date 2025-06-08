@@ -75,6 +75,15 @@ def create_app():
     Returns:
         Flask: The configured Flask application instance
     """
+    # Import config to log configuration settings
+    from config import APP_MODE, USE_EXTERNAL_MODEL_SERVER, MODEL_SERVER_URL
+    
+    # Log key configuration settings for debugging
+    logger.info(f"Application Mode: {APP_MODE}")
+    logger.info(f"ML Service Configuration: USE_EXTERNAL_MODEL_SERVER={USE_EXTERNAL_MODEL_SERVER}")
+    if USE_EXTERNAL_MODEL_SERVER:
+        logger.info(f"External Model Server URL: {MODEL_SERVER_URL}")
+        
     # Initialize Flask app
     app = Flask(__name__)
     
