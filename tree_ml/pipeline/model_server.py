@@ -163,6 +163,20 @@ class GroundedSAMServer:
                         from groundingdino.util.utils import clean_state_dict
                         import torch
                         
+                        # Add a patch for missing torch.get_default_device
+                        if not hasattr(torch, 'get_default_device'):
+                            import transformers.modeling_utils
+                            # Monkey patch the function that uses get_default_device
+                            original_func = transformers.modeling_utils.get_torch_context_manager_or_global_device
+                            def patched_func():
+                                try:
+                                    return original_func()
+                                except AttributeError:
+                                    return self.device
+                            transformers.modeling_utils.get_torch_context_manager_or_global_device = patched_func
+                            logger.info("Applied patch for missing torch.get_default_device")
+                        
+                        # Now build the model
                         model = build_model(args)
                         checkpoint = torch.load(grounding_dino_weights_path, map_location=self.device)
                         model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
