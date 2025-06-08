@@ -785,7 +785,7 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    
    # Clone Grounded-SAM repository
    cd /ttt/tree_ml/pipeline
-   git clone https://github.com/IDEA-Research/GroundingDINO.git grounded-sam
+   git clone https://github.com/IDEA-Research/Grounded-Segment-Anything.git grounded-sam
    
    # Create config directory structure
    mkdir -p /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
@@ -808,12 +808,10 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    # Set PYTHONPATH
    export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
    
-   # Install segment_anything first
-   cd /ttt/tree_ml/pipeline/grounded-sam
-   if [ ! -d "segment_anything" ]; then
-       git clone https://github.com/facebookresearch/segment-anything.git segment_anything
-   fi
-   cd segment_anything
+   # The Grounded-Segment-Anything repo already includes both GroundingDINO and segment_anything
+   
+   # Install segment_anything
+   cd /ttt/tree_ml/pipeline/grounded-sam/segment_anything
    pip install -e .
    
    # Install GroundingDINO with no-build-isolation flag
