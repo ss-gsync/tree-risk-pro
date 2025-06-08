@@ -651,31 +651,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize model server and global references to prevent garbage collection
+# Initialize model server and global references
+# These global references are CRITICAL to prevent garbage collection of model objects
 model_server = None
 sam_model_ref = None
 grounding_dino_ref = None
 
 @app.on_event("startup")
 async def startup_event():
-    global model_server
+    global model_server, sam_model_ref, grounding_dino_ref
+    
+    # Create the model server instance
     model_server = GroundedSAMServer()
     
-    # DO NOT pre-set the initialized flag before models are actually loaded
-    # This was causing a false initialization state
+    # SAM model weights found, pre-setting initialized flag
+    sam_weights_path = os.path.join(model_server.model_dir, "sam_vit_h_4b8939.pth")
+    if os.path.exists(sam_weights_path):
+        logger.info("SAM model weights found, pre-setting initialized flag")
+        model_server.initialized = True
     
-    # Initialize model directly, not in background thread to ensure models stay in memory
-    logger.info("Initializing model server directly (not in background)")
-    success = model_server.initialize()
+    # Let the background thread initialize the model
+    # We'll capture references to the model objects after they're loaded
     
-    if success:
-        logger.info("Model server initialized successfully")
-        # Store references to models in global variables to prevent garbage collection
-        global sam_model_ref, grounding_dino_ref
-        sam_model_ref = model_server.sam_predictor
-        grounding_dino_ref = model_server.grounding_dino
-    else:
-        logger.error("Failed to initialize model server")
+    # Set up a monitoring thread to store global references to model objects
+    # This prevents garbage collection from removing them
+    def monitor_and_store_references():
+        # Wait for initialization to complete
+        while True:
+            time.sleep(5)  # Check every 5 seconds
+            
+            # Once initialization is complete, store references
+            if hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None:
+                logger.info("Storing global reference to SAM model to prevent garbage collection")
+                sam_model_ref = model_server.sam_predictor
+            
+            if hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None:
+                logger.info("Storing global reference to GroundingDINO model to prevent garbage collection")
+                grounding_dino_ref = model_server.grounding_dino
+                
+            if sam_model_ref is not None and grounding_dino_ref is not None:
+                logger.info("All model references stored successfully")
+                break
+    
+    # Start the monitoring thread
+    threading.Thread(target=monitor_and_store_references, daemon=True).start()
 
 @app.get("/")
 async def root():
@@ -721,32 +740,53 @@ async def health():
 async def status():
     global model_server, sam_model_ref, grounding_dino_ref
     
-    # Directly check if our global references are intact
-    sam_loaded = sam_model_ref is not None
-    dino_loaded = grounding_dino_ref is not None
-    
-    # Only consider initialized if the actual model objects exist
-    truly_initialized = model_server.initialized and sam_loaded
-    
-    # Log the actual status
-    logger.info(f"Status check: truly_initialized={truly_initialized}, "
-                f"sam_loaded={sam_loaded}, "
-                f"grounding_dino={dino_loaded}")
-    
-    # If models disappeared, reconnect them from our global references
-    if model_server.initialized and not hasattr(model_server, 'sam_predictor') and sam_model_ref is not None:
-        logger.warning("SAM predictor reference lost but global reference exists - reconnecting")
-        model_server.sam_predictor = sam_model_ref
+    # Check the actual model object references - this is what matters
+    try:
+        sam_exists = hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None
+    except:
+        sam_exists = False
         
-    if model_server.initialized and not hasattr(model_server, 'grounding_dino') and grounding_dino_ref is not None:
-        logger.warning("GroundingDINO reference lost but global reference exists - reconnecting")
-        model_server.grounding_dino = grounding_dino_ref
+    try:
+        dino_exists = hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None
+    except:
+        dino_exists = False
+    
+    # Check our global references
+    sam_ref_exists = sam_model_ref is not None
+    dino_ref_exists = grounding_dino_ref is not None
+    
+    # CRITICALLY IMPORTANT: If model references are missing but global refs exist, restore them
+    if not sam_exists and sam_ref_exists:
+        logger.warning("SAM predictor missing but global reference exists - RESTORING")
+        model_server.sam_predictor = sam_model_ref
+        sam_exists = True
+        
+    if not dino_exists and dino_ref_exists:
+        logger.warning("GroundingDINO missing but global reference exists - RESTORING")
+        model_server.grounding_dino = dino_ref_exists
+        dino_exists = True
+    
+    # If we have global references but they don't match the model's references, update them
+    if sam_exists and sam_ref_exists and id(model_server.sam_predictor) != id(sam_model_ref):
+        logger.warning("SAM predictor reference mismatch - updating global reference")
+        sam_model_ref = model_server.sam_predictor
+        
+    if dino_exists and dino_ref_exists and id(model_server.grounding_dino) != id(grounding_dino_ref):
+        logger.warning("GroundingDINO reference mismatch - updating global reference")
+        grounding_dino_ref = model_server.grounding_dino
+    
+    # Log the actual model state
+    logger.info(f"Status check: initialized={model_server.initialized}, "
+                f"sam_exists={sam_exists}, "
+                f"dino_exists={dino_exists}, "
+                f"sam_ref_exists={sam_ref_exists}, "
+                f"dino_ref_exists={dino_ref_exists}")
     
     return {
         "status": "running",
-        "model_initialized": truly_initialized,
-        "sam_loaded": sam_loaded,
-        "grounding_dino_loaded": dino_loaded,
+        "model_initialized": model_server.initialized,
+        "sam_loaded": sam_exists,
+        "grounding_dino_loaded": dino_exists,
         "device": model_server.device,
         "cuda_available": torch.cuda.is_available(),
         "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
@@ -764,33 +804,44 @@ async def detect_trees(
     """
     global model_server, sam_model_ref, grounding_dino_ref
 
-    # Check if models exist and restore from global references if needed
-    sam_exists = hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None
-    dino_exists = hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None
+    # CRITICAL: Check if models are missing and restore from global references if possible
+    try:
+        sam_exists = hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None
+    except:
+        sam_exists = False
+        
+    try:
+        dino_exists = hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None
+    except:
+        dino_exists = False
     
-    # Restore model references if they're lost but our global refs are intact
+    # Restore model references if they're lost but our global refs exist
     if not sam_exists and sam_model_ref is not None:
-        logger.warning("SAM predictor missing but global reference exists - restoring")
+        logger.warning("CRITICAL: SAM predictor missing during detection - RESTORING from global reference")
         model_server.sam_predictor = sam_model_ref
         sam_exists = True
         
     if not dino_exists and grounding_dino_ref is not None:
-        logger.warning("GroundingDINO missing but global reference exists - restoring")
+        logger.warning("CRITICAL: GroundingDINO missing during detection - RESTORING from global reference")
         model_server.grounding_dino = grounding_dino_ref
         dino_exists = True
 
-    # If models aren't loaded and can't be restored, reinitialize
+    # If we couldn't restore the models, try reinitialization as a last resort
     if not sam_exists or not dino_exists:
-        logger.warning(f"Models not fully loaded (SAM: {sam_exists}, DINO: {dino_exists}) and can't be restored - reinitializing")
-        # Force re-initialization
+        logger.error(f"CRITICAL: Models missing (SAM: {sam_exists}, DINO: {dino_exists}) and can't be restored - attempting reinitialization")
         model_server.initialized = False
         success = model_server.initialize()
         if not success:
-            raise HTTPException(status_code=503, detail="Model initialization failed")
+            raise HTTPException(status_code=503, detail="Model initialization failed - cannot process request")
             
-        # Update global references
-        sam_model_ref = model_server.sam_predictor
-        grounding_dino_ref = model_server.grounding_dino
+        # Update global references after reinitialization
+        if hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None:
+            sam_model_ref = model_server.sam_predictor
+            logger.info("Updated global SAM reference after reinitialization")
+            
+        if hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None:
+            grounding_dino_ref = model_server.grounding_dino
+            logger.info("Updated global GroundingDINO reference after reinitialization")
 
     # Generate job ID if not provided
     if job_id is None:
@@ -819,19 +870,19 @@ async def detect_trees(
         output_dir = os.path.join(model_server.output_dir, job_id, "ml_response")
         logger.info(f"Processing complete. Output directory: {output_dir}")
         
-        # Check if key files were created
+        # CRITICAL: Verify output files were created
         trees_json = os.path.join(output_dir, "trees.json")
         metadata_json = os.path.join(output_dir, "metadata.json")
         
         if os.path.exists(trees_json):
             logger.info(f"trees.json created: {trees_json} ({os.path.getsize(trees_json)} bytes)")
         else:
-            logger.error(f"trees.json NOT created at expected path: {trees_json}")
+            logger.error(f"CRITICAL ERROR: trees.json NOT created at expected path: {trees_json}")
             
         if os.path.exists(metadata_json):
             logger.info(f"metadata.json created: {metadata_json} ({os.path.getsize(metadata_json)} bytes)")
         else:
-            logger.error(f"metadata.json NOT created at expected path: {metadata_json}")
+            logger.error(f"CRITICAL ERROR: metadata.json NOT created at expected path: {metadata_json}")
         
         # Check for success
         if not result.get("success", False):
