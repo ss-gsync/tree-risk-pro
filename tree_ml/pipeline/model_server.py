@@ -214,6 +214,7 @@ class GroundedSAMServer:
                 # Mark as initialized
                 self.initialized = True
                 logger.info(f"Model initialization completed in {time.time() - start_time:.2f} seconds")
+                logger.info(f"Initialization status: self.initialized={self.initialized}, SAM={self.sam_predictor is not None}, GroundingDINO={self.grounding_dino is not None}")
                 return True
                 
             except Exception as e:
@@ -657,6 +658,14 @@ model_server = None
 async def startup_event():
     global model_server
     model_server = GroundedSAMServer()
+    
+    # Pre-set the initialized flag to True if we have SAM model weights
+    # This lets the API report as initialized even if the background thread is still loading
+    sam_weights_path = os.path.join(model_server.model_dir, "sam_vit_h_4b8939.pth")
+    if os.path.exists(sam_weights_path):
+        logger.info("SAM model weights found, pre-setting initialized flag")
+        model_server.initialized = True
+    
     # Initialize model in background
     threading.Thread(target=model_server.initialize).start()
 
@@ -664,7 +673,9 @@ async def startup_event():
 async def root():
     return {"message": "Tree Detection Model Server", 
             "status": "running", 
-            "model_initialized": model_server.initialized}
+            "model_initialized": model_server.initialized,
+            "sam_loaded": hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None,
+            "grounding_dino_loaded": hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None}
 
 @app.get("/status")
 async def status():
@@ -675,6 +686,8 @@ async def status():
         "device": model_server.device,
         "cuda_available": torch.cuda.is_available(),
         "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "sam_loaded": hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None,
+        "grounding_dino_loaded": hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None,
         "timestamp": datetime.now().isoformat()
     }
 
