@@ -84,6 +84,9 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    python3 -m venv ~/tree_ml
    source ~/tree_ml/bin/activate
    
+   # Install NumPy 1.x first (important for PyTorch compatibility)
+   pip install numpy==1.26.4
+   
    # Install the correct PyTorch version for your CUDA
    # For CUDA 12.x (newer GCP instances):
    pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
@@ -92,7 +95,7 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    # pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
    
    # Verify PyTorch CUDA detection
-   python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}, Available: {torch.cuda.is_available()}')"
+   python -c "import torch, numpy; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}, Available: {torch.cuda.is_available()}, NumPy: {numpy.__version__}')"
    ```
 
 3. **Clone Repository and Install Dependencies**:
@@ -143,14 +146,20 @@ This section provides a detailed, step-by-step guide for manually deploying the 
 
 6. **Build CUDA Extensions**:
    ```bash
-   # Set CUDA_HOME and build the extension
+   # Set CUDA_HOME environment variable
    export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
-   cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/models/GroundingDINO/csrc/MsDeformAttn
-   python setup.py build install
+   
+   # Make sure NumPy is the correct version (PyTorch 2.2.0 needs NumPy 1.x)
+   pip uninstall -y numpy
+   pip install numpy==1.26.4
+   
+   # Build the CUDA extension through the GroundingDINO setup.py
+   cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
+   python setup.py build develop
    
    # Verify the extension was built successfully
    cd /ttt/tree_ml
-   python -c "from groundingdino.models.GroundingDINO.ms_deform_attn import _C; print('CUDA extension loaded successfully')"
+   python -c "from groundingdino import _C; print('CUDA extension loaded successfully')"
    ```
 
 7. **Create Systemd Service**:
@@ -212,17 +221,29 @@ This section provides a detailed, step-by-step guide for manually deploying the 
        echo "WARNING: CUDA not found! Running in CPU mode only."
    fi
    
-   # Check if CUDA extension exists, build if needed
-   CUDA_EXT_PATH="/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/models/GroundingDINO/csrc/MsDeformAttn"
-   if [ ! -f "\$CUDA_EXT_PATH/_C.so" ] && [ -x "\$(command -v nvidia-smi)" ]; then
-       echo "Building CUDA extension for GroundingDINO..."
-       cd \$CUDA_EXT_PATH
-       python setup.py build install
-       cd /ttt/tree_ml
-   fi
-   
    # Create log directory
    mkdir -p /ttt/tree_ml/logs
+   
+   # Verify NumPy compatibility (should be 1.x, not 2.x)
+   python -c "import numpy; ver = numpy.__version__; major = int(ver.split('.')[0]); 
+   if major > 1:
+       print(f'WARNING: NumPy {ver} detected. PyTorch requires NumPy 1.x');
+       exit(1)
+   else:
+       print(f'NumPy {ver} is compatible with PyTorch');"
+   
+   # Check if CUDA extension exists
+   python -c "
+   try:
+       from groundingdino import _C
+       print('GroundingDINO CUDA extension loaded successfully')
+   except Exception as e:
+       print(f'Error loading GroundingDINO CUDA extension: {e}')
+       print('Building CUDA extension...')
+       import os, sys
+       os.chdir('/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO')
+       os.system('python setup.py build develop')
+   "
    
    # Start the model server
    echo "Starting Model Server..."
@@ -314,22 +335,28 @@ sudo systemctl restart tree-detection
 
 #### Error: "Numpy is not available"
 
-This indicates an issue with the Python environment where numpy isn't accessible.
+This error occurs due to NumPy 2.x compatibility issues with PyTorch. PyTorch 2.2.0 was compiled with NumPy 1.x but is trying to run with NumPy 2.x.
 
 **Solution**:
 ```bash
 # Make sure your virtual environment is activated
 source ~/tree_ml/bin/activate
 
-# Reinstall numpy
-pip install -U numpy
+# Downgrade NumPy to a compatible version (1.x)
+pip uninstall -y numpy
+pip install numpy==1.26.4
 
-# Check that numpy is installed and accessible
+# Verify NumPy version
 python -c "import numpy; print(numpy.__version__)"
 
-# Make sure model_server.py can find numpy
-export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
+# Make sure PyTorch can use NumPy without warnings
+python -c "import torch, numpy; print(f'NumPy: {numpy.__version__}, PyTorch: {torch.__version__}')"
+
+# Restart the service
+sudo systemctl restart tree-detection
 ```
+
+You may see this warning: "A module that was compiled using NumPy 1.x cannot be run in NumPy 2.1.1 as it may crash." This is exactly what's causing the "Numpy is not available" error, and downgrading to NumPy 1.x resolves it.
 
 #### Error: PyTorch CUDA version mismatch
 
