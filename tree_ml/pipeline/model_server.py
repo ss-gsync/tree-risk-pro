@@ -20,6 +20,8 @@ from datetime import datetime
 import numpy as np
 import cv2
 import torch
+import torch.nn.functional as F
+from torchvision import transforms
 from PIL import Image
 import uvicorn
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
@@ -234,12 +236,21 @@ class GroundedSAMServer:
             
             # Get bounding boxes
             logger.info("Running GroundingDINO for object detection...")
+            # Convert numpy array to PyTorch tensor
+            image_tensor = torch.from_numpy(image_np).permute(2, 0, 1).float() / 255.0
+            # Normalize using ImageNet mean and std
+            image_tensor = transforms.Normalize(
+                mean=[0.485, 0.456, 0.406],
+                std=[0.229, 0.224, 0.225]
+            )(image_tensor)
+            
             boxes, logits, phrases = predict(
                 model=self.grounding_dino,
-                image=image_np,
+                image=image_tensor,
                 caption=text_prompt,
                 box_threshold=box_threshold,
-                text_threshold=text_threshold
+                text_threshold=text_threshold,
+                device=self.device
             )
             
             # If no detections, return empty result
