@@ -31,8 +31,9 @@ DEFAULT_RESPONSE_LIMIT = 100
 
 # ML Service configuration
 # Set to True to use the external T4 model server instead of local models
-# Default to False for ML_DEV instance (development environment)
-USE_EXTERNAL_MODEL_SERVER = os.environ.get('USE_EXTERNAL_MODEL_SERVER', 'False').lower() in ('true', '1', 't')
+# IMPORTANT: Always use external model server in production to avoid conflicts
+# Default to True for production environment to use the standalone model server
+USE_EXTERNAL_MODEL_SERVER = os.environ.get('USE_EXTERNAL_MODEL_SERVER', 'True').lower() in ('true', '1', 't')
 # URL for the external T4 model server (only used when USE_EXTERNAL_MODEL_SERVER is True)
 MODEL_SERVER_URL = os.environ.get('MODEL_SERVER_URL', 'http://localhost:8000')
 
