@@ -136,3 +136,7 @@ Common issues:
 3. **Slow Performance**
    - Check CUDA installation with `nvidia-smi`
    - Ensure CUDA libraries are correctly installed
+   - Verify CUDA_HOME is properly set with `echo $CUDA_HOME`
+   - For GCP instances, set `export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit`
+   - Check PyTorch CUDA compatibility with `python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}')"`
+   - For Python 3.12 environments, use PyTorch 2.2.0 with CUDA 12.1

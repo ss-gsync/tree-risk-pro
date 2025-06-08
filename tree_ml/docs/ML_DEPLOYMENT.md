@@ -58,6 +58,21 @@ nvidia-smi
 nvcc --version
 ```
 
+You'll need to set CUDA_HOME environment variable to the correct location:
+
+```bash
+# Find nvcc location
+find /usr -name nvcc
+
+# Set CUDA_HOME to the correct directory (typically /usr/lib/nvidia-cuda-toolkit)
+echo "export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit" >> ~/.bashrc
+source ~/.bashrc
+
+# Verify CUDA_HOME is set correctly
+echo $CUDA_HOME
+ls -l $CUDA_HOME
+```
+
 If you see output showing your T4 GPU and CUDA version (12.x), you can skip the CUDA installation step.
 
 #### For instances without CUDA (or with older versions)
@@ -127,7 +142,8 @@ poetry config virtualenvs.in-project true
 poetry install
 
 # Install PyTorch with CUDA support for CUDA 12.x (for newer GCP T4 instances)
-poetry run pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# For Python 3.12 environments use PyTorch 2.2.0 for better compatibility with CUDA extensions
+poetry run pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
 
 # Alternative for CUDA 11.8 (for older GCP instances)
 # poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
@@ -159,6 +175,15 @@ cp /opt/tree_ml/tree_ml/pipeline/grounded-sam/GroundingDINO/config/GroundingDINO
 # Install required dependencies for Grounded-SAM
 pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
 
+# Install Grounded-SAM components with editable install
+# Make sure you have the correct CUDA_HOME set and PyTorch version compatible with your CUDA
+cd /opt/tree_ml/tree_ml/pipeline/grounded-sam
+poetry run python -m pip install -e segment_anything
+poetry run pip install --no-build-isolation -e GroundingDINO
+
+# If you encounter CUDA extension build errors, make sure to use a compatible PyTorch version:
+# poetry run pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
+
 # Download SAM model weights
 wget -O /opt/tree_ml/tree_ml/pipeline/model/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
 
@@ -171,7 +196,7 @@ cp /opt/tree_ml/tree_ml/pipeline/model/groundingdino_swint_ogc.pth /opt/tree_ml/
 cp /opt/tree_ml/tree_ml/pipeline/model/sam_vit_h_4b8939.pth /opt/tree_ml/model-server/model/
 
 # Ensure the Python path includes the Grounded-SAM directory
-echo 'export PYTHONPATH=$PYTHONPATH:/opt/tree_ml/tree_ml/pipeline/grounded-sam' >> ~/.bashrc
+echo 'export PYTHONPATH=$PYTHONPATH:/opt/tree_ml/tree_ml/pipeline/grounded-sam:/opt/tree_ml/tree_ml/pipeline/grounded-sam/GroundingDINO:/opt/tree_ml/tree_ml/pipeline/grounded-sam/segment_anything' >> ~/.bashrc
 source ~/.bashrc
 
 # Deactivate virtual environment when done
@@ -287,18 +312,32 @@ The unified service selection logic:
 
 The Grounded-SAM module requires special handling during deployment:
 
-1. **Do not install with pip**: The package has a problematic setup.py that tries to install dependencies in a way that fails on many systems
-2. **Directory structure is critical**: The module expects config files in a specific location, which we've handled with the directory structure setup
-3. **PYTHONPATH must include ALL Grounded-SAM paths**: The systemd service environment must include paths to:
+1. **CUDA_HOME must be set correctly**: The package needs CUDA_HOME to build custom CUDA extensions
+   - For GCP T4 instances, typically set to `/usr/lib/nvidia-cuda-toolkit`
+   - Verify with `echo $CUDA_HOME` and `ls -l $CUDA_HOME`
+
+2. **PyTorch version must be compatible**: Use PyTorch 2.2.0 with CUDA 12.1 for Python 3.12
+   - This ensures compatibility with the CUDA extension code
+   - Install with `pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121`
+
+3. **Directory structure is critical**: The module expects config files in a specific location, which we've handled with the directory structure setup
+
+4. **PYTHONPATH must include ALL Grounded-SAM paths**: The systemd service environment must include paths to:
    - Grounded-SAM base directory
    - GroundingDINO directory
    - segment_anything directory
-4. **Import paths are fixed**: The model_server.py now correctly imports SLConfig from `groundingdino.util.slconfig` instead of `groundingdino.config`
+
+5. **Install in correct order**: First install segment_anything, then GroundingDINO
+   - `poetry run python -m pip install -e segment_anything`
+   - `poetry run pip install --no-build-isolation -e GroundingDINO`
+
+6. **Import paths are fixed**: The model_server.py now correctly imports SLConfig from `groundingdino.util.slconfig` instead of `groundingdino.config`
 
 If you encounter issues with the model server related to Grounded-SAM, check:
 - The config file exists at the expected path (`/opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py`)
 - The model weights exist at the expected path (`/opt/tree-ml/model-server/model/groundingdino_swint_ogc.pth`)
-- The PYTHONPATH environment variable in the systemd service includes the Grounded-SAM directory
+- The PYTHONPATH environment variable in the systemd service includes all Grounded-SAM directories
+- CUDA_HOME is set correctly and PyTorch version matches your CUDA version
 
 ## 5. Troubleshooting
 
@@ -311,18 +350,29 @@ If `nvidia-smi` works but CUDA isn't detected in Python:
 ```bash
 # Check CUDA environment
 echo $LD_LIBRARY_PATH
+echo $CUDA_HOME
 
-# Check CUDA version
-ls -la /usr/local/cuda
+# Find the CUDA installation
+find /usr -name nvcc
+find /usr -name "cuda*" -type d 2>/dev/null | grep -v "include"
 
-# For CUDA 12.x (common in newer GCP instances)
-echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
-echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+# Set CUDA_HOME for GCP T4 instances (typically /usr/lib/nvidia-cuda-toolkit)
+echo 'export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit' >> ~/.bashrc
+echo 'export PATH=$CUDA_HOME/bin:$PATH' >> ~/.bashrc
 source ~/.bashrc
+
+# For standard CUDA installations (if /usr/local/cuda exists)
+# echo 'export PATH=/usr/local/cuda/bin:$PATH' >> ~/.bashrc
+# echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
+# source ~/.bashrc
 
 # For CUDA 11.8 (if specifically installed)
 # echo 'export LD_LIBRARY_PATH=/usr/local/cuda-11.8/lib64:$LD_LIBRARY_PATH' >> ~/.bashrc
 # source ~/.bashrc
+
+# Verify CUDA_HOME is set correctly
+echo $CUDA_HOME
+ls -l $CUDA_HOME
 ```
 
 #### PyTorch CUDA Version Mismatch
@@ -331,10 +381,32 @@ If you get PyTorch CUDA version compatibility errors:
 
 ```bash
 # For CUDA 12.x (common in newer GCP instances)
-pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu121
+# For Python 3.12 environments, use PyTorch 2.2.0 for better compatibility
+poetry run pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
+
+# For CUDA 12.1 specifically (if detected by nvidia-smi)
+poetry run pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
 
 # For CUDA 11.8
-# pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+# poetry run pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+```
+
+#### CUDA Extension Build Errors
+
+If you encounter errors building CUDA extensions when installing Grounded-SAM:
+
+```bash
+# Check current PyTorch and CUDA versions
+poetry run python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}')"
+
+# Install correct PyTorch version for your CUDA version and Python version
+# For Python 3.12 with CUDA 12.1:
+poetry run pip uninstall -y torch torchvision
+poetry run pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
+
+# Then try installing Grounded-SAM components again
+poetry run python -m pip install -e segment_anything
+poetry run pip install --no-build-isolation -e GroundingDINO
 ```
 
 #### Model Loading Failures
@@ -613,6 +685,7 @@ ExecStart=/home/yourusername/tree_ml/bin/python ${REPO_PATH}/tree_ml/pipeline/ru
 # ExecStart=${REPO_PATH}/.venv/bin/python ${REPO_PATH}/tree_ml/pipeline/run_model_server.sh
 Restart=on-failure
 Environment=PYTHONPATH=${REPO_PATH}:${REPO_PATH}/tree_ml/pipeline/grounded-sam:${REPO_PATH}/tree_ml/pipeline/grounded-sam/GroundingDINO:${REPO_PATH}/tree_ml/pipeline/grounded-sam/segment_anything
+Environment=CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
 Environment=MODEL_DIR=${MODEL_DIR}
 Environment=PORT=${MODEL_SERVER_PORT}
 Environment=LOG_DIR=${LOG_DIR}
