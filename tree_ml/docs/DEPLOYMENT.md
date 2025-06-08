@@ -126,22 +126,19 @@ This section provides a detailed, step-by-step guide for manually deploying the 
    wget -O /ttt/tree_ml/pipeline/model/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
    ```
 
-5. **Configure Directory Structure and Install Components**:
+5. **Configure Environment and Install Components**:
    ```bash
    # Set PYTHONPATH to include all necessary directories
    export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
    
-   # Ensure the config directory structure is correct
-   mkdir -p /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
-   cp /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/config/GroundingDINO_SwinT_OGC.py /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
+   # Navigate to the grounded-sam directory
+   cd /ttt/tree_ml/pipeline/grounded-sam
    
-   # Install segment_anything
-   cd /ttt/tree_ml/pipeline/grounded-sam/segment_anything
-   pip install -e .
+   # Install segment_anything using the correct command
+   python -m pip install -e segment_anything
    
    # Install GroundingDINO with no-build-isolation flag
-   cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
-   pip install --no-build-isolation -e .
+   pip install --no-build-isolation -e GroundingDINO
    ```
 
 6. **Build CUDA Extensions**:
