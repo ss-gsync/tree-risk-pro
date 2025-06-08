@@ -149,6 +149,9 @@ class GroundedSAMServer:
                         class Args:
                             def __init__(self, **kwargs):
                                 self.__dict__.update(kwargs)
+                            
+                            def __contains__(self, item):
+                                return item in self.__dict__
                         
                         # Extract all variables from the config module
                         config_dict = {k: v for k, v in vars(config).items() if not k.startswith('__')}
