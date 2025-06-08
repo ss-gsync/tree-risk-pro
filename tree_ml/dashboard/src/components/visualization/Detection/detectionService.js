@@ -35,7 +35,7 @@ export async function loadDetectionMetadata(detectionId) {
     }
     
     // Fall back to direct file access
-    const metadataPath = `/data/ml/${detectionId}/ml_response/metadata.json`;
+    const metadataPath = `/ttt/data/ml/${detectionId}/ml_response/metadata.json`;
     
     console.log(`Loading metadata from direct file: ${metadataPath}`);
     const response = await fetch(metadataPath);
@@ -88,7 +88,7 @@ export async function loadDetectionData(detectionId) {
         loadedFrom = 'api';
       } else {
         // Fall back to direct file access
-        const treesPath = `/data/ml/${detectionId}/ml_response/trees.json`;
+        const treesPath = `/ttt/data/ml/${detectionId}/ml_response/trees.json`;
         
         console.log(`Loading trees data from direct file: ${treesPath}`);
         const response = await fetch(treesPath);
@@ -103,7 +103,7 @@ export async function loadDetectionData(detectionId) {
       // Final fallback to direct file access
       console.warn("API trees fetch failed, falling back to direct file access:", apiError);
       
-      const treesPath = `/data/ml/${detectionId}/ml_response/trees.json`;
+      const treesPath = `/ttt/data/ml/${detectionId}/ml_response/trees.json`;
       
       console.log(`Loading trees data from direct file (fallback): ${treesPath}`);
       const response = await fetch(treesPath);
@@ -255,13 +255,13 @@ export async function loadDetectionData(detectionId) {
         // Add explicit paths to make it easier for consumers
         paths: {
           visualizationImage: `/api/ml/detection/${detectionId}/visualization`,
-          visualizationImageFallback: `/data/ml/${detectionId}/ml_response/combined_visualization.jpg`,
+          visualizationImageFallback: `/ttt/data/ml/${detectionId}/ml_response/combined_visualization.jpg`,
           satelliteImage: `/api/ml/detection/${detectionId}/satellite`,
-          satelliteImageFallback: `/data/ml/${detectionId}/satellite_${detectionId}.jpg`,
+          satelliteImageFallback: `/ttt/data/ml/${detectionId}/satellite_${detectionId}.jpg`,
           metadataApi: `/api/ml/detection/${detectionId}/metadata`,
-          metadataFile: `/data/ml/${detectionId}/ml_response/metadata.json`,
+          metadataFile: `/ttt/data/ml/${detectionId}/ml_response/metadata.json`,
           treesApi: `/api/ml/detection/${detectionId}/trees`,
-          treesFile: `/data/ml/${detectionId}/ml_response/trees.json`,
+          treesFile: `/ttt/data/ml/${detectionId}/ml_response/trees.json`,
           loadedFrom: loadedFrom
         },
         // Include the raw data for consumers that need the original format
