@@ -65,7 +65,14 @@ source $CODE_DIR/venv/bin/activate
 
 # Install PyTorch with CUDA support
 echo "Installing PyTorch with CUDA support..."
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# For GCP instances with CUDA 12.x (newer T4 instances)
+pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
+
+# Alternative for older instances with CUDA 11.8
+# pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+
+# Verify PyTorch CUDA detection
+python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'CUDA version: {torch.version.cuda}');"
 
 # Install required packages
 echo "Installing required Python packages..."
@@ -80,7 +87,9 @@ pip install \
     pycocotools \
     matplotlib \
     pyproj \
-    scipy
+    scipy \
+    timm \
+    addict
 
 # Ensure the model repos are available in the existing directory structure
 echo "Setting up model repositories..."
@@ -92,12 +101,12 @@ if [ ! -d "grounded-sam/GroundingDINO" ]; then
     cd $CODE_DIR/pipeline/grounded-sam
     git submodule update --init --recursive
     cd GroundingDINO
-    pip install -e .
+    pip install --no-build-isolation -e .
     cd ../../
 else
     echo "GroundingDINO found, installing as development package..."
     cd $CODE_DIR/pipeline/grounded-sam/GroundingDINO
-    pip install -e .
+    pip install --no-build-isolation -e .
     cd ../../
 fi
 
@@ -117,6 +126,16 @@ else
     pip install -e .
     cd ../../
 fi
+
+# Set CUDA_HOME for building extensions
+echo "Setting CUDA_HOME for building extensions..."
+export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
+
+# Build MS Deform Attention CUDA extension
+echo "Building CUDA extensions for GroundingDINO..."
+cd $CODE_DIR/pipeline/grounded-sam/GroundingDINO/groundingdino/models/GroundingDINO/csrc/MsDeformAttn
+python setup.py build install
+cd $CODE_DIR/pipeline
 
 # Check if model weights exist and download if needed
 echo "Checking model weights..."
@@ -144,7 +163,36 @@ chmod +x $CODE_DIR/pipeline/run_model_server.sh
 
 # Set up systemd service
 echo "Setting up systemd service..."
-cp $CODE_DIR/pipeline/tree-detection.service /etc/systemd/system/
+cat > /etc/systemd/system/tree-detection.service << EOL
+[Unit]
+Description=Tree Detection Model Server
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=$CODE_DIR
+ExecStart=/bin/bash $CODE_DIR/pipeline/run_model_server.sh
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=$CODE_DIR:$CODE_DIR/pipeline:$CODE_DIR/pipeline/grounded-sam:$CODE_DIR/pipeline/grounded-sam/GroundingDINO:$CODE_DIR/pipeline/grounded-sam/segment_anything
+Environment=CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
+
+# Limit resource usage
+CPUWeight=90
+IOWeight=90
+MemoryHigh=8G
+MemoryMax=12G
+
+# Security settings
+ProtectSystem=full
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+EOL
+
 systemctl daemon-reload
 systemctl enable tree-detection
 

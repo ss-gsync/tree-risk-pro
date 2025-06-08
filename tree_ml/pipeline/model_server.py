@@ -229,6 +229,17 @@ class GroundedSAMServer:
             # Run GroundingDINO for detection
             from groundingdino.util.inference import predict
             
+            # Check for CUDA extension (_C module)
+            try:
+                from groundingdino.models.GroundingDINO.ms_deform_attn import _C
+                logger.info("GroundingDINO CUDA extension (_C module) loaded successfully")
+            except ImportError as e:
+                logger.error(f"Failed to import GroundingDINO CUDA extension: {str(e)}")
+                logger.error("This usually means the CUDA extension wasn't built correctly.")
+                logger.error("Try running: cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/models/GroundingDINO/csrc/MsDeformAttn && python setup.py build install")
+                logger.error("Make sure CUDA_HOME is set correctly: export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit")
+                raise ImportError("GroundingDINO CUDA extension not available")
+            
             # Define text prompt for tree detection
             text_prompt = "tree. building. power line."
             box_threshold = 0.35

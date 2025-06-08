@@ -9,6 +9,8 @@ ExecStart=/bin/bash /ttt/tree_ml/pipeline/run_model_server.sh
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything
+Environment=CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
 
 # Limit resource usage
 CPUWeight=90

@@ -725,51 +725,291 @@ sudo systemctl restart tree-ml-backend
 sudo systemctl restart tree-ml-model-server
 ```
 
-## Grounded-SAM Configuration Note
+## T4 GPU Manual Deployment
 
-The Grounded-SAM module requires special handling during deployment:
+This section provides a detailed, step-by-step guide for manually deploying the application on a T4 GPU instance, ensuring the proper configuration of all components, particularly the Grounded-SAM model.
 
-1. **Do not install with pip**: The package has a problematic setup.py that tries to install dependencies in a way that fails on many systems
-2. **Directory structure is critical**: The module expects config files in a specific location, which we've handled with the directory structure setup
-3. **PYTHONPATH must include ALL Grounded-SAM paths**: The systemd service environment must include paths to:
-   - Grounded-SAM base directory
-   - GroundingDINO directory
-   - segment_anything directory
-4. **Import paths are fixed**: The model_server.py now correctly imports SLConfig from `groundingdino.util.slconfig` instead of `groundingdino.config`
+### T4 GPU Setup Steps
 
-### Complete Checklist for Grounded-SAM Setup
-
-When deploying to /opt/tree-ml/, ensure:
-
-1. **Correct directory structure**:
-   ```
-   /opt/tree-ml/model-server/grounded-sam/              # Base Grounded-SAM directory
-   /opt/tree-ml/model-server/grounded-sam/GroundingDINO/config/  # Original config directory
-   /opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/  # Expected config path
-   /opt/tree-ml/model-server/model/                     # Weights directory (not weights/)
-   ```
-
-2. **Required files exist**:
-   ```
-   /opt/tree-ml/model-server/grounded-sam/GroundingDINO/groundingdino/config/GroundingDINO_SwinT_OGC.py
-   /opt/tree-ml/model-server/model/groundingdino_swint_ogc.pth
-   /opt/tree-ml/model-server/model/sam_vit_h_4b8939.pth
-   ```
-
-3. **PYTHONPATH includes Grounded-SAM** in systemd service:
-   ```
-   Environment="PYTHONPATH=/opt/tree-ml:/opt/tree-ml/model-server/grounded-sam:/opt/tree-ml/model-server/grounded-sam/GroundingDINO:/opt/tree-ml/model-server/grounded-sam/segment_anything"
-   ```
-
-4. **Dependencies are installed**:
+1. **Verify CUDA Installation**:
    ```bash
+   # Check if NVIDIA drivers are installed
+   nvidia-smi
+   
+   # Check CUDA compiler version
+   nvcc --version
+   
+   # Set CUDA environment variables
+   echo 'export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit' >> ~/.bashrc
+   echo 'export PATH=$CUDA_HOME/bin:$PATH' >> ~/.bashrc
+   source ~/.bashrc
+   ```
+
+2. **Create Python Environment**:
+   ```bash
+   # Create a virtual environment
+   python3 -m venv ~/tree_ml
+   source ~/tree_ml/bin/activate
+   
+   # Install the correct PyTorch version for your CUDA
+   # For CUDA 12.x (newer GCP instances):
+   pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
+   
+   # For CUDA 11.8:
+   # pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+   
+   # Verify PyTorch CUDA detection
+   python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}, Available: {torch.cuda.is_available()}')"
+   ```
+
+3. **Clone Repository and Install Dependencies**:
+   ```bash
+   # Clone the repository
+   git clone https://github.com/your-repo/tree-ml.git /ttt/tree_ml
+   cd /ttt/tree_ml
+   
+   # Install Python dependencies
+   pip install poetry
+   poetry config virtualenvs.in-project true
+   poetry install
+   
+   # Install additional dependencies
    pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
    ```
 
-If you encounter issues with the model server related to Grounded-SAM, check:
-- All paths in the checklist above
-- That the model_server.py file has the updated code to handle config file loading
-- The model server logs for specific error messages
+4. **Set Up Grounded-SAM Directories**:
+   ```bash
+   # Create required directories
+   mkdir -p /ttt/tree_ml/pipeline/model
+   mkdir -p /ttt/tree_ml/pipeline/grounded-sam
+   
+   # Clone Grounded-SAM repository
+   cd /ttt/tree_ml/pipeline
+   git clone https://github.com/IDEA-Research/GroundingDINO.git grounded-sam
+   
+   # Create config directory structure
+   mkdir -p /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
+   
+   # Copy config files
+   cp /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/config/GroundingDINO_SwinT_OGC.py /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/config/
+   ```
+
+5. **Download Model Weights**:
+   ```bash
+   # Download SAM model weights
+   wget -O /ttt/tree_ml/pipeline/model/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+   
+   # Download GroundingDINO weights
+   wget -O /ttt/tree_ml/pipeline/model/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+   ```
+
+6. **Install Grounded-SAM Components**:
+   ```bash
+   # Set PYTHONPATH
+   export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
+   
+   # Install segment_anything first
+   cd /ttt/tree_ml/pipeline/grounded-sam
+   if [ ! -d "segment_anything" ]; then
+       git clone https://github.com/facebookresearch/segment-anything.git segment_anything
+   fi
+   cd segment_anything
+   pip install -e .
+   
+   # Install GroundingDINO with no-build-isolation flag
+   cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
+   pip install --no-build-isolation -e .
+   ```
+
+7. **Build CUDA Extensions**:
+   ```bash
+   # Set CUDA_HOME and build the extension
+   export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
+   cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/models/GroundingDINO/csrc/MsDeformAttn
+   python setup.py build install
+   
+   # Verify the extension was built successfully
+   cd /ttt/tree_ml
+   python -c "from groundingdino.models.GroundingDINO.ms_deform_attn import _C; print('CUDA extension loaded successfully')"
+   ```
+
+8. **Create Systemd Service**:
+   ```bash
+   # Create service file
+   sudo tee /etc/systemd/system/tree-detection.service > /dev/null << EOL
+   [Unit]
+   Description=Tree Detection Model Server
+   After=network.target
+   
+   [Service]
+   User=root
+   WorkingDirectory=/ttt/tree_ml
+   ExecStart=/bin/bash /ttt/tree_ml/pipeline/run_model_server.sh
+   Restart=always
+   RestartSec=10
+   Environment=PYTHONUNBUFFERED=1
+   Environment=PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything
+   Environment=CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
+   
+   # Limit resource usage
+   CPUWeight=90
+   IOWeight=90
+   MemoryHigh=8G
+   MemoryMax=12G
+   
+   # Security settings
+   ProtectSystem=full
+   PrivateTmp=true
+   NoNewPrivileges=true
+   
+   [Install]
+   WantedBy=multi-user.target
+   EOL
+   
+   # Enable and start the service
+   sudo systemctl daemon-reload
+   sudo systemctl enable tree-detection
+   sudo systemctl start tree-detection
+   ```
+
+9. **Configure run_model_server.sh**:
+   ```bash
+   # Create or edit the run script
+   cat > /ttt/tree_ml/pipeline/run_model_server.sh << EOL
+   #!/bin/bash
+   # T4 Model Server Launch Script
+   
+   # Set the environment
+   export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:\$PYTHONPATH
+   export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
+   
+   # Verify CUDA setup
+   if [ -x "\$(command -v nvidia-smi)" ]; then
+       nvidia-smi
+       export CUDA_DEVICE_ORDER=PCI_BUS_ID
+       export CUDA_VISIBLE_DEVICES=0
+   else
+       echo "WARNING: CUDA not found! Running in CPU mode only."
+   fi
+   
+   # Check if CUDA extension exists, build if needed
+   CUDA_EXT_PATH="/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/models/GroundingDINO/csrc/MsDeformAttn"
+   if [ ! -f "\$CUDA_EXT_PATH/_C.so" ] && [ -x "\$(command -v nvidia-smi)" ]; then
+       echo "Building CUDA extension for GroundingDINO..."
+       cd \$CUDA_EXT_PATH
+       python setup.py build install
+       cd /ttt/tree_ml
+   fi
+   
+   # Create log directory
+   mkdir -p /ttt/tree_ml/logs
+   
+   # Start the model server
+   echo "Starting Model Server..."
+   python /ttt/tree_ml/pipeline/model_server.py --port 8000 --host 0.0.0.0 \\
+       --model-dir /ttt/tree_ml/pipeline/model \\
+       --output-dir /ttt/data/ml \\
+       --device cuda
+   EOL
+   
+   # Make the script executable
+   chmod +x /ttt/tree_ml/pipeline/run_model_server.sh
+   ```
+
+10. **Verify Installation**:
+    ```bash
+    # Check service status
+    sudo systemctl status tree-detection
+    
+    # View logs
+    sudo journalctl -u tree-detection -n 100
+    
+    # Test API endpoint
+    curl http://localhost:8000/health
+    ```
+
+### Common T4 Deployment Errors and Solutions
+
+#### Error: "name '_C' is not defined"
+
+This error occurs when the CUDA extensions for GroundingDINO haven't been properly built or can't be found.
+
+**Solution**:
+```bash
+# Set CUDA_HOME to the correct location
+export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
+
+# Make sure PYTHONPATH includes all required directories
+export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
+
+# Build the MS Deform Attention CUDA extension
+cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/models/GroundingDINO/csrc/MsDeformAttn
+python setup.py build install
+
+# Verify the extension was built successfully
+python -c "from groundingdino.models.GroundingDINO.ms_deform_attn import _C; print('CUDA extension loaded successfully')"
+
+# Restart the service
+sudo systemctl restart tree-detection
+```
+
+#### Error: "Numpy is not available"
+
+This indicates an issue with the Python environment where numpy isn't accessible.
+
+**Solution**:
+```bash
+# Make sure your virtual environment is activated
+source ~/tree_ml/bin/activate
+
+# Reinstall numpy
+pip install -U numpy
+
+# Check that numpy is installed and accessible
+python -c "import numpy; print(numpy.__version__)"
+
+# Make sure model_server.py can find numpy
+export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
+```
+
+#### Error: PyTorch CUDA version mismatch
+
+If you get PyTorch CUDA version compatibility errors:
+
+```bash
+# For CUDA 12.x (common in newer GCP instances)
+pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
+
+# For CUDA 11.8 (if specifically installed)
+pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
+
+# Verify installation
+python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}, Available: {torch.cuda.is_available()}')"
+```
+
+### Verifying T4 Setup
+
+To verify your T4 GPU setup is working correctly:
+
+```bash
+# Check CUDA availability
+nvidia-smi
+
+# Check if PyTorch can see the GPU
+python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No GPU')"
+
+# Test the CUDA extension
+python -c "from groundingdino.models.GroundingDINO.ms_deform_attn import _C; print('CUDA extension loaded successfully')"
+
+# Test basic inference
+cd /ttt/tree_ml
+poetry run python tests/model_server/test_basic.py
+
+# Check model server health
+curl http://localhost:8000/health
+```
+
+If all these checks pass, your T4 GPU deployment should be working correctly.
 
 ## Security Checklist
 
