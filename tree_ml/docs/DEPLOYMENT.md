@@ -641,13 +641,70 @@ These are non-critical services and the application will still function for tree
      ```
 
 3. **Firewall**:
-   - Configure firewall to allow only necessary ports:
+   - Configure local firewall to allow only necessary ports:
      ```bash
      sudo ufw allow 22/tcp  # SSH
      sudo ufw allow 80/tcp  # HTTP
      sudo ufw allow 443/tcp # HTTPS
      sudo ufw enable
      ```
+   
+   - Configure GCP firewall rules to allow external access:
+     1. Navigate to the GCP Console: https://console.cloud.google.com/
+     2. Go to VPC Network > Firewall
+     3. Click "CREATE FIREWALL RULE"
+     4. Configure the rule:
+        - Name: `allow-tree-detection-services`
+        - Network: Select your VPC network
+        - Priority: 1000 (or your preferred priority)
+        - Direction of traffic: Ingress
+        - Action on match: Allow
+        - Targets: Specified target tags
+        - Target tags: `tree-detection-vm` (or use your VM's existing network tags)
+        - Source filter: IP ranges
+        - Source IP ranges: `0.0.0.0/0` (or restrict to specific IP ranges for better security)
+        - Protocols and ports:
+          - Check "TCP"
+          - Enter ports: `80,5000,8000`
+     5. Click "Create"
+
+     6. Assign the network tag to your VM:
+        - Go to Compute Engine > VM Instances
+        - Click on your VM instance
+        - Click "Edit"
+        - Under "Network tags", add the tag you specified in the firewall rule (e.g., `tree-detection-vm`)
+        - Click "Save"
+
+     After applying these settings, your services should be accessible at:
+     - Frontend: http://[VM_EXTERNAL_IP]
+     - Backend API: http://[VM_EXTERNAL_IP]:5000
+     - Model Server: http://[VM_EXTERNAL_IP]:8000
+     
+     To verify GCP firewall rules are correctly configured:
+     ```bash
+     # List all firewall rules affecting your VM
+     gcloud compute firewall-rules list --filter="direction=INGRESS AND disabled=false AND (port:80 OR port:5000 OR port:8000)"
+     
+     # Check if ports are reachable from external machine
+     # Replace VM_EXTERNAL_IP with your VM's external IP address
+     nc -zv VM_EXTERNAL_IP 80
+     nc -zv VM_EXTERNAL_IP 5000
+     nc -zv VM_EXTERNAL_IP 8000
+     
+     # Check service status and interface binding
+     sudo netstat -tulpn | grep -E ':(80|5000|8000)'
+     # You should see entries with 0.0.0.0:80, 0.0.0.0:5000, and 0.0.0.0:8000
+     ```
+     
+     If you still can't connect after configuring firewall rules:
+     1. Verify the VM's network interface is properly configured
+     2. Check if the services are running and listening on all interfaces (0.0.0.0)
+     3. Ensure no conflicting firewall rules with higher priority are blocking traffic
+     4. Try using an SSH tunnel for testing if firewall issues persist:
+        ```bash
+        # On your local machine:
+        ssh -L 8000:localhost:8000 -L 5000:localhost:5000 -L 80:localhost:80 username@VM_EXTERNAL_IP
+        ```
 
 4. **Updates**:
    - Update system packages regularly:
