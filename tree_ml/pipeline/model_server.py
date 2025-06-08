@@ -683,6 +683,39 @@ async def root():
     return {"message": "Tree Detection Model Server", 
             "status": "running", 
             "model_initialized": model_server.initialized}
+            
+@app.get("/health")
+async def health():
+    """
+    Health endpoint for the ExternalModelService to check.
+    This is used by the backend to determine if the model server is available.
+    """
+    global model_server, sam_model_ref, grounding_dino_ref
+    
+    # Check if the models are loaded
+    sam_loaded = sam_model_ref is not None
+    dino_loaded = grounding_dino_ref is not None
+    
+    # If models disappeared, reconnect them from our global references
+    if model_server.initialized and not hasattr(model_server, 'sam_predictor') and sam_model_ref is not None:
+        logger.warning("SAM predictor reference lost but global reference exists - reconnecting")
+        model_server.sam_predictor = sam_model_ref
+        
+    if model_server.initialized and not hasattr(model_server, 'grounding_dino') and grounding_dino_ref is not None:
+        logger.warning("GroundingDINO reference lost but global reference exists - reconnecting")
+        model_server.grounding_dino = grounding_dino_ref
+    
+    return {
+        "status": "healthy",
+        "initialized": model_server.initialized,
+        "models_loaded": sam_loaded or dino_loaded,  # At least one model loaded
+        "sam_loaded": sam_loaded,
+        "grounding_dino_loaded": dino_loaded,
+        "device": model_server.device,
+        "cuda_available": torch.cuda.is_available(),
+        "api_version": "0.2.3",
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.get("/status")
 async def status():
