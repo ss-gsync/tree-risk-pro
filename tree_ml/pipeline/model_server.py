@@ -676,6 +676,9 @@ async def startup_event():
     # Set up a monitoring thread to store global references to model objects
     # This prevents garbage collection from removing them
     def monitor_and_store_references():
+        # Need to declare the variables as global to modify them
+        global sam_model_ref, grounding_dino_ref
+        
         # Wait for initialization to complete
         while True:
             time.sleep(5)  # Check every 5 seconds
@@ -689,6 +692,7 @@ async def startup_event():
                 logger.info("Storing global reference to GroundingDINO model to prevent garbage collection")
                 grounding_dino_ref = model_server.grounding_dino
                 
+            # Check if both references have been stored
             if sam_model_ref is not None and grounding_dino_ref is not None:
                 logger.info("All model references stored successfully")
                 break
