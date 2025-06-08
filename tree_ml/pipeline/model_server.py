@@ -671,23 +671,37 @@ async def startup_event():
 
 @app.get("/")
 async def root():
+    # Some attributes might not be directly available from the server object
+    # We need to use getattr with a default to safely check
+    sam_loaded = getattr(model_server, 'sam_predictor', None) is not None
+    grounding_dino_loaded = getattr(model_server, 'grounding_dino', None) is not None
+    
     return {"message": "Tree Detection Model Server", 
             "status": "running", 
             "model_initialized": model_server.initialized,
-            "sam_loaded": hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None,
-            "grounding_dino_loaded": hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None}
+            "sam_loaded": sam_loaded,
+            "grounding_dino_loaded": grounding_dino_loaded}
 
 @app.get("/status")
 async def status():
     global model_server
+    # Some attributes might not be directly available from the server object
+    # We need to use getattr with a default to safely check
+    sam_loaded = getattr(model_server, 'sam_predictor', None) is not None
+    grounding_dino_loaded = getattr(model_server, 'grounding_dino', None) is not None
+    
+    # Log the actual attribute check
+    logger.info(f"Status check: sam_predictor={getattr(model_server, 'sam_predictor', None) is not None}, "
+                f"grounding_dino={getattr(model_server, 'grounding_dino', None) is not None}")
+    
     return {
         "status": "running",
         "model_initialized": model_server.initialized,
         "device": model_server.device,
         "cuda_available": torch.cuda.is_available(),
         "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
-        "sam_loaded": hasattr(model_server, 'sam_predictor') and model_server.sam_predictor is not None,
-        "grounding_dino_loaded": hasattr(model_server, 'grounding_dino') and model_server.grounding_dino is not None,
+        "sam_loaded": sam_loaded,
+        "grounding_dino_loaded": grounding_dino_loaded,
         "timestamp": datetime.now().isoformat()
     }
 
