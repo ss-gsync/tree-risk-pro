@@ -421,7 +421,7 @@ def create_app():
                         logger.info(f"Existing ML model status: {status}")
                 else:
                     # Use the shared detection service's ml_service
-                    # This avoids initializing both external and local services
+                    # This ensures we use a single model service instance
                     logger.info("Using shared detection service to access the ML model service")
                     detection_service = app.detection_service
                     
@@ -1633,7 +1633,7 @@ def create_app():
         """Get status of ML models (DeepForest and SAM)"""
         try:
             # Use the shared detection service - this will only have the configured model service
-            # (either external or local, but not both)
+            # with GPU acceleration where available
             detection_service = app.detection_service
             
             # Get ML model status from the detection service's ML service
@@ -1644,7 +1644,7 @@ def create_app():
                     
                     # Determine service type
                     if hasattr(detection_service.ml_service, 'server_url'):
-                        service_type = "external_t4"
+                        service_type = "gpu_accelerated"
                     else:
                         service_type = "local"
                         

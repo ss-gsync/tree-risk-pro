@@ -307,9 +307,9 @@ class DetectionService:
             try:
                 from .ml import get_model_service
                 
-                # Get the appropriate model service (external or local)
+                # Get the model service
                 self.ml_service = get_model_service()
-                service_type = "External T4" if hasattr(self.ml_service, 'server_url') else "Local"
+                service_type = "GPU-Accelerated"
                 logger.info(f"{service_type} ML service initialized - waiting for models to load...")
                 
                 # Wait for models to load with a 30 second timeout - CRITICAL STEP

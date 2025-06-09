@@ -3,7 +3,7 @@ import os
 
 # Application mode
 # 'development' - Development mode with local models for ML_DEV instance
-# 'production' - Production mode using ML pipeline with Zarr store and optionally T4 server
+# 'production' - Production mode using ML pipeline with Zarr store and GPU acceleration
 APP_MODE = os.environ.get('APP_MODE', 'development')
 
 # Data paths

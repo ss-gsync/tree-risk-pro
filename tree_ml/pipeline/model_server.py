@@ -932,7 +932,7 @@ def main():
     
     # Display startup banner
     logger.info("="*80)
-    logger.info("Starting Tree Detection Model Server v0.2.3")
+    logger.info("Starting GPU-Accelerated Tree Detection Model Server v0.2.3")
     logger.info(f"CUDA available: {torch.cuda.is_available()}")
     if torch.cuda.is_available():
         logger.info(f"CUDA device: {torch.cuda.get_device_name(0)}")

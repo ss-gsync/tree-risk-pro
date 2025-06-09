@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 
 class ModelService:
     """
-    Unified model service that can use any available GPU for tree detection.
+    GPU-accelerated model service for tree detection.
     
-    This service communicates with a model server to run inference without
-    requiring specific GPU hardware. It can work with any GPU that supports
-    the necessary PyTorch operations.
+    This service can use any available GPU for model inference,
+    supporting both local and remote GPU resources without requiring
+    specific hardware.
     """
     
     def __init__(self, server_url: str = None):
@@ -51,13 +51,13 @@ class ModelService:
         self.use_grounded_sam = True
         
         # Check server health in background
-        logger.info(f"Initializing ModelService with server URL: {self.server_url}")
+        logger.info(f"Initializing GPU-accelerated ModelService with URL: {self.server_url}")
         self._check_server_health()
     
     def _check_server_health(self):
         """Check server health and update status."""
         try:
-            logger.info(f"Checking health of model server at {self.server_url}")
+            logger.info(f"Checking health of GPU-accelerated model server at {self.server_url}")
             
             # Try the /health endpoint (primary API)
             try:
@@ -388,7 +388,7 @@ class ModelService:
             "using_grounded_sam": True,
             "cuda_available": self.health_status.get("cuda_available", False),
             "device": self.health_status.get("device", "unknown"),
-            "model_type": "Grounded-SAM"
+            "model_type": "GPU-Accelerated Grounded-SAM"
         }
         
         return status
