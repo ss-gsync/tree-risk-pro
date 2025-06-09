@@ -33,7 +33,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('model_server.log')
+        logging.FileHandler('/ttt/tree_ml/logs/model_server.log')
     ]
 )
 logger = logging.getLogger("model_server")
@@ -241,16 +241,16 @@ class GroundedSAMServer:
                 return False
     
     def detect_trees(self, 
-                    image_path: str, 
+                    image_data, 
                     job_id: str = None, 
-                    box_threshold: float = 0.35, 
-                    text_threshold: float = 0.25,
+                    box_threshold: float = 0.2, 
+                    text_threshold: float = 0.2,
                     with_segmentation: bool = True) -> Dict:
         """
         Detect trees in the given image with no fallbacks or synthetic data
         
         Args:
-            image_path: Path to the input image
+            image_data: Image data as bytes, PIL Image, or numpy array
             job_id: Optional job ID for tracking
             box_threshold: Confidence threshold for bounding boxes (default: 0.35)
             text_threshold: Threshold for text prompts (default: 0.25)
@@ -267,26 +267,53 @@ class GroundedSAMServer:
                 "error": "Model not ready"
             }
         
-        # Validate image path
-        if not os.path.exists(image_path):
-            logger.error(f"Image not found: {image_path}")
-            return {
-                "success": False,
-                "error": f"Image not found: {image_path}"
-            }
-        
         try:
-            logger.info(f"Starting detection for job {job_id} on image {image_path}")
+            logger.info(f"Starting detection for job {job_id}")
             start_time = time.time()
             
-            # Load and preprocess image
-            image_pil = Image.open(image_path).convert("RGB")
+            # Convert input to PIL Image and then numpy array
+            if isinstance(image_data, bytes):
+                # Convert bytes to PIL Image
+                from io import BytesIO
+                image_pil = Image.open(BytesIO(image_data)).convert("RGB")
+                logger.info(f"Converted image bytes to PIL Image: {image_pil.size}")
+            elif isinstance(image_data, str):
+                # For backward compatibility, handle path string
+                if os.path.exists(image_data):
+                    image_pil = Image.open(image_data).convert("RGB")
+                    logger.info(f"Loaded image from path: {image_data}")
+                else:
+                    logger.error(f"Image path not found: {image_data}")
+                    return {
+                        "success": False,
+                        "error": f"Image path not found: {image_data}"
+                    }
+            elif isinstance(image_data, np.ndarray):
+                # Convert numpy array to PIL Image
+                image_pil = Image.fromarray(image_data).convert("RGB")
+                logger.info(f"Converted numpy array to PIL Image")
+            elif hasattr(image_data, 'convert'):
+                # It's already a PIL Image
+                image_pil = image_data.convert("RGB")
+                logger.info(f"Using provided PIL Image: {image_pil.size}")
+            else:
+                # Unsupported type
+                logger.error(f"Unsupported image type: {type(image_data)}")
+                return {
+                    "success": False,
+                    "error": f"Unsupported image type: {type(image_data)}"
+                }
+            
+            # Convert to numpy array for processing
             image_np = np.array(image_pil)
             
-            # Define text prompt for tree detection focused only on trees
-            text_prompt = "tree. healthy tree. hazardous tree. dead tree. low canopy tree."
-            # Use the provided thresholds
+            # Define text prompt for tree detection aligned with DetectionCategories.jsx
+            text_prompt = "tree. healthy tree. hazardous tree. dead tree. low canopy tree. pest disease tree. flood prone tree. utility conflict tree. structural hazard tree. fire risk tree."
+            # Lower thresholds to improve detection sensitivity
+            box_threshold = min(0.15, box_threshold)  # Use at most 0.15 for box threshold 
+            text_threshold = min(0.15, text_threshold)  # Use at most 0.15 for text threshold
             logger.info(f"Using detection thresholds: box_threshold={box_threshold}, text_threshold={text_threshold}")
+            logger.info(f"Using prompt with category prefixes: {text_prompt}")
             
             # Check if GroundingDINO is available
             if self.grounding_dino is None:
@@ -342,12 +369,11 @@ class GroundedSAMServer:
             
             # If no detections, return empty result
             if len(boxes) == 0:
-                logger.info(f"No objects detected in {image_path}")
+                logger.info(f"No objects detected in the image")
                 return {
                     "success": True,
                     "job_id": job_id,
                     "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "image_path": image_path,
                     "detections": [],
                     "detection_count": 0
                 }
@@ -359,23 +385,31 @@ class GroundedSAMServer:
             # Process each detection
             detections = []
             for i in range(len(boxes)):
-                # Get box coordinates (normalized)
-                box = boxes[i].cpu().tolist()
+                # Get box coordinates (normalized in cxcywh format - center_x, center_y, width, height)
+                box_cxcywh = boxes[i].cpu().tolist()
+                
+                # Convert from cxcywh to xywh format (top-left x, top-left y, width, height)
+                cx, cy, w, h = box_cxcywh
+                x = cx - w/2
+                y = cy - h/2
+                box = [x, y, w, h]  # xywh format
                 
                 # Get class and confidence
                 phrase = phrases[i]
                 confidence = logits[i].item()
                 
-                # Convert normalized box to pixel coordinates
+                # Convert normalized box to pixel coordinates (also in xywh format)
                 H, W, _ = image_np.shape
                 box_pixel = [
-                    box[0] * W, box[1] * H, 
-                    box[2] * W, box[3] * H
+                    x * W, y * H,    # top-left x, y
+                    w * W, h * H     # width, height
                 ]
                 
                 # Generate SAM mask
-                # Convert to numpy array for SAM predictor (which expects numpy, not torch tensors)
-                sam_box = np.array(box_pixel)
+                # Convert to xyxy format for SAM predictor (which expects [x1, y1, x2, y2])
+                x1, y1 = box_pixel[0], box_pixel[1]
+                x2, y2 = x1 + box_pixel[2], y1 + box_pixel[3]
+                sam_box = np.array([x1, y1, x2, y2])
                 sam_result = self.sam_predictor.predict(
                     box=sam_box,
                     multimask_output=False
@@ -390,15 +424,16 @@ class GroundedSAMServer:
                     "id": f"{job_id or 'detect'}_{i}",
                     "class": phrase.lower(),
                     "confidence": round(confidence, 4),
-                    "bbox": box,  # Normalized coordinates [x1, y1, x2, y2]
-                    "box_pixel": box_pixel,  # Pixel coordinates [x1, y1, x2, y2]
+                    "bbox": box,  # Normalized coordinates [x, y, width, height]
+                    "box_pixel": box_pixel,  # Pixel coordinates [x, y, width, height]
                 }
                 
                 # Calculate additional properties
                 if "tree" in phrase.lower():
                     # Estimate tree properties based on bounding box
-                    width_px = box_pixel[2] - box_pixel[0]
-                    height_px = box_pixel[3] - box_pixel[1]
+                    # Since box_pixel is [x, y, w, h] format
+                    width_px = box_pixel[2]  # This is already the width
+                    height_px = box_pixel[3]  # This is already the height
                     
                     # Assuming 0.5m per pixel for high-res satellite imagery
                     # These are rough estimates and would need calibration
@@ -419,7 +454,6 @@ class GroundedSAMServer:
             metadata = {
                 "job_id": job_id,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "image_path": image_path,
                 "image_dimensions": {
                     "width": width,
                     "height": height
@@ -443,7 +477,6 @@ class GroundedSAMServer:
                 "success": True,
                 "job_id": job_id,
                 "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "image_path": image_path,
                 "detections": detections,
                 "metadata": metadata,
                 "detection_count": len(detections)
@@ -455,19 +488,18 @@ class GroundedSAMServer:
                 "success": False,
                 "error": str(e),
                 "job_id": job_id,
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                "image_path": image_path
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")
             }
     
     def generate_visualization(self, 
-                             image_path: str, 
+                             image_data, 
                              detection_result: Dict, 
                              output_path: str = None) -> Dict:
         """
         Generate visualization of detection results
         
         Args:
-            image_path: Path to input image
+            image_data: Image data as bytes, PIL Image, numpy array, or path string
             detection_result: Detection result dictionary
             output_path: Path to save visualization image
             
@@ -481,57 +513,104 @@ class GroundedSAMServer:
                 "error": "Model not ready"
             }
         
-        if not os.path.exists(image_path):
-            logger.error(f"Image not found: {image_path}")
-            return {
-                "success": False,
-                "error": f"Image not found: {image_path}"
-            }
-        
         try:
-            # Load image
-            image = cv2.imread(image_path)
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            # Convert input to PIL Image and then to OpenCV format
+            if isinstance(image_data, bytes):
+                # Convert bytes to PIL Image
+                from io import BytesIO
+                image_pil = Image.open(BytesIO(image_data)).convert("RGB")
+                image = np.array(image_pil)
+                # Convert RGB to BGR for OpenCV
+                image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+            elif isinstance(image_data, str):
+                # For backward compatibility, handle path string
+                if os.path.exists(image_data):
+                    image = cv2.imread(image_data)
+                    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                else:
+                    logger.error(f"Image path not found: {image_data}")
+                    return {
+                        "success": False,
+                        "error": f"Image path not found: {image_data}"
+                    }
+
+            elif isinstance(image_data, np.ndarray):
+                # It's already a numpy array, ensure it's in RGB format
+                if image_data.shape[2] == 3:  # Assuming it's a color image
+                    image = image_data
+                    # If it's in BGR format (OpenCV default), convert to RGB
+                    if hasattr(cv2, 'COLOR_BGR2RGB'):
+                        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                else:
+                    logger.warning(f"Unusual image format with shape {image_data.shape}")
+                    image = image_data
+                    
+            elif hasattr(image_data, 'convert'):
+                # It's a PIL Image
+                image_pil = image_data.convert("RGB")
+                image = np.array(image_pil)
+                
+            else:
+                # Unsupported type
+                logger.error(f"Unsupported image type for visualization: {type(image_data)}")
+                return {
+                    "success": False,
+                    "error": f"Unsupported image type: {type(image_data)}"
+                }
             
-            # Define colors for different classes
+            # Define colors for different tree categories - BGR format for OpenCV with hazard gradation
+            # Note: OpenCV uses BGR format (not RGB)
             colors = {
-                "tree": (0, 255, 0),      # Green
-                "building": (0, 0, 255),  # Blue
-                "power line": (255, 0, 0) # Red
+                "tree": (50, 120, 50),              # Natural forest green
+                "healthy tree": (40, 100, 40),      # Slightly darker green for healthy trees
+                "hazardous tree": (40, 130, 80),    # Olive green for hazardous
+                "dead tree": (80, 120, 120),        # Khaki/tan for dead trees
+                "low canopy tree": (60, 110, 60),   # Medium green for low canopy
+                "pest disease tree": (40, 140, 90), # Yellow-green for pest/disease
+                "flood prone tree": (90, 120, 70),  # Muted teal for flood prone
+                "utility conflict tree": (40, 150, 120), # Muted yellow-green for utility conflict
+                "structural hazard tree": (70, 130, 130), # Tan for structural hazard
+                "fire risk tree": (40, 100, 150)     # Amber/orange for fire risk (highest risk)
             }
             
             # Default color for other classes
-            default_color = (255, 255, 0)  # Yellow
+            default_color = (50, 120, 50)  # Natural forest green for any other tree types
             
             # Draw each detection
             for detection in detection_result.get("detections", []):
                 # Get bounding box in pixel coordinates
                 if "box_pixel" in detection:
-                    box = detection["box_pixel"]
+                    # box_pixel format is [x, y, width, height]
+                    x, y, width, height = detection["box_pixel"]
+                    x1, y1 = int(x), int(y)
+                    x2, y2 = int(x + width), int(y + height)
+                    logger.info(f"Drawing box from box_pixel: {x1},{y1},{x2},{y2}")
                 elif "bbox" in detection:
-                    # Convert normalized coordinates to pixel coordinates
+                    # bbox format is [x, y, width, height] normalized
                     h, w = image.shape[:2]
-                    x1, y1, x2, y2 = detection["bbox"]
-                    box = [x1 * w, y1 * h, x2 * w, y2 * h]
+                    x, y, width, height = detection["bbox"]
+                    x1, y1 = int(x * w), int(y * h)
+                    x2, y2 = int((x + width) * w), int((y + height) * h)
+                    logger.info(f"Drawing box from normalized bbox: {x1},{y1},{x2},{y2}")
                 else:
                     continue
                 
-                # Convert to integers
-                x1, y1, x2, y2 = map(int, box)
-                
                 # Get class and determine color
                 obj_class = detection.get("class", "").lower()
-                color = None
+                color = default_color
                 
-                # Find the matching color
-                for class_name, class_color in colors.items():
+                # Sort by length in descending order to prioritize specific classes 
+                # (e.g., "pest disease tree" before "tree")
+                sorted_classes = sorted(colors.keys(), key=len, reverse=True)
+                
+                # Check for matches, using the most specific match found
+                for class_name in sorted_classes:
                     if class_name in obj_class:
-                        color = class_color
+                        color = colors[class_name]
                         break
                 
-                # Use default color if no match found
-                if color is None:
-                    color = default_color
+                # Segmentation masks are not drawn for performance reasons
                 
                 # Draw rectangle
                 cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
@@ -542,8 +621,8 @@ class GroundedSAMServer:
                 cv2.putText(image, label, (x1, y1 - 10), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
             
-            # Convert back to BGR for saving
-            output_image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            # The image is already in BGR format for OpenCV, so we can save it directly
+            # No need for additional color conversion
             
             # Determine output path if not provided
             if output_path is None:
@@ -552,15 +631,14 @@ class GroundedSAMServer:
                     output_dir = os.path.join(self.output_dir, job_id, "ml_response")
                     output_path = os.path.join(output_dir, "combined_visualization.jpg")
                 else:
-                    # Use same directory as input with _viz suffix
-                    base, ext = os.path.splitext(image_path)
-                    output_path = f"{base}_visualization{ext}"
+                    # Use job_id to create output path
+                    output_path = f"/ttt/data/ml/{job_id}/ml_response/combined_visualization.jpg"
             
             # Create output directory if it doesn't exist
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
             
-            # Save visualization
-            cv2.imwrite(output_path, output_image)
+            # Save visualization directly without additional conversion
+            cv2.imwrite(output_path, image)
             
             logger.info(f"Visualization saved to {output_path}")
             
@@ -578,16 +656,16 @@ class GroundedSAMServer:
             }
     
     def process_image(self, 
-                     image_path: str, 
+                     image_data, 
                      job_id: str = None,
                      output_dir: str = None,
-                     confidence_threshold: float = 0.35,
+                     confidence_threshold: float = 0.2,
                      with_segmentation: bool = True) -> Dict:
         """
         Process an image end-to-end with detection and visualization
         
         Args:
-            image_path: Path to the input image
+            image_data: Image data as bytes, PIL Image, numpy array, or path string
             job_id: Optional job ID for tracking
             output_dir: Optional output directory
             confidence_threshold: Minimum confidence for detections (default: 0.35)
@@ -618,7 +696,7 @@ class GroundedSAMServer:
         
         # Run detection with the specified parameters
         detection_result = self.detect_trees(
-            image_path, 
+            image_data, 
             job_id, 
             box_threshold=confidence_threshold,
             with_segmentation=with_segmentation
@@ -638,7 +716,6 @@ class GroundedSAMServer:
         metadata = {
             "job_id": job_id,
             "timestamp": detection_result.get("timestamp", time.strftime("%Y-%m-%dT%H:%M:%S")),
-            "image_path": image_path,
             "bounds": detection_result.get("bounds", []),
             "detection_count": len(detection_result.get("detections", [])),
             "source": "satellite",
@@ -651,7 +728,7 @@ class GroundedSAMServer:
         # Generate visualization
         viz_path = os.path.join(output_dir, "combined_visualization.jpg")
         viz_result = self.generate_visualization(
-            image_path, 
+            image_data, 
             detection_result,
             viz_path
         )
@@ -739,11 +816,11 @@ async def detect_trees(
     background_tasks: BackgroundTasks,
     job_id: Optional[str] = Form(None),
     image: UploadFile = File(...),
-    confidence_threshold: Optional[float] = Form(default=0.35),
+    confidence_threshold: Optional[float] = Form(default=0.2),
     with_segmentation: Optional[bool] = Form(default=True)
 ):
     """
-    Detect trees in an image
+    Detect trees in an image using uploaded image data directly
     """
     global model_server
     
@@ -760,26 +837,19 @@ async def detect_trees(
     
     logger.info(f"Processing detection request for job ID: {job_id}")
 
-    # Create temporary directory for processing
-    temp_dir = os.path.join(model_server.output_dir, job_id)
-    os.makedirs(temp_dir, exist_ok=True)
-    logger.info(f"Created output directory: {temp_dir}")
+    # Read the image data directly from the uploaded file
+    image_data = await image.read()
+    logger.info(f"Read {len(image_data)} bytes of image data")
 
-    # Save uploaded image
-    image_path = os.path.join(temp_dir, f"satellite_{job_id}.jpg")
-    with open(image_path, "wb") as f:
-        f.write(await image.read())
-    logger.info(f"Saved uploaded image to: {image_path}")
-
-    # Process image immediately instead of in background
+    # Process image immediately with the image data
     try:
         # Process synchronously to catch any errors
         logger.info(f"Starting image processing for job: {job_id}")
         logger.info(f"Using confidence threshold: {confidence_threshold}, with segmentation: {with_segmentation}")
         
-        # Process the image with the parameters
+        # Process the image with the image data directly - no file operations needed
         result = model_server.process_image(
-            image_path, 
+            image_data, 
             job_id,
             confidence_threshold=confidence_threshold,
             with_segmentation=with_segmentation
