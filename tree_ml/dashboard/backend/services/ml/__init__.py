@@ -247,10 +247,24 @@ class ModelService:
             else:
                 error_msg = f"Model server error: {response.status_code}"
                 try:
-                    error_detail = response.json().get('error', 'Unknown error')
-                    error_msg = f"{error_msg} - {error_detail}"
-                except:
-                    pass
+                    error_data = response.json()
+                    # Get detailed error information
+                    if 'detail' in error_data:
+                        error_detail = error_data['detail']
+                        error_msg = f"{error_msg} - {error_detail}"
+                    else:
+                        error_detail = error_data.get('error', 'Unknown error')
+                        error_msg = f"{error_msg} - {error_detail}"
+                    
+                    # Log the full error response for debugging
+                    logger.error(f"Full error response: {json.dumps(error_data)}")
+                except Exception as parse_error:
+                    logger.error(f"Failed to parse error response: {str(parse_error)}")
+                    try:
+                        # Try to get the text response if JSON parsing failed
+                        error_msg = f"{error_msg} - {response.text[:200]}"
+                    except:
+                        pass
                 
                 logger.error(error_msg)
                 return {

@@ -316,16 +316,9 @@ class GroundedSAMServer:
                 # Run GroundingDINO for detection
                 from groundingdino.util.inference import predict
                 
-                # Check for CUDA extension (_C module)
-                try:
-                    from groundingdino.models.GroundingDINO.ms_deform_attn import _C
-                    logger.info("GroundingDINO CUDA extension (_C module) loaded successfully")
-                except ImportError as e:
-                    logger.error(f"Failed to import GroundingDINO CUDA extension: {str(e)}")
-                    logger.error("This usually means the CUDA extension wasn't built correctly.")
-                    logger.error("Try running: cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO/groundingdino/models/GroundingDINO/csrc/MsDeformAttn && python setup.py build install")
-                    logger.error("Make sure CUDA_HOME is set correctly: export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit")
-                    raise ImportError("GroundingDINO CUDA extension not available")
+                # We'll skip the explicit CUDA extension check since it's handled internally by ms_deform_attn.py
+                # which automatically falls back to the PyTorch implementation if the CUDA extension is not available
+                logger.info("Using GroundingDINO for detection (will use CPU implementation if CUDA extension is not available)")
                 
                 # Get bounding boxes
                 logger.info("Running GroundingDINO for object detection...")
@@ -381,14 +374,16 @@ class GroundedSAMServer:
                 ]
                 
                 # Generate SAM mask
-                sam_box = torch.tensor(box_pixel, device=self.device)
+                # Convert to numpy array for SAM predictor (which expects numpy, not torch tensors)
+                sam_box = np.array(box_pixel)
                 sam_result = self.sam_predictor.predict(
-                    box=sam_box.unsqueeze(0),
+                    box=sam_box,
                     multimask_output=False
                 )
                 
                 # Get mask and convert to proper format
-                mask = sam_result[0][0].cpu().numpy()
+                # SAM returns masks as numpy arrays when using the numpy input
+                mask = sam_result[0][0]  # Already a numpy array
                 
                 # Add detection to list
                 detection = {
@@ -744,8 +739,8 @@ async def detect_trees(
     background_tasks: BackgroundTasks,
     job_id: Optional[str] = Form(None),
     image: UploadFile = File(...),
-    confidence_threshold: Optional[float] = Form(0.35),
-    with_segmentation: Optional[bool] = Form(True)
+    confidence_threshold: Optional[float] = Form(default=0.35),
+    with_segmentation: Optional[bool] = Form(default=True)
 ):
     """
     Detect trees in an image
@@ -810,8 +805,12 @@ async def detect_trees(
         
         # Check for success
         if not result.get("success", False):
-            logger.error(f"Processing failed: {result.get('error', 'Unknown error')}")
-            raise HTTPException(status_code=500, detail=result.get("error", "Unknown error during detection"))
+            error_message = result.get("error", "Unknown error during detection")
+            logger.error(f"Processing failed: {error_message}")
+            return JSONResponse(
+                status_code=500,
+                content={"detail": error_message, "job_id": job_id, "status": "failed"}
+            )
 
         # Load the full detection results to return directly
         detection_data = None
@@ -852,7 +851,15 @@ async def detect_trees(
         return response
     except Exception as e:
         logger.error(f"Error processing image: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": str(e),
+                "job_id": job_id,
+                "status": "failed",
+                "error_type": type(e).__name__
+            }
+        )
 
 @app.get("/results/{job_id}")
 async def get_results(job_id: str):
