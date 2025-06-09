@@ -15,7 +15,7 @@ import argparse
 import threading
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 from datetime import datetime
 
 import numpy as np
@@ -283,8 +283,8 @@ class GroundedSAMServer:
             image_pil = Image.open(image_path).convert("RGB")
             image_np = np.array(image_pil)
             
-            # Define text prompt for tree detection
-            text_prompt = "tree. building. power line."
+            # Define text prompt for tree detection focused only on trees
+            text_prompt = "tree. healthy tree. hazardous tree. dead tree. low canopy tree."
             # Use the provided thresholds
             logger.info(f"Using detection thresholds: box_threshold={box_threshold}, text_threshold={text_threshold}")
             
@@ -744,8 +744,8 @@ async def detect_trees(
     background_tasks: BackgroundTasks,
     job_id: Optional[str] = Form(None),
     image: UploadFile = File(...),
-    confidence_threshold: float = Form(0.35),
-    with_segmentation: bool = Form(True)
+    confidence_threshold: Optional[float] = Form(0.35),
+    with_segmentation: Optional[bool] = Form(True)
 ):
     """
     Detect trees in an image
@@ -781,6 +781,8 @@ async def detect_trees(
         # Process synchronously to catch any errors
         logger.info(f"Starting image processing for job: {job_id}")
         logger.info(f"Using confidence threshold: {confidence_threshold}, with segmentation: {with_segmentation}")
+        
+        # Process the image with the parameters
         result = model_server.process_image(
             image_path, 
             job_id,
