@@ -240,13 +240,21 @@ class GroundedSAMServer:
                 self.ready = False
                 return False
     
-    def detect_trees(self, image_path: str, job_id: str = None) -> Dict:
+    def detect_trees(self, 
+                    image_path: str, 
+                    job_id: str = None, 
+                    box_threshold: float = 0.35, 
+                    text_threshold: float = 0.25,
+                    with_segmentation: bool = True) -> Dict:
         """
         Detect trees in the given image with no fallbacks or synthetic data
         
         Args:
             image_path: Path to the input image
             job_id: Optional job ID for tracking
+            box_threshold: Confidence threshold for bounding boxes (default: 0.35)
+            text_threshold: Threshold for text prompts (default: 0.25)
+            with_segmentation: Whether to include segmentation masks (default: True)
             
         Returns:
             Dict containing detection results or error information
@@ -277,8 +285,8 @@ class GroundedSAMServer:
             
             # Define text prompt for tree detection
             text_prompt = "tree. building. power line."
-            box_threshold = 0.35
-            text_threshold = 0.25
+            # Use the provided thresholds
+            logger.info(f"Using detection thresholds: box_threshold={box_threshold}, text_threshold={text_threshold}")
             
             # Check if GroundingDINO is available
             if self.grounding_dino is None:
@@ -577,7 +585,9 @@ class GroundedSAMServer:
     def process_image(self, 
                      image_path: str, 
                      job_id: str = None,
-                     output_dir: str = None) -> Dict:
+                     output_dir: str = None,
+                     confidence_threshold: float = 0.35,
+                     with_segmentation: bool = True) -> Dict:
         """
         Process an image end-to-end with detection and visualization
         
@@ -585,6 +595,8 @@ class GroundedSAMServer:
             image_path: Path to the input image
             job_id: Optional job ID for tracking
             output_dir: Optional output directory
+            confidence_threshold: Minimum confidence for detections (default: 0.35)
+            with_segmentation: Whether to include segmentation masks (default: True)
             
         Returns:
             Dict containing processing results
@@ -609,8 +621,13 @@ class GroundedSAMServer:
                     "error": "Failed to initialize model"
                 }
         
-        # Run detection
-        detection_result = self.detect_trees(image_path, job_id)
+        # Run detection with the specified parameters
+        detection_result = self.detect_trees(
+            image_path, 
+            job_id, 
+            box_threshold=confidence_threshold,
+            with_segmentation=with_segmentation
+        )
         
         # If detection failed, return error
         if not detection_result.get("success", False):
@@ -726,7 +743,9 @@ async def status():
 async def detect_trees(
     background_tasks: BackgroundTasks,
     job_id: Optional[str] = Form(None),
-    image: UploadFile = File(...)
+    image: UploadFile = File(...),
+    confidence_threshold: float = Form(0.35),
+    with_segmentation: bool = Form(True)
 ):
     """
     Detect trees in an image
@@ -761,7 +780,13 @@ async def detect_trees(
     try:
         # Process synchronously to catch any errors
         logger.info(f"Starting image processing for job: {job_id}")
-        result = model_server.process_image(image_path, job_id)
+        logger.info(f"Using confidence threshold: {confidence_threshold}, with segmentation: {with_segmentation}")
+        result = model_server.process_image(
+            image_path, 
+            job_id,
+            confidence_threshold=confidence_threshold,
+            with_segmentation=with_segmentation
+        )
         
         # Log output directory
         output_dir = os.path.join(model_server.output_dir, job_id, "ml_response")
@@ -786,7 +811,17 @@ async def detect_trees(
             logger.error(f"Processing failed: {result.get('error', 'Unknown error')}")
             raise HTTPException(status_code=500, detail=result.get("error", "Unknown error during detection"))
 
-        # Return success with job ID and output information
+        # Load the full detection results to return directly
+        detection_data = None
+        try:
+            if os.path.exists(trees_json):
+                with open(trees_json, 'r') as f:
+                    detection_data = json.load(f)
+                logger.info(f"Successfully loaded detection data from {trees_json}")
+        except Exception as e:
+            logger.error(f"Error reading detection data from {trees_json}: {e}")
+            
+        # Return success with job ID, output information, and full detection data
         response = {
             "job_id": job_id, 
             "status": "complete", 
@@ -797,7 +832,21 @@ async def detect_trees(
                 "metadata_json": os.path.exists(metadata_json)
             }
         }
-        logger.info(f"Returning success response: {response}")
+        
+        # Include the full detection data if available
+        if detection_data:
+            # Check if detection_data has 'detection_result'
+            if 'detection_result' in detection_data:
+                response["detections"] = detection_data["detection_result"].get("detections", [])
+            else:
+                response["detections"] = detection_data.get("detections", [])
+            
+            # Include other useful fields
+            for field in ["bounds", "metadata"]:
+                if field in detection_data:
+                    response[field] = detection_data[field]
+        
+        logger.info(f"Returning success response with {response.get('detection_count', 0)} detections")
         return response
     except Exception as e:
         logger.error(f"Error processing image: {str(e)}", exc_info=True)

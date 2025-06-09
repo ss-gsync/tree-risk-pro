@@ -76,13 +76,11 @@ def create_app():
         Flask: The configured Flask application instance
     """
     # Import config to log configuration settings
-    from config import APP_MODE, USE_EXTERNAL_MODEL_SERVER, MODEL_SERVER_URL
+    from config import APP_MODE, MODEL_SERVER_URL
     
     # Log key configuration settings for debugging
     logger.info(f"Application Mode: {APP_MODE}")
-    logger.info(f"ML Service Configuration: USE_EXTERNAL_MODEL_SERVER={USE_EXTERNAL_MODEL_SERVER}")
-    if USE_EXTERNAL_MODEL_SERVER:
-        logger.info(f"External Model Server URL: {MODEL_SERVER_URL}")
+    logger.info(f"Model Server URL: {MODEL_SERVER_URL}")
         
     # Initialize Flask app
     app = Flask(__name__)
@@ -1679,9 +1677,8 @@ def create_app():
             }
             
             # Add config info
-            from config import USE_EXTERNAL_MODEL_SERVER, MODEL_SERVER_URL
+            from config import MODEL_SERVER_URL
             status["config"] = {
-                "use_external_model_server": USE_EXTERNAL_MODEL_SERVER,
                 "model_server_url": MODEL_SERVER_URL
             }
             

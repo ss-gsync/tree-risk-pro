@@ -30,16 +30,7 @@ API_VERSION = '0.2.3'
 DEFAULT_RESPONSE_LIMIT = 100
 
 # ML Service configuration
-# Set to True to use the external T4 model server instead of local models
-# IMPORTANT: Always use external model server in production to avoid conflicts
-# In production mode, always use external model server; in development, use internal by default
-if APP_MODE == 'production':
-    USE_EXTERNAL_MODEL_SERVER = True
-else:
-    # In development mode, use the environment variable with a default of False (internal service)
-    USE_EXTERNAL_MODEL_SERVER = os.environ.get('USE_EXTERNAL_MODEL_SERVER', 'False').lower() in ('true', '1', 't')
-
-# URL for the external T4 model server (only used when USE_EXTERNAL_MODEL_SERVER is True)
+# URL for the model server - will work with any GPU
 MODEL_SERVER_URL = os.environ.get('MODEL_SERVER_URL', 'http://localhost:8000')
 
 # Generic function to get API keys from environment or .env file

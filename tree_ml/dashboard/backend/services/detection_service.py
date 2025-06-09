@@ -828,6 +828,82 @@ class DetectionService:
                 'trees': []
             }
     
+    async def detect_trees_from_image(self, image_path, map_view_info, job_id):
+        """
+        Run tree detection on a pre-uploaded image with map view information.
+        
+        This function takes an already uploaded satellite image and runs ML detection on it.
+        
+        Args:
+            image_path: Path to the uploaded satellite image
+            map_view_info: Map view information including center coordinates
+            job_id: Job ID for tracking
+            
+        Returns:
+            dict: Detection results
+        """
+        try:
+            logger.info(f"Starting tree detection from uploaded image: {image_path}")
+            
+            # Extract view data - We trust this data is accurate from the frontend
+            view_data = map_view_info.get('viewData', {})
+            
+            # Log all available coordinates for debugging
+            if 'center' in view_data:
+                logger.info(f"CENTER coordinates: {view_data['center']}")
+            if 'userCoordinates' in view_data:
+                logger.info(f"USER coordinates: {view_data['userCoordinates']}")
+            
+            # Get bounds from the view data
+            bounds = view_data.get('bounds')
+            if not bounds:
+                logger.error("Missing bounds in view data")
+                return {
+                    'success': False,
+                    'message': "Missing geographic bounds information. Cannot perform detection.",
+                    'job_id': job_id,
+                    'trees': []
+                }
+                
+            logger.info(f"Using bounds: {bounds}")
+            
+            # Create ML response directory
+            ml_dir = os.path.join(self.ml_dir, job_id)
+            ml_response_dir = os.path.join(ml_dir, "ml_response")
+            os.makedirs(ml_response_dir, exist_ok=True)
+            
+            # Run ML detection using the existing detect_trees_from_canvas_capture method
+            detection_results = await self.detect_trees_from_canvas_capture(
+                image_path, bounds, job_id, ml_response_dir
+            )
+            
+            # Get user coordinates
+            user_lng, user_lat = view_data.get('center', [0, 0])
+            user_zoom = view_data.get('zoom', 10)
+            
+            # Add coordinates, paths, and other info to results
+            detection_results.update({
+                'coordinates': {
+                    'center': [user_lng, user_lat],
+                    'bounds': bounds,
+                    'zoom': user_zoom
+                },
+                'ml_dir': ml_dir,
+                'ml_response_dir': ml_response_dir,
+                'imageUrl': image_path
+            })
+            
+            return detection_results
+            
+        except Exception as e:
+            logger.error(f"Error in detect_trees_from_image: {str(e)}", exc_info=True)
+            return {
+                'success': False,
+                'message': f"Detection error: {str(e)}",
+                'job_id': job_id,
+                'trees': []
+            }
+    
     async def detect_trees_from_map_view(self, map_view_info, job_id):
         """
         Run tree detection based on map view information
