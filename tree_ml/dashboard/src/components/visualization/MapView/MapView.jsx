@@ -427,8 +427,17 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
   // Get map center and zoom from Redux
   const { center, zoom, activeBasemap, visibleLayers } = useSelector((state) => state.map);
 
+  // Use a ref to track if we've initialized header state
+  const headerInitRef = useRef(false);
+  
   // Update header state when provided externally or on initial render
   useEffect(() => {
+    // Only run this once on initial mount
+    if (headerInitRef.current) {
+      return;
+    }
+    headerInitRef.current = true;
+    
     // Check for explicit headerState from props first
     const isCollapsed = headerState !== undefined ? headerState : false;
     
@@ -444,33 +453,33 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
         // Update state if header appears to be collapsed
         if (headerIsSmall || headerHasCollapsedClass) {
           setHeaderCollapsed(true);
-          console.log('MapView: Detected collapsed header on initial render or view change');
+          console.log('MapView: Detected collapsed header on initial render');
         }
       }
     } else {
-      // If provided via props, set state and broadcast
+      // If provided via props, set state
       setHeaderCollapsed(isCollapsed);
       console.log(`MapView: Setting header state from props: ${isCollapsed ? 'collapsed' : 'expanded'}`);
     }
     
     // Apply header state immediately to DOM elements
     const mapWrapper = document.getElementById('map-wrapper');
-    if (mapWrapper && headerCollapsed) {
+    if (mapWrapper && isCollapsed) {
       mapWrapper.style.height = '100vh';
       console.log('MapView: Applied 100vh height to map wrapper due to collapsed header');
     }
     
-    // Dispatch event to notify other components about the current header state
+    // Only dispatch event on the initial setup
     window.dispatchEvent(new CustomEvent('headerCollapse', {
-      detail: { collapsed: headerCollapsed }
+      detail: { collapsed: isCollapsed }
     }));
     
-    // Force immediate map resize 
+    // Force map resize once during initialization, but only if map is already loaded
     if (map.current && window.google && window.google.maps) {
       window.google.maps.event.trigger(map.current, 'resize');
       console.log('MapView: Forced map resize after header state update');
     }
-  }, [headerState, headerCollapsed]);
+  }, [headerState]); // Only depend on headerState from props, not on our own state
   
   // Load settings from localStorage
   const [settings, setSettings] = useState(() => {
@@ -1119,67 +1128,110 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
     }
   };
   
-  // Handle window resize and sidebar changes
+  // Handle window resize and sidebar changes - memoized to prevent re-creation
+  // This is the key fix for the infinite loop issue
+  const resizeHandlersRef = useRef({
+    resizeTimeout: null,
+    layoutUpdateCount: 0,
+    lastUpdateTime: 0,
+    
+    // Stores event handlers to avoid recreation on each render
+    handleResize: null,
+    handleHeaderCollapse: null
+  });
+  
+  // Setup handlers only once on mount
   useEffect(() => {
+    // For safety, initialize variables to prevent reference errors
     let resizeTimeout;
+    let layoutUpdateCount = 0;
+    let lastUpdateTime = 0;
     
-    const handleResize = () => {
-      clearTimeout(resizeTimeout);
-      
-      resizeTimeout = setTimeout(() => {
-        if (map.current && window.google && window.google.maps) {
-          window.google.maps.event.trigger(map.current, 'resize');
-        }
-      }, 150);
-    };
-    
-    const handleHeaderCollapse = (event) => {
-      setHeaderCollapsed(event.detail.collapsed);
-      
-      // Adjust map container when header collapses/expands
-      const mapContainer = document.getElementById('map-container');
-      const mapWrapper = document.getElementById('map-wrapper');
-      
-      if (mapContainer && mapWrapper) {
-        const isCollapsed = event.detail.collapsed;
+    // Initialize the handlers if not already set
+    if (!resizeHandlersRef.current.handleResize) {
+      // Debounced resize handler to prevent excessive map refreshes
+      resizeHandlersRef.current.handleResize = () => {
+        const refs = resizeHandlersRef.current;
         
-        // Clean up inline styles first - crucial for consistent behavior
-        if (isCollapsed) {
-          // When header collapses, set full viewport height
-          mapWrapper.style.height = '100vh';
-          mapWrapper.style.top = '0';
-          mapContainer.style.height = '100%';
-        } else {
-          // When header expands, adjust based on header height
-          const header = document.querySelector('header');
-          const headerHeight = header ? header.offsetHeight : 60;
-          mapWrapper.style.height = `calc(100vh - ${headerHeight}px)`;
-          mapWrapper.style.top = `${headerHeight}px`;
-          mapContainer.style.height = '100%';
+        // Clear any existing timeout
+        clearTimeout(refs.resizeTimeout);
+        
+        // Rate-limit map resize events
+        const now = Date.now();
+        if (now - refs.lastUpdateTime < 300) {
+          refs.resizeTimeout = setTimeout(refs.handleResize, 300);
+          return;
         }
         
-        // Force immediate update and resize
-        requestAnimationFrame(() => {
-          // Force Google Maps to resize immediately
+        refs.resizeTimeout = setTimeout(() => {
           if (map.current && window.google && window.google.maps) {
             window.google.maps.event.trigger(map.current, 'resize');
+            
+            // Reset counter after a successful resize
+            refs.layoutUpdateCount = 0;
+            refs.lastUpdateTime = Date.now();
+          }
+        }, 300);
+      };
+      
+      // Dedicated header state change handler - created once and reused
+      resizeHandlersRef.current.handleHeaderCollapse = (event) => {
+        const refs = resizeHandlersRef.current;
+        const isCollapsed = event.detail.collapsed;
+        
+        console.log(`MapView: Header collapse event received - collapsed: ${isCollapsed}`);
+        
+        // Just modify the height of the map wrapper - simplest approach
+        const mapWrapper = document.getElementById('map-wrapper');
+        
+        if (mapWrapper) {
+          // Track state change to prevent layout thrashing
+          if (refs.layoutUpdateCount > 5) {
+            console.log("Preventing excessive layout updates due to header changes");
+            return;
           }
           
-          // Also update ML overlay if it exists
-          if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
-            if (isCollapsed) {
-              window._mlDetectionOverlay.div.style.top = '0';
-              window._mlDetectionOverlay.div.style.height = '100vh';
-            } else {
-              const header = document.querySelector('header');
-              const headerHeight = header ? header.offsetHeight : 60;
-              window._mlDetectionOverlay.div.style.top = `${headerHeight}px`;
-              window._mlDetectionOverlay.div.style.height = `calc(100vh - ${headerHeight}px)`;
-            }
+          refs.layoutUpdateCount++;
+          refs.lastUpdateTime = Date.now();
+          
+          // Get header height
+          const header = document.querySelector('header');
+          const headerHeight = header ? header.offsetHeight : 60;
+          
+          console.log(`MapView: Applying header layout - collapsed: ${isCollapsed}, headerHeight: ${headerHeight}px`);
+          
+          // Direct height setting based on header state
+          if (isCollapsed) {
+            // When header is collapsed, map should take full viewport height
+            mapWrapper.style.height = '100vh';
+            console.log('SIMPLIFIED: Setting map to 100vh when header collapsed');
+          } else {
+            // When header is expanded, adjust map height only
+            mapWrapper.style.height = `calc(100vh - ${headerHeight}px)`;
+            console.log(`SIMPLIFIED: Setting map to calc(100vh - ${headerHeight}px)`);
           }
-        });
-      }
-    };
+          
+          // Update state after DOM changes to avoid triggering too many renders
+          setTimeout(() => {
+            setHeaderCollapsed(isCollapsed);
+          }, 100);
+          
+          // Resize map only after all DOM updates
+          if (map.current && window.google && window.google.maps) {
+            console.log('MapView: Triggering Google Maps resize after header change');
+            window.google.maps.event.trigger(map.current, 'resize');
+          }
+        }
+      };
+    }
+    
+    // Use the memoized handlers from the ref
+    const handleResize = resizeHandlersRef.current.handleResize;
+    const handleHeaderCollapse = resizeHandlersRef.current.handleHeaderCollapse;
+    
+    // Explicitly apply handlers to ensure they're used
+    window.addEventListener('headerCollapse', handleHeaderCollapse);
+    console.log('MapView: Header collapse handler attached for vertical layout updates');
     
     // Handle sidebar toggle events and adjust map container width
     const handleSidebarToggle = (event) => {
@@ -1187,42 +1239,63 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
       const mapWrapper = document.getElementById('map-wrapper');
       
       if (mapContainer && event.detail) {
+        // Rate-limit updates to prevent excessive reflows
+        const now = Date.now();
+        if (now - lastUpdateTime < 200) {
+          // Queue update instead of executing immediately
+          clearTimeout(resizeTimeout);
+          resizeTimeout = setTimeout(() => handleSidebarToggle(event), 250);
+          return;
+        }
+        
+        lastUpdateTime = now;
+        
         const isCollapsed = event.detail.collapsed;
         const sidebarWidth = event.detail.width || 0;
         
-        // CRITICAL FIX: Check header state to maintain correct height when header is collapsed
-        if (headerCollapsed) {
-          // When header is collapsed, ensure map wrapper height stays at 100vh
-          mapWrapper.style.height = '100vh';
-          mapWrapper.style.top = '0';
+        // Build all style changes in a single object
+        const wrapperStyles = {};
+        const containerStyles = {};
+        const overlayStyles = {};
+        
+        // Set map height AND top position based on header state
+        const header = document.querySelector('header');
+        const headerHeight = header ? header.offsetHeight : 60;
+        const isHeaderCollapsed = header ? (header.offsetHeight < 50 || header.classList.contains('collapsed')) : false;
+        
+        if (isHeaderCollapsed) {
+          wrapperStyles.height = '100vh';
+          wrapperStyles.top = '0';
+          console.log('SidebarToggle: Setting map to full height and top=0');
         } else {
-          // When header is expanded, ensure correct positioning
-          const header = document.querySelector('header');
-          const headerHeight = header ? header.offsetHeight : 60;
-          mapWrapper.style.height = `calc(100vh - ${headerHeight}px)`;
-          mapWrapper.style.top = `${headerHeight}px`;
+          wrapperStyles.height = `calc(100vh - ${headerHeight}px)`;
+          wrapperStyles.top = `${headerHeight}px`;
+          console.log(`SidebarToggle: Setting map below header at ${headerHeight}px`);
         }
         
-        // Adjust map container width ONLY, based on sidebar state
+        // Set horizontal positioning based on sidebar state
         if (event.type === 'validationSidebarToggle' || event.type === 'detectionSidebarToggle' || event.type === 'detectionSidebarResizing') {
-          mapContainer.style.right = isCollapsed ? '0' : `${sidebarWidth}px`;
-          console.log(`MapView: Adjusting map container for ${event.type} - right: ${isCollapsed ? '0' : `${sidebarWidth}px`}`);
+          containerStyles.right = isCollapsed ? '0' : `${sidebarWidth}px`;
+          overlayStyles.right = isCollapsed ? '0' : `${sidebarWidth}px`;
         } else if (event.type === 'leftSidebarToggle') {
-          mapContainer.style.left = isCollapsed ? '0' : `${sidebarWidth}px`;
-          console.log(`MapView: Adjusting map container for ${event.type} - left: ${isCollapsed ? '0' : `${sidebarWidth}px`}`);
+          containerStyles.left = isCollapsed ? '0' : `${sidebarWidth}px`;
+          overlayStyles.left = isCollapsed ? '0' : `${sidebarWidth}px`;
         }
         
-        // Force immediate update and resize
+        // Apply all style changes in a single batch to minimize reflows
         requestAnimationFrame(() => {
-          // Force Google Maps to resize immediately
-          if (map.current && window.google && window.google.maps) {
-            window.google.maps.event.trigger(map.current, 'resize');
+          // Apply styles to wrapper and container
+          Object.assign(mapWrapper.style, wrapperStyles);
+          Object.assign(mapContainer.style, containerStyles);
+          
+          // Update overlay if it exists
+          if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
+            Object.assign(window._mlDetectionOverlay.div.style, overlayStyles);
           }
           
-          // Also update ML overlay if it exists
-          if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
-            window._mlDetectionOverlay.div.style.right = mapContainer.style.right;
-            window._mlDetectionOverlay.div.style.left = mapContainer.style.left;
+          // Trigger map resize ONCE after all DOM updates
+          if (map.current && window.google && window.google.maps) {
+            window.google.maps.event.trigger(map.current, 'resize');
           }
         });
       }
@@ -1233,31 +1306,123 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
     window.addEventListener('validationSidebarToggle', handleSidebarToggle);
     window.addEventListener('leftSidebarToggle', handleSidebarToggle);
     window.addEventListener('detectionSidebarToggle', handleSidebarToggle);
-    window.addEventListener('detectionSidebarResizing', handleSidebarToggle); // Add listener for sidebar resizing
-    window.addEventListener('headerCollapse', handleHeaderCollapse);
+    window.addEventListener('detectionSidebarResizing', handleSidebarToggle);
+    // headerCollapse listener already added above
     window.addEventListener('resize', handleResize);
     window.addEventListener('forceCloseObjectDetection', handleResize);
     window.addEventListener('forceCloseImageryPanel', handleResize);
     
-    // Set up ResizeObserver to monitor map container and header size changes
-    const resizeObserver = new ResizeObserver(() => {
-      handleResize();
-      
-      // Update sidebar positions based on header height
-      const sidebarElements = document.querySelectorAll('[id$="-sidebar"]');
+    // Add a manual trigger for the header collapse event to ensure initial layout is correct
+    setTimeout(() => {
+      console.log('MapView: Manually triggering header layout update');
+      const isHeaderCollapsed = document.querySelector('header')?.classList.contains('collapsed') || false;
+      window.dispatchEvent(new CustomEvent('headerCollapse', {
+        detail: { collapsed: isHeaderCollapsed }
+      }));
+    }, 500);
+    
+    // Add global header collapse detection function for direct DOM observation
+    // This provides a fallback mechanism in case events aren't dispatched properly
+    window.watchHeaderState = function() {
       const header = document.querySelector('header');
-      const headerHeight = header ? header.offsetHeight : 64;
+      if (!header) return;
       
-      sidebarElements.forEach(sidebar => {
-        if (sidebar) {
-          try {
-            sidebar.style.top = `${headerHeight}px`;
-          } catch (e) {
-            console.warn("Could not update sidebar position:", e);
+      // Create a MutationObserver to watch for class changes on the header
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.attributeName === 'class') {
+            const isCollapsed = header.classList.contains('collapsed');
+            console.log(`Header mutation observer: Header collapsed state changed to ${isCollapsed}`);
+            
+            // Dispatch custom event
+            window.dispatchEvent(new CustomEvent('headerCollapse', {
+              detail: { collapsed: isCollapsed }
+            }));
           }
+        });
+      });
+      
+      // Start observing
+      observer.observe(header, { attributes: true });
+      console.log('MapView: Global header state observer attached');
+      
+      return observer;
+    };
+    
+    // Start header observation
+    const headerObserver = window.watchHeaderState();
+    
+    // Set up ResizeObserver with debounce to prevent cascading updates
+    let observerThrottleTimeout;
+    const resizeObserver = new ResizeObserver((entries) => {
+      // Avoid handling multiple consecutive updates
+      if (observerThrottleTimeout) {
+        clearTimeout(observerThrottleTimeout);
+      }
+      
+      // Throttle observer updates
+      if (Date.now() - resizeHandlersRef.current.lastUpdateTime < 300) {
+        observerThrottleTimeout = setTimeout(() => {
+          updateLayoutFromObserver(entries);
+        }, 350);
+        return;
+      }
+      
+      updateLayoutFromObserver(entries);
+    });
+    
+    // Dedicated function to handle layout updates from observer
+    const updateLayoutFromObserver = (entries) => {
+      // Only process if not already in a layout update cycle
+      if (resizeHandlersRef.current.layoutUpdateCount > 3) {
+        console.log("Skipping observer update during active layout change");
+        return;
+      }
+      
+      // Check for header height changes
+      let headerChanged = false;
+      let headerHeight = 64;
+      
+      entries.forEach(entry => {
+        if (entry.target.tagName && entry.target.tagName.toLowerCase() === 'header') {
+          headerChanged = true;
+          headerHeight = entry.contentRect.height;
         }
       });
-    });
+      
+      // Update layout if header height changed
+      if (headerChanged) {
+        resizeHandlersRef.current.layoutUpdateCount++;
+        resizeHandlersRef.current.lastUpdateTime = Date.now();
+        
+        // Update sidebar positions in a single batch
+        const sidebarElements = document.querySelectorAll('[id$="-sidebar"]');
+        
+        requestAnimationFrame(() => {
+          // Update sidebars first
+          sidebarElements.forEach(sidebar => {
+            if (sidebar) {
+              try {
+                sidebar.style.top = `${headerHeight}px`;
+                if (headerHeight < 50) {
+                  sidebar.style.height = '100vh';
+                } else {
+                  sidebar.style.height = `calc(100vh - ${headerHeight}px)`;
+                }
+              } catch (e) {
+                console.warn("Could not update sidebar position:", e);
+              }
+            }
+          });
+          
+          // Then trigger map resize after sidebar updates
+          handleResize();
+        });
+      } else {
+        // Only handle resize for non-header changes
+        handleResize();
+      }
+    };
     
     // Observe the map container and header
     const mapContainer = document.getElementById('map-container');
@@ -1274,41 +1439,85 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
     handleResize();
     
     // Apply initial header state and adjust map container accordingly
+    // Use a more robust initialization sequence with staggered updates
     if (headerCollapsed !== undefined) {
       const mapWrapper = document.getElementById('map-wrapper');
       const mapContainer = document.getElementById('map-container');
       
       if (mapWrapper && mapContainer) {
-        // Let CSS handle the height based on header state without explicit positioning
-        if (headerCollapsed) {
-          mapWrapper.style.height = '100vh';
-        }
+        // Use a consistent initialization approach
+        const header = document.querySelector('header');
+        const headerHeight = header ? header.offsetHeight : 64;
+        const isCollapsed = headerHeight < 50 || headerCollapsed;
         
-        // Make sure map container properly fills its parent
-        mapContainer.style.position = 'absolute';
-        mapContainer.style.top = '0';
-        mapContainer.style.left = '0';
-        mapContainer.style.right = '0';
-        mapContainer.style.bottom = '0';
+        // Initialize with styles that include both height and top position based on header state
+        const initialStyles = {
+          mapWrapper: {
+            height: isCollapsed ? '100vh' : `calc(100vh - ${headerHeight}px)`,
+            top: isCollapsed ? '0' : `${headerHeight}px`
+          },
+          mapContainer: {
+            position: 'absolute',
+            top: '0',
+            left: '0',
+            right: '0',
+            bottom: '0',
+            height: '100%'
+          }
+        };
         
-        // Force resize after a delay to ensure map is properly initialized
-        setTimeout(handleResize, 100);
+        // Apply initial styles
+        Object.assign(mapWrapper.style, initialStyles.mapWrapper);
+        Object.assign(mapContainer.style, initialStyles.mapContainer);
+        
+        // Update sidebars as well
+        const sidebarElements = document.querySelectorAll('[id$="-sidebar"]');
+        sidebarElements.forEach(sidebar => {
+          if (sidebar) {
+            sidebar.style.top = isCollapsed ? '0' : `${headerHeight}px`;
+            sidebar.style.height = isCollapsed ? '100vh' : `calc(100vh - ${headerHeight}px)`;
+          }
+        });
+        
+        // Use a staggered initialization sequence to ensure proper map rendering
+        setTimeout(() => {
+          // First resize pass
+          if (map.current && window.google && window.google.maps) {
+            window.google.maps.event.trigger(map.current, 'resize');
+          }
+          
+          // Second resize pass after a delay
+          setTimeout(() => {
+            if (map.current && window.google && window.google.maps) {
+              window.google.maps.event.trigger(map.current, 'resize');
+            }
+          }, 500);
+        }, 250);
       }
     }
     
     // Clean up
     return () => {
-      clearTimeout(resizeTimeout);
+      // Clear timeouts using the reference to ensure we're clearing the right ones
+      if (resizeHandlersRef.current.resizeTimeout) {
+        clearTimeout(resizeHandlersRef.current.resizeTimeout);
+      }
+      if (observerThrottleTimeout) {
+        clearTimeout(observerThrottleTimeout);
+      }
+      
+      // Remove event listeners
       window.removeEventListener('validationQueueToggle', handleResize);
       window.removeEventListener('validationSidebarToggle', handleSidebarToggle);
       window.removeEventListener('leftSidebarToggle', handleSidebarToggle);
       window.removeEventListener('detectionSidebarToggle', handleSidebarToggle);
-      window.removeEventListener('detectionSidebarResizing', handleSidebarToggle); // Remove listener for sidebar resizing
+      window.removeEventListener('detectionSidebarResizing', handleSidebarToggle);
       window.removeEventListener('headerCollapse', handleHeaderCollapse);
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('forceCloseObjectDetection', handleResize);
       window.removeEventListener('forceCloseImageryPanel', handleResize);
       
+      // Disconnect observers
       if (mapContainer) {
         resizeObserver.unobserve(mapContainer);
       }
@@ -1317,9 +1526,119 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
         resizeObserver.unobserve(header);
       }
       
+      // Disconnect the resize observer
       resizeObserver.disconnect();
+      
+      // Disconnect header mutation observer if it exists
+      if (headerObserver && headerObserver.disconnect) {
+        headerObserver.disconnect();
+        console.log('MapView: Header observer disconnected');
+      }
+      
+      // Clean up global functions
+      if (window.watchHeaderState) {
+        delete window.watchHeaderState;
+      }
     };
-  }, [headerCollapsed]);
+  }, []); // Empty dependency array - only run once on mount
+  
+  // Super robust header collapse handler
+  useEffect(() => {
+    // Create a MutationObserver to directly watch the header for class changes
+    const setupHeaderObserver = () => {
+      const header = document.querySelector('header');
+      if (!header) {
+        setTimeout(setupHeaderObserver, 500);
+        return;
+      }
+      
+      console.log('OBSERVER: Setting up header mutation observer');
+      
+      // Define the observer callback
+      const headerObserver = new MutationObserver((mutations) => {
+        mutations.forEach(mutation => {
+          if (mutation.attributeName === 'class') {
+            const isCollapsed = header.classList.contains('collapsed');
+            console.log(`OBSERVER: Header class changed - collapsed: ${isCollapsed}`);
+            
+            // Update map wrapper height only - the header collapses upward
+            const mapWrapper = document.getElementById('map-wrapper');
+            if (mapWrapper) {
+              if (isCollapsed) {
+                // When collapsed, map should not change position but expand its height
+                const collapsedHeaderHeight = header.offsetHeight;
+                mapWrapper.style.height = `calc(100vh - ${collapsedHeaderHeight}px)`;
+                console.log(`OBSERVER: Setting map height to calc(100vh - ${collapsedHeaderHeight}px) when header is collapsed`);
+              } else {
+                // When expanded, map maintains its position below the expanded header
+                const expandedHeaderHeight = header.offsetHeight || 64;
+                mapWrapper.style.height = `calc(100vh - ${expandedHeaderHeight}px)`;
+                console.log(`OBSERVER: Setting map height to calc(100vh - ${expandedHeaderHeight}px) when header is expanded`);
+              }
+              
+              // Force resize after a short delay to ensure layout has settled
+              setTimeout(() => {
+                if (map.current && window.google && window.google.maps) {
+                  window.google.maps.event.trigger(map.current, 'resize');
+                  console.log('OBSERVER: Triggered Google Maps resize after header change');
+                }
+              }, 100);
+            }
+          }
+        });
+      });
+      
+      // Start observing
+      headerObserver.observe(header, { attributes: true });
+      
+      // Also set up a click handler on the collapse button as a backup
+      const collapseButton = header.querySelector('button[title*="header"]') || 
+                             header.querySelector('button[title*="ollapse"]') ||
+                             header.querySelector('button:has(svg)');
+      if (collapseButton) {
+        console.log('Found collapse button:', collapseButton.title || collapseButton.innerHTML.substring(0, 20));
+        collapseButton.addEventListener('click', () => {
+          console.log('Header collapse button clicked - will force map resize');
+          
+          // Get current header state
+          const isCurrentlyExpanded = !header.classList.contains('collapsed');
+          console.log(`Button clicked while header is ${isCurrentlyExpanded ? 'expanded' : 'collapsed'}`);
+          
+          // Wait for state to change, then update map
+          setTimeout(() => {
+            const isNowCollapsed = header.classList.contains('collapsed');
+            console.log(`After click, header is now ${isNowCollapsed ? 'collapsed' : 'expanded'}`);
+            
+            // Update map wrapper height
+            const mapWrapper = document.getElementById('map-wrapper');
+            if (mapWrapper) {
+              const headerHeight = header.offsetHeight;
+              mapWrapper.style.height = `calc(100vh - ${headerHeight}px)`;
+              console.log(`BUTTON: Setting map height to calc(100vh - ${headerHeight}px)`);
+              
+              // Trigger resize
+              if (map.current && window.google && window.google.maps) {
+                window.google.maps.event.trigger(map.current, 'resize');
+                console.log('BUTTON: Forced map resize after collapse button click');
+              }
+            }
+          }, 100);
+        });
+      }
+      
+      return headerObserver;
+    };
+    
+    // Start the process
+    const observer = setupHeaderObserver();
+    
+    return () => {
+      // Clean up observer
+      if (observer) {
+        observer.disconnect();
+      }
+    };
+  }, []);
   
   // Listen for viewGeminiResponse events
   useEffect(() => {
@@ -1570,7 +1889,7 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
       window.removeEventListener('enterValidationMode', handleEnterValidationMode);
       window.removeEventListener('updateVisualizationPath', handleVisualizationPathUpdate);
     };
-  }, [isLoaded, is3DMode, headerCollapsed, validationData]);
+  }, [isLoaded, is3DMode]); // Remove headerCollapsed and validationData dependencies
   
   // Expose map and methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -2219,9 +2538,27 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
     }
   }));
   
+  // Use this effect to set initial map wrapper height based on header
+  useEffect(() => {
+    // Ensure this runs after DOM is fully available
+    setTimeout(() => {
+      const header = document.querySelector('header');
+      const mapWrapper = document.getElementById('map-wrapper');
+      
+      if (header && mapWrapper) {
+        const headerHeight = header.offsetHeight || 64;
+        const isCollapsed = header.classList.contains('collapsed');
+        
+        console.log(`Initial header height: ${headerHeight}px, collapsed: ${isCollapsed}`);
+        mapWrapper.style.height = `calc(100vh - ${headerHeight}px)`;
+        console.log(`INITIAL: Setting map height to calc(100vh - ${headerHeight}px)`);
+      }
+    }, 100);
+  }, []);
+
   return (
     <ErrorBoundary componentName="MapContainer">
-      <div className="relative w-full h-full" id="map-wrapper">
+      <div className="relative w-full overflow-hidden" id="map-wrapper" style={{ height: 'calc(100vh - 64px)' }}>
         {/* MLOverlayInitializer - Always render this to ensure proper Google Maps integration */}
         <MLOverlayInitializer />
         
