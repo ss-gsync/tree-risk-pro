@@ -22,6 +22,14 @@ import numpy as np
 import cv2
 import torch
 from PIL import Image
+
+# Minimal PyTorch compatibility patch - only add missing get_default_device function
+if not hasattr(torch, 'get_default_device'):
+    def get_default_device():
+        return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    torch.get_default_device = get_default_device
+
+# PyTorch imports
 import uvicorn
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -126,78 +134,14 @@ class GroundedSAMServer:
                     logger.error(f"GroundingDINO weights not found at {grounding_dino_weights_path}")
                     return False
                 
-                # Load model
+                # Load model using standard DEV method
                 try:
-                    # Try the original method first
-                    args = SLConfig.fromfile(grounding_dino_config_path)
-                    args.device = self.device
-                    self.grounding_dino = load_grounding_dino(grounding_dino_weights_path, args, self.device)
-                    logger.info("Successfully loaded GroundingDINO with standard method")
-                except OSError as e:
-                    if "Only py/yml/yaml/json type are supported now!" in str(e):
-                        logger.info("Using alternative config loading method for GroundingDINO...")
-                        # Manually create args from the config file
-                        import sys
-                        import importlib.util
-                        
-                        # Import the config as a module
-                        spec = importlib.util.spec_from_file_location("config", grounding_dino_config_path)
-                        config = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(config)
-                        
-                        # Create a dict-like object with the config values
-                        class Args:
-                            def __init__(self, **kwargs):
-                                self.__dict__.update(kwargs)
-                            
-                            def __contains__(self, item):
-                                return item in self.__dict__
-                        
-                        # Extract all variables from the config module
-                        config_dict = {k: v for k, v in vars(config).items() if not k.startswith('__')}
-                        args = Args(**config_dict)
-                        args.device = self.device
-                        
-                        # Now try loading with our custom args
-                        from groundingdino.models import build_model
-                        from groundingdino.util.utils import clean_state_dict
-                        import torch
-                        
-                        # Add a patch for missing torch.get_default_device
-                        if not hasattr(torch, 'get_default_device'):
-                            import transformers.modeling_utils
-                            # Monkey patch the function that uses get_default_device
-                            original_func = transformers.modeling_utils.get_torch_context_manager_or_global_device
-                            def patched_func():
-                                try:
-                                    return original_func()
-                                except AttributeError:
-                                    return self.device
-                            transformers.modeling_utils.get_torch_context_manager_or_global_device = patched_func
-                            logger.info("Applied patch for missing torch.get_default_device")
-                        
-                        # Now build the model with more careful device handling
-                        try:
-                            # First load the model on CPU to avoid meta tensor issues
-                            with torch.device('cpu'):
-                                model = build_model(args)
-                                checkpoint = torch.load(grounding_dino_weights_path, map_location='cpu')
-                                model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
-                                model.eval()
-                                
-                            # Then move to desired device after initialization
-                            model = model.to(self.device)
-                            logger.info(f"Successfully loaded GroundingDINO model to {self.device}")
-                            self.grounding_dino = model
-                        except Exception as e:
-                            logger.error(f"Error loading GroundingDINO model: {str(e)}")
-                            # If we failed to load GroundingDINO, we'll try to continue with just SAM
-                            # This will limit functionality but is better than complete failure
-                            logger.warning("Continuing without GroundingDINO model - some functionality will be limited")
-                            self.grounding_dino = None
-                    else:
-                        # If it's some other error, re-raise it
-                        raise
+                    # Use the exact DEV standard method with correct parameters
+                    self.grounding_dino = load_grounding_dino(grounding_dino_config_path, grounding_dino_weights_path, self.device)
+                    logger.info("Successfully loaded GroundingDINO with standard DEV method")
+                except Exception as e:
+                    logger.error(f"Failed to load GroundingDINO with standard method: {str(e)}")
+                    self.grounding_dino = None
                 
                 # Load SAM
                 logger.info("Loading SAM model...")
@@ -309,10 +253,9 @@ class GroundedSAMServer:
             
             # Define text prompt for tree detection aligned with DetectionCategories.jsx
             text_prompt = "tree. healthy tree. hazardous tree. dead tree. low canopy tree. pest disease tree. flood prone tree. utility conflict tree. structural hazard tree. fire risk tree."
-            # Slightly increase thresholds to reduce false positives (like houses being detected as trees)
-            # while still maintaining good detection sensitivity
-            box_threshold = max(0.20, box_threshold)  # Use at least 0.20 for box threshold 
-            text_threshold = max(0.18, text_threshold)  # Use at least 0.18 for text threshold
+            # Optimized thresholds for better detection sensitivity while maintaining quality
+            box_threshold = max(0.18, box_threshold)  # Use at least 0.18 for box threshold 
+            text_threshold = max(0.20, text_threshold)  # Use at least 0.20 for text threshold
             logger.info(f"Using detection thresholds: box_threshold={box_threshold}, text_threshold={text_threshold}")
             logger.info(f"Using prompt with category prefixes: {text_prompt}")
             
@@ -817,7 +760,7 @@ async def detect_trees(
     background_tasks: BackgroundTasks,
     job_id: Optional[str] = Form(None),
     image: UploadFile = File(...),
-    confidence_threshold: Optional[float] = Form(default=0.2),
+    confidence_threshold: Optional[float] = Form(default=0.18),
     with_segmentation: Optional[bool] = Form(default=True)
 ):
     """

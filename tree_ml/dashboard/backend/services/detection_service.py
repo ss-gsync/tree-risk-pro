@@ -210,10 +210,10 @@ class DetectionService:
         self.zarr_dir = ZARR_DIR
         
         # Create all required directories
-        os.makedirs(self.ml_dir, exist_ok=True)
-        os.makedirs(self.zarr_dir, exist_ok=True)
+        os.makedirs(self.ml_dir, exist_ok=True, mode=0o755)
+        os.makedirs(self.zarr_dir, exist_ok=True, mode=0o755)
         validation_dir = os.path.join(self.zarr_dir, 'validation')
-        os.makedirs(validation_dir, exist_ok=True)
+        os.makedirs(validation_dir, exist_ok=True, mode=0o755)
         
         # Create empty validation queue file if it doesn't exist
         validation_queue_path = os.path.join(self.zarr_dir, 'validation_queue.json')
@@ -651,7 +651,16 @@ class DetectionService:
                 # Job ID already includes the correct ml_ prefix
                 ml_dir = os.path.join(self.ml_dir, job_id)
                 ml_response_dir = os.path.join(ml_dir, "ml_response")
-            os.makedirs(ml_response_dir, exist_ok=True)
+            os.makedirs(ml_response_dir, exist_ok=True, mode=0o755)
+            
+            # Fix ownership to ss:ss so model server can write to these directories
+            import subprocess
+            try:
+                subprocess.run(['chown', '-R', 'ss:ss', os.path.dirname(ml_response_dir)], check=True)
+                logger.info(f"Set ownership of {os.path.dirname(ml_response_dir)} to ss:ss")
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Could not change ownership of {os.path.dirname(ml_response_dir)}: {e}")
+                
             logger.info(f"Using ML response directory: {ml_response_dir}")
             
             # Create pixel to lat/lon mapping
@@ -687,7 +696,7 @@ class DetectionService:
                 # Pass the image array for processing - the ModelService only accepts numpy arrays
                 results = self.detect_trees(
                     image=image_array,
-                    confidence_threshold=0.3,
+                    confidence_threshold=0.18,
                     with_segmentation=True,
                     job_id=job_id
                 )
@@ -811,7 +820,15 @@ class DetectionService:
             # Create ML response directory
             ml_dir = os.path.join(self.ml_dir, job_id)
             ml_response_dir = os.path.join(ml_dir, "ml_response")
-            os.makedirs(ml_response_dir, exist_ok=True)
+            os.makedirs(ml_response_dir, exist_ok=True, mode=0o755)
+            
+            # Fix ownership to ss:ss so model server can write to these directories
+            import subprocess
+            try:
+                subprocess.run(['chown', '-R', 'ss:ss', ml_dir], check=True)
+                logger.info(f"Set ownership of {ml_dir} to ss:ss")
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Could not change ownership of {ml_dir}: {e}")
             
             # Run ML detection using the existing detect_trees_from_canvas_capture method
             detection_results = await self.detect_trees_from_canvas_capture(
@@ -910,8 +927,16 @@ class DetectionService:
             # STEP 2: Create directories - use job_id directly
             ml_dir = os.path.join(self.ml_dir, job_id)
             ml_response_dir = os.path.join(ml_dir, "ml_response")
-            os.makedirs(ml_dir, exist_ok=True)
-            os.makedirs(ml_response_dir, exist_ok=True)
+            os.makedirs(ml_dir, exist_ok=True, mode=0o755)
+            os.makedirs(ml_response_dir, exist_ok=True, mode=0o755)
+            
+            # Fix ownership to ss:ss so model server can write to these directories
+            import subprocess
+            try:
+                subprocess.run(['chown', '-R', 'ss:ss', ml_dir], check=True)
+                logger.info(f"Set ownership of {ml_dir} to ss:ss")
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Could not change ownership of {ml_dir}: {e}")
             
             # STEP 3: Extract timestamp from job_id for satellite filename - SINGLE SOURCE OF TRUTH
             timestamp = job_id.split('_')[1]  # Use exact timestamp from job_id
