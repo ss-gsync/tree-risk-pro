@@ -94,33 +94,50 @@ const DetectionSidebar = ({
     const newCollapsedState = !collapsed;
     setCollapsed(newCollapsedState);
     
-    // Adjust the map container to prevent grey area
-    const mapContainer = document.querySelector('#map-container');
-    if (mapContainer) {
-      mapContainer.style.right = newCollapsedState ? '0px' : `${width}px`;
-    }
-    
-    // Dispatch both validationSidebarToggle (for legacy support) and detectionSidebarToggle events
+    // Create detailed event payload with all relevant information
     const eventDetail = {
       collapsed: newCollapsedState,
       source: 'tree_detection',
-      width: newCollapsedState ? 0 : width
+      width: newCollapsedState ? 0 : width,
+      headerCollapsed: headerCollapsed, // Include header state
+      timestamp: Date.now()
     };
     
-    // Legacy event
-    window.dispatchEvent(new CustomEvent('validationSidebarToggle', {
-      detail: eventDetail
-    }));
+    console.log(`DetectionSidebar: Toggling collapse to ${newCollapsedState ? 'collapsed' : 'expanded'} with width ${width}px`);
     
-    // New specific event
-    window.dispatchEvent(new CustomEvent('detectionSidebarToggle', {
-      detail: eventDetail
-    }));
-    
-    // Force window resize to update map rendering
-    setTimeout(() => {
-      window.dispatchEvent(new Event('resize'));
-    }, 50);
+    // Batch these operations for better performance
+    requestAnimationFrame(() => {
+      // 1. First adjust the map container directly for immediate visual feedback
+      const mapContainer = document.querySelector('#map-container');
+      if (mapContainer) {
+        mapContainer.style.right = newCollapsedState ? '0px' : `${width}px`;
+      }
+      
+      // 2. Then dispatch both events for components to handle
+      // Legacy event
+      window.dispatchEvent(new CustomEvent('validationSidebarToggle', {
+        detail: eventDetail
+      }));
+      
+      // New specific event
+      window.dispatchEvent(new CustomEvent('detectionSidebarToggle', {
+        detail: eventDetail
+      }));
+      
+      // 3. Force Google Maps to recalculate its size
+      const mapInstance = window.googleMapsInstance || window._googleMap;
+      if (mapInstance && window.google && window.google.maps) {
+        setTimeout(() => {
+          window.google.maps.event.trigger(mapInstance, 'resize');
+          console.log('DetectionSidebar: Triggered Google Maps resize after toggle');
+        }, 100);
+      }
+      
+      // 4. Also dispatch a general resize event
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 150);
+    });
   };
   
   // Get visible trees
@@ -588,8 +605,63 @@ const DetectionSidebar = ({
     }));
   }, []);
   
-  // Adjust top position based on header state
-  const sidebarTopPosition = headerCollapsed ? '0px' : '60px';
+  // Calculate top position based on header state
+  const [sidebarTopPosition, setSidebarTopPosition] = useState(headerCollapsed ? '0px' : '60px');
+  
+  // Update sidebar position when header state changes
+  useEffect(() => {
+    const header = document.querySelector('header');
+    const headerHeight = header ? header.offsetHeight : (headerCollapsed ? 0 : 60);
+    
+    // Update position based on current header state
+    setSidebarTopPosition(headerCollapsed ? '0px' : `${headerHeight}px`);
+    
+    // Apply position directly to DOM element for immediate effect
+    const sidebarElement = document.querySelector('.detection-sidebar');
+    if (sidebarElement) {
+      sidebarElement.style.top = headerCollapsed ? '0px' : `${headerHeight}px`;
+      sidebarElement.style.height = headerCollapsed ? '100vh' : `calc(100vh - ${headerHeight}px)`;
+      console.log(`DetectionSidebar: Applied initial header state adjustments: top=${headerCollapsed ? '0px' : `${headerHeight}px`}`);
+    }
+    
+    // Listen for header collapse events
+    const handleHeaderCollapse = (event) => {
+      const isCollapsed = event.detail.collapsed;
+      const header = document.querySelector('header');
+      const headerHeight = header ? header.offsetHeight : (isCollapsed ? 0 : 60);
+      
+      // Update sidebar position
+      setSidebarTopPosition(isCollapsed ? '0px' : `${headerHeight}px`);
+      
+      // Apply position directly to DOM element for immediate effect
+      const sidebarElement = document.querySelector('.detection-sidebar');
+      if (sidebarElement) {
+        sidebarElement.style.top = isCollapsed ? '0px' : `${headerHeight}px`;
+        sidebarElement.style.height = isCollapsed ? '100vh' : `calc(100vh - ${headerHeight}px)`;
+      }
+      
+      // Force map container to resize
+      const mapContainer = document.getElementById('map-container');
+      if (mapContainer) {
+        // Trigger resize event on map container
+        window.dispatchEvent(new Event('resize'));
+        
+        // Force Google Maps to recalculate its size
+        const mapInstance = window.googleMapsInstance || window._googleMap;
+        if (mapInstance && window.google && window.google.maps) {
+          window.google.maps.event.trigger(mapInstance, 'resize');
+        }
+      }
+      
+      console.log(`DetectionSidebar: Adjusted for header ${isCollapsed ? 'collapse' : 'expand'}, top=${isCollapsed ? '0px' : `${headerHeight}px`}`);
+    };
+    
+    window.addEventListener('headerCollapse', handleHeaderCollapse);
+    
+    return () => {
+      window.removeEventListener('headerCollapse', handleHeaderCollapse);
+    };
+  }, [headerCollapsed]);
   
   // Calculate risk level color based on risk level
   const getRiskLevelColor = (riskLevel) => {
@@ -1717,29 +1789,31 @@ const DetectionSidebar = ({
             const newWidth = Math.max(300, Math.min(600, startWidth - (moveEvent.clientX - startX)));
             setWidth(newWidth);
             
-            // Update map container size
+            // Update map container size immediately for smoother resizing
             const mapContainer = document.querySelector('#map-container');
             if (mapContainer) {
               mapContainer.style.right = `${newWidth}px`;
             }
             
-            // Update badge position - call our enhanced function
+            // Update badge position
             updateBadgePosition(newWidth);
             
-            // Also dispatch both events during resize for other components
+            // Force immediate Google Maps resize for smoother resizing
+            const mapInstance = window.googleMapsInstance || window._googleMap;
+            if (mapInstance && window.google && window.google.maps) {
+              window.google.maps.event.trigger(mapInstance, 'resize');
+            }
+            
+            // Dispatch resize event for real-time updates
             const eventDetail = { 
               width: newWidth,
               collapsed: false,
-              source: 'detection_sidebar_resize'
+              source: 'detection_sidebar_resize',
+              headerCollapsed: headerCollapsed
             };
             
-            // New specific event for real-time resizing
+            // Dispatch event for real-time resizing
             window.dispatchEvent(new CustomEvent('detectionSidebarResizing', {
-              detail: eventDetail
-            }));
-            
-            // Also dispatch the toggle event so the MapView can react to the width change
-            window.dispatchEvent(new CustomEvent('detectionSidebarToggle', {
               detail: eventDetail
             }));
           };
@@ -1755,7 +1829,7 @@ const DetectionSidebar = ({
               badge.style.transition = 'right 0.2s ease'; // Re-enable transitions after resize
             }
             
-            // Force Google Maps to recalculate its size
+            // Force map resize
             const mapInstance = window.googleMapsInstance || window._googleMap;
             if (mapInstance && window.google && window.google.maps) {
               window.google.maps.event.trigger(mapInstance, 'resize');
@@ -1764,20 +1838,14 @@ const DetectionSidebar = ({
             // Force resize to ensure map redraws correctly
             window.dispatchEvent(new Event('resize'));
             
-            // Dispatch final event to notify other components of the sidebar width change
-            const finalEventDetail = {
-              width: width,
-              collapsed: false,
-              source: 'detection_sidebar_resize_complete'
-            };
-            
-            window.dispatchEvent(new CustomEvent('detectionSidebarResized', {
-              detail: finalEventDetail
-            }));
-            
-            // Also dispatch the toggle event for MapView to handle
+            // Final notification about completed resize
             window.dispatchEvent(new CustomEvent('detectionSidebarToggle', {
-              detail: finalEventDetail
+              detail: {
+                width: width,
+                collapsed: false,
+                source: 'detection_sidebar_resize_complete',
+                headerCollapsed: headerCollapsed
+              }
             }));
           };
           
@@ -1791,29 +1859,45 @@ const DetectionSidebar = ({
         <div 
           className="fixed right-0 top-1/2 transform -translate-y-1/2 bg-white shadow-md rounded-l-md cursor-pointer z-30 transition-all hover:bg-blue-50"
           onClick={() => {
-            // When clicking to expand the sidebar, make sure the map container resizes properly
-            const mapContainer = document.querySelector('#map-container');
-            if (mapContainer) {
-              // First update the map container immediately
-              mapContainer.style.right = `${width}px`;
+            console.log('DetectionSidebar: Expanding sidebar from collapsed indicator');
+            
+            // When clicking to expand the sidebar, make sure the map resizes properly
+            // Use requestAnimationFrame for smoother visual transitions
+            requestAnimationFrame(() => {
+              // 1. First update the map container immediately
+              const mapContainer = document.querySelector('#map-container');
+              if (mapContainer) {
+                mapContainer.style.right = `${width}px`;
+                console.log(`DetectionSidebar: Set map container right to ${width}px`);
+              }
               
-              // Then toggle the collapsed state which will dispatch events
+              // 2. Get map wrapper and adjust based on header state
+              const mapWrapper = document.getElementById('map-wrapper');
+              const header = document.querySelector('header');
+              if (mapWrapper && header) {
+                const headerHeight = header.offsetHeight;
+                if (!headerCollapsed) {
+                  mapWrapper.style.height = `calc(100vh - ${headerHeight}px)`;
+                  mapWrapper.style.top = `${headerHeight}px`;
+                  console.log(`DetectionSidebar: Adjusted map wrapper for expanded header: height calc(100vh - ${headerHeight}px), top ${headerHeight}px`);
+                }
+              }
+              
+              // 3. Then toggle the collapsed state which will dispatch events
               toggleCollapse();
               
-              // Force Google Maps to recalculate its size
+              // 4. Force Google Maps to recalculate its size with a slight delay
               setTimeout(() => {
                 const mapInstance = window.googleMapsInstance || window._googleMap;
                 if (mapInstance && window.google && window.google.maps) {
                   window.google.maps.event.trigger(mapInstance, 'resize');
+                  console.log('DetectionSidebar: Triggered Google Maps resize after expanding');
                 }
                 
                 // Also dispatch a resize event
                 window.dispatchEvent(new Event('resize'));
-              }, 100);
-            } else {
-              // Just toggle if no map container found
-              toggleCollapse();
-            }
+              }, 150);
+            });
           }}
           style={{ top: `calc(50% + ${headerCollapsed ? '0px' : '30px'})` }}
         >

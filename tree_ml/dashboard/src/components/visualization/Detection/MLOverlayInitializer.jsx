@@ -326,9 +326,69 @@ const MLOverlayInitializer = () => {
         window.mlDetectionData = window._savedMlDetectionData;
       }
       
+      // Ensure we have the current header state to properly size and position the overlay
+      const header = document.querySelector('header');
+      const isHeaderCollapsed = header ? (header.offsetHeight < 50 || header.classList.contains('collapsed')) : true;
+      console.log(`MLOverlayInitializer: Current header state: ${isHeaderCollapsed ? 'collapsed' : 'expanded'}`);
+      
+      // Get current map container dimensions for proper sizing
+      const mapContainer = document.getElementById('map-container');
+      const mapWrapper = document.getElementById('map-wrapper');
+      
       // Make overlay visible if it exists but is hidden
       if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
         window._mlDetectionOverlay.div.style.display = 'block';
+        
+        // CRITICAL FIX: Get map container dimensions and match exactly
+        const mapContainer = document.getElementById('map-container');
+        if (mapContainer) {
+          const rect = mapContainer.getBoundingClientRect();
+          console.log(`MLOverlayInitializer: Detection trigger - Map container dimensions: ${rect.width}x${rect.height}, top: ${rect.top}`);
+          
+          // Set the overlay to match the map container exactly
+          window._mlDetectionOverlay.div.style.width = `${rect.width}px`;
+          window._mlDetectionOverlay.div.style.height = `${rect.height}px`;
+          window._mlDetectionOverlay.div.style.top = `${rect.top}px`;
+          window._mlDetectionOverlay.div.style.left = `${rect.left}px`;
+          window._mlDetectionOverlay.div.style.position = 'fixed';
+        } else {
+          // Fallback if we can't get map container dimensions
+          if (isHeaderCollapsed) {
+            console.log('MLOverlayInitializer: Header is collapsed, adjusting overlay size to fill viewport');
+            window._mlDetectionOverlay.div.style.height = '100vh';
+            window._mlDetectionOverlay.div.style.top = '0';
+          } else {
+            console.log('MLOverlayInitializer: Header is expanded, adjusting overlay position below header');
+            const headerHeight = header ? header.offsetHeight : 60;
+            window._mlDetectionOverlay.div.style.height = `calc(100vh - ${headerHeight}px)`;
+            window._mlDetectionOverlay.div.style.top = `${headerHeight}px`;
+          }
+        }
+        
+        // Force immediate redraw to ensure proper sizing and positioning
+        if (window._mlDetectionOverlay && window._mlDetectionOverlay.draw) {
+          try {
+            window._mlDetectionOverlay.draw();
+            console.log('MLOverlayInitializer: Forced overlay redraw after detection trigger');
+          } catch (e) {
+            console.error('MLOverlayInitializer: Error redrawing overlay', e);
+          }
+        }
+          
+        // Force Google Maps to resize for proper alignment
+        if (window.google && window.google.maps) {
+          const mapInstance = window.map || window.googleMapsInstance || window._googleMap;
+          if (mapInstance) {
+            window.google.maps.event.trigger(mapInstance, 'resize');
+            console.log('MLOverlayInitializer: Forced Google Maps resize after detection trigger');
+          }
+        }
+      } else {
+        // If no overlay exists yet, we'll need to initialize it correctly once created
+        console.log('MLOverlayInitializer: No existing overlay, will apply sizing on creation');
+        
+        // Store header state globally for detection creation
+        window.headerCollapsedForDetection = isHeaderCollapsed;
       }
     };
     
@@ -544,6 +604,78 @@ const MLOverlayInitializer = () => {
     const cleanupInitialization = initializeWithExistingData();
     handlersRef.current.cleanupInitialization = cleanupInitialization;
     
+    // Add map resize listener to ensure overlay is properly positioned
+    const handleMapResize = (event) => {
+      if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
+        // Get the map container dimensions to match exactly
+        const mapContainer = document.getElementById('map-container');
+        const mapWrapper = document.getElementById('map-wrapper');
+        
+        // Check if this event is a header collapse event
+        const isHeaderEvent = event && event.type === 'headerCollapse';
+        
+        // Get header state information
+        const header = document.querySelector('header');
+        const isHeaderCollapsed = isHeaderEvent 
+          ? event.detail.collapsed 
+          : (header ? (header.offsetHeight < 50 || header.classList.contains('collapsed')) : false);
+        
+        // CRITICAL FIX: Get correct right value from sidebar position
+        let rightOffset = '0px';
+        const detectionSidebar = document.querySelector('.detection-sidebar');
+        if (detectionSidebar && window.getComputedStyle(detectionSidebar).display !== 'none') {
+          const sidebarWidth = detectionSidebar.offsetWidth;
+          rightOffset = `${sidebarWidth}px`;
+        }
+        
+        // CRITICAL FIX: Match the overlay size and position exactly to the map container
+        if (mapContainer) {
+          const rect = mapContainer.getBoundingClientRect();
+          const containerStyle = window.getComputedStyle(mapContainer);
+          console.log(`MLOverlayInitializer: Map container dimensions: ${rect.width}x${rect.height}, top: ${rect.top}`);
+          
+          // Set the overlay to match the map container exactly
+          window._mlDetectionOverlay.div.style.width = containerStyle.width;
+          window._mlDetectionOverlay.div.style.height = containerStyle.height;
+          window._mlDetectionOverlay.div.style.top = `${rect.top}px`;
+          window._mlDetectionOverlay.div.style.left = `${rect.left}px`;
+          window._mlDetectionOverlay.div.style.right = containerStyle.right || rightOffset;
+          window._mlDetectionOverlay.div.style.position = 'fixed';
+        } else {
+          // Fallback if we can't get map container dimensions
+          if (isHeaderCollapsed) {
+            // When header is collapsed, we need to ensure the overlay covers the full viewport height
+            window._mlDetectionOverlay.div.style.height = '100vh';
+            window._mlDetectionOverlay.div.style.top = '0';
+            window._mlDetectionOverlay.div.style.right = rightOffset;
+          } else {
+            // When header is expanded, position the overlay below the header
+            const headerHeight = header ? header.offsetHeight : 60;
+            window._mlDetectionOverlay.div.style.height = `calc(100vh - ${headerHeight}px)`;
+            window._mlDetectionOverlay.div.style.top = `${headerHeight}px`;
+            window._mlDetectionOverlay.div.style.right = rightOffset;
+          }
+        }
+        
+        // Force the overlay to redraw immediately
+        try {
+          window._mlDetectionOverlay.draw();
+          console.log('MLOverlayInitializer: Forced overlay redraw on map resize');
+        } catch (e) {
+          console.error('MLOverlayInitializer: Error redrawing overlay on resize', e);
+        }
+      }
+    };
+    
+    // Listen for both general resize, sidebar toggle, and header collapse events
+    window.addEventListener('resize', handleMapResize);
+    window.addEventListener('detectionSidebarToggle', handleMapResize);
+    window.addEventListener('detectionSidebarResizing', handleMapResize);
+    window.addEventListener('headerCollapse', handleMapResize); // Add listener for header collapse events
+    
+    // Store handler for cleanup
+    handlersRef.current.handleMapResize = handleMapResize;
+    
     // Event listener for visibility toggle
     window.addEventListener('mlOverlaySettingsChanged', handleOverlaySettingsChange);
     
@@ -636,6 +768,12 @@ const MLOverlayInitializer = () => {
     return () => {
       window.removeEventListener('mlOverlaySettingsChanged', handlersRef.current.handleOverlaySettingsChange);
       window.removeEventListener('detectionDataLoaded', handlersRef.current.handleDetectionDataUpdate);
+      
+      // Clean up map resize listeners
+      window.removeEventListener('resize', handlersRef.current.handleMapResize);
+      window.removeEventListener('detectionSidebarToggle', handlersRef.current.handleMapResize);
+      window.removeEventListener('detectionSidebarResizing', handlersRef.current.handleMapResize);
+      window.removeEventListener('headerCollapse', handlersRef.current.handleMapResize);
       
       // Call the cleanup function from initializeWithExistingData
       if (typeof handlersRef.current.cleanupInitialization === 'function') {
