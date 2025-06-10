@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { Search, Home, Crosshair, Filter, MapPin, Download, Target, Box, Map, Image, Layers } from 'lucide-react';
+import { Search, Home, Crosshair, Filter, MapPin, Download, Target, Box, Map, Image, Layers, Grid } from 'lucide-react';
 import { setMapView } from './mapSlice';
 import { DetectionService } from '../../../services/api/apiService';
 import { TreeService } from '../../../services/api/apiService';
@@ -31,7 +31,7 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
   const [mapLoaded, setMapLoaded] = useState(false);
   const [treeSpeciesList, setTreeSpeciesList] = useState([]);
   const [is3DMode, setIs3DMode] = useState(false); // Start in 2D mode by default
-  const [is3DSupported, setIs3DSupported] = useState(false);
+  const [is3DSupported, setIs3DSupported] = useState(true); // Default to true to enable the button
   const [exportStatus, setExportStatus] = useState(null);
   const [isExporting, setIsExporting] = useState(false);
   // Get saved map type from localStorage or default to hybrid
@@ -162,17 +162,35 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
     };
   }, [mapRef]);
   
-  // Listen for map mode changes
+  // Listen for map mode changes and initialize window.is3DModeActive if needed
   useEffect(() => {
+    // Initialize global state if not already set
+    if (window.is3DModeActive === undefined) {
+      window.is3DModeActive = false;
+    }
+    
     const handleMapModeChange = (event) => {
       const { mode } = event.detail;
       setIs3DMode(mode === '3D');
+      
+      // Ensure global state is updated
+      window.is3DModeActive = (mode === '3D');
+      console.log(`Map mode changed: ${mode}, window.is3DModeActive=${window.is3DModeActive}`);
+    };
+    
+    // Also listen for the 3D toggle event to ensure our local state stays in sync
+    const handle3DToggleRequest = (event) => {
+      const { show3D } = event.detail;
+      console.log(`3D toggle request received: show3D=${show3D}`);
+      setIs3DMode(show3D);
     };
     
     window.addEventListener('mapModeChanged', handleMapModeChange);
+    window.addEventListener('requestToggle3DViewType', handle3DToggleRequest);
     
     return () => {
       window.removeEventListener('mapModeChanged', handleMapModeChange);
+      window.removeEventListener('requestToggle3DViewType', handle3DToggleRequest);
     };
   }, []);
   
@@ -1575,13 +1593,11 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
   // Enhanced toggle between 2D and 3D views with improved state management
   const toggle3DMode = () => {
     ensureMapView(() => {
-      console.log(`Toggling from ${is3DMode ? '3D' : '2D'} to ${!is3DMode ? '3D' : '2D'} mode`);
+      console.log(`MAPCONTROLS: Toggling from ${is3DMode ? '3D' : '2D'} to ${!is3DMode ? '3D' : '2D'} mode`);
       
-      // Save current map type for when we return to 2D
-      const currentMapTypeBeforeToggle = mapType;
-      
-      // First, toggle local state for UI indication
-      setIs3DMode(!is3DMode);
+      // Toggle local state for UI indication immediately
+      const newMode = !is3DMode;
+      setIs3DMode(newMode);
       
       // Check for the 3D API type from settings
       const savedSettings = localStorage.getItem('treeRiskDashboardSettings');
@@ -1596,45 +1612,56 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
         }
       }
       
-      // If switching TO 3D, remember the current 2D state
-      if (!is3DMode) {
-        localStorage.setItem('lastMapTypeBefore3D', mapType);
-        console.log(`Saving current 2D map type (${mapType}) before switching to 3D`);
-      }
-      // If switching FROM 3D to 2D, restore the saved state or default to hybrid
-      else {
-        const savedMapType = localStorage.getItem('lastMapTypeBefore3D') || 'hybrid';
-        console.log(`Restoring 2D map type to ${savedMapType} after exiting 3D`);
-        
-        // Update state and button text for hybrid/satellite toggle
-        setMapType(savedMapType);
-        
-        // After a brief delay to let the map initialize, apply the saved map type
-        setTimeout(() => {
-          const btn = document.getElementById('hybrid-satellite-button');
-          const spanElement = btn ? btn.querySelector('span') : null;
-          
-          if (spanElement) {
-            if (savedMapType === 'satellite') {
-              spanElement.textContent = 'Satellite';
-            } else if (savedMapType === 'hybrid' || savedMapType === 'map') {
-              spanElement.textContent = 'Hybrid';
-            }
-          }
-        }, 100);
-      }
-      
-      // Dispatch an event that App.jsx will listen for
+      // Dispatch a clear event to App.jsx for immediate handling
       const toggleEvent = new CustomEvent('requestToggle3DViewType', {
         detail: {
-          show3D: !is3DMode,
-          map3DApi: map3DApi, // Include the 3D API type from settings
-          previousMapType: currentMapTypeBeforeToggle // Pass the previous map type
+          show3D: newMode,
+          map3DApi: map3DApi,
+          immediate: true  // Flag to indicate immediate loading is required
         }
       });
       window.dispatchEvent(toggleEvent);
       
-      console.log(`Toggling 3D view with API: ${map3DApi}`);
+      // Set global flag for other components
+      window.is3DModeActive = newMode;
+      console.log(`Set global is3DModeActive flag to ${newMode}`);
+      
+      // Update button states
+      if (newMode) {
+        // If entering 3D mode, save current map type
+        localStorage.setItem('lastMapTypeBefore3D', mapType);
+        console.log(`Saved current map type (${mapType}) before entering 3D mode`);
+        
+        // Update any UI elements to reflect 3D mode
+        const mapTypeButton = document.getElementById('map-type-toggle-button');
+        if (mapTypeButton) {
+          mapTypeButton.classList.add('disabled-in-3d-mode');
+        }
+      } else {
+        // If exiting 3D mode, restore saved map type
+        const savedMapType = localStorage.getItem('lastMapTypeBefore3D') || 'hybrid';
+        setMapType(savedMapType);
+        console.log(`Restored map type to ${savedMapType} after exiting 3D mode`);
+        
+        // Update any UI elements to reflect 2D mode
+        const mapTypeButton = document.getElementById('map-type-toggle-button');
+        if (mapTypeButton) {
+          mapTypeButton.classList.remove('disabled-in-3d-mode');
+        }
+        
+        // Check if there was a pending map type change requested while in 3D mode
+        const pendingMapType = localStorage.getItem('pendingMapTypeAfter3D');
+        if (pendingMapType) {
+          console.log(`Applying pending map type (${pendingMapType}) after 3D exit`);
+          // Use setTimeout to ensure we're fully back in 2D mode first
+          setTimeout(() => {
+            handleMapTypeChange(pendingMapType);
+            localStorage.removeItem('pendingMapTypeAfter3D');
+          }, 100);
+        }
+      }
+      
+      console.log(`Toggled 3D view with API: ${map3DApi}, new mode: ${newMode ? '3D' : '2D'}`);
     });
   };
 
@@ -1651,25 +1678,11 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
       return;
     }
     
-    // For 2D modes (Map/Hybrid/Satellite), ensure we're in 2D mode first
+    // For 2D modes (Map/Hybrid/Satellite), only apply if we're in 2D mode
     if (is3DMode) {
-      // Store the requested map type for after 3D toggle completes
+      // We're in 3D mode, so store the requested map type for when we return to 2D
       localStorage.setItem('pendingMapTypeAfter3D', newType);
       console.log(`3D mode active, storing requested map type (${newType}) for after 3D exit`);
-      
-      // Turn off 3D mode first
-      toggle3DMode();
-      
-      // Apply the requested map type after a delay to allow 3D toggle to complete
-      setTimeout(() => {
-        const pendingType = localStorage.getItem('pendingMapTypeAfter3D');
-        if (pendingType) {
-          console.log(`Applying pending map type (${pendingType}) after 3D exit`);
-          handleMapTypeChange(pendingType);
-          localStorage.removeItem('pendingMapTypeAfter3D');
-        }
-      }, 700);
-      
       return;
     }
     
@@ -1810,7 +1823,8 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
       <div className="flex space-x-2 mb-2">
         <button
           onClick={() => ensureMapView(handleResetView)}
-          className="flex items-center justify-center p-2 bg-gray-100 rounded-md hover:bg-gray-200 flex-1 border border-gray-200/50"
+          className="flex items-center justify-center p-2 bg-gray-100 rounded-md hover:bg-gray-200 flex-1 border border-gray-300"
+          style={{ backgroundColor: '#f5f5f5' }}
           title="Reset view"
         >
           <Home className="h-4 w-4 mr-1" />
@@ -1819,7 +1833,8 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
         
         <button
           onClick={() => ensureMapView(handleGetCurrentLocation)}
-          className="flex items-center justify-center p-2 bg-gray-100 rounded-md hover:bg-gray-200 flex-1 border border-gray-200/50"
+          className="flex items-center justify-center p-2 bg-gray-100 rounded-md hover:bg-gray-200 flex-1 border border-gray-300"
+          style={{ backgroundColor: '#f5f5f5' }}
           title="Go to location"
         >
           <Crosshair className="h-4 w-4 mr-1" />
@@ -1829,8 +1844,9 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
         <button
           onClick={() => ensureMapView(() => setShowFilters(!showFilters))}
           className={`flex items-center justify-center p-2 rounded-md flex-1 border ${
-            showFilters ? 'bg-emerald-100 text-emerald-600 border-emerald-300/30' : 'bg-gray-100 hover:bg-gray-200 border-gray-200/50'
+            showFilters ? 'bg-emerald-100 text-emerald-600 border-emerald-300' : 'bg-gray-100 hover:bg-gray-200 border-gray-300'
           }`}
+          style={!showFilters ? { backgroundColor: '#f5f5f5' } : {}}
           title="Filter data"
         >
           <Filter className="h-4 w-4 mr-1" />
@@ -2087,16 +2103,23 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
         
         {/* Map type controls - 3D toggle and Hybrid/Satellite/Map button */}
         <div className="flex space-x-2 mb-2 mt-2">
-          {/* 3D View Toggle Button */}
+          {/* 3D View button */}
           <button
-            onClick={() => ensureMapView(() => toggle3DMode())}
-            className={`flex-1 py-1.5 px-2 rounded-md text-xs relative ${
+            onClick={() => {
+              console.log('3D View button clicked');
+              
+              // Call MapView's toggle3DMode directly
+              if (mapRef && mapRef.current && typeof mapRef.current.toggle3DMode === 'function') {
+                console.log("Calling MapView's toggle3DMode directly");
+                mapRef.current.toggle3DMode();
+              }
+            }}
+            className={`flex-1 py-1.5 px-2 rounded-md text-xs relative transition-colors duration-200 ${
               is3DMode
                 ? 'text-blue-600 bg-blue-50 border border-blue-300/30'
-                : 'text-gray-700 bg-white border border-gray-200/50'
+                : 'text-gray-700 bg-white border border-gray-200 hover:bg-gray-50'
             }`}
-            disabled={!is3DSupported}
-            title={is3DMode ? "Switch to 2D view" : "Switch to 3D view"}
+            title="3D View"
           >
             <div className="flex items-center justify-center">
               <Box className="h-3 w-3 mr-1" />
@@ -2104,7 +2127,7 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
             </div>
           </button>
           
-          {/* Enhanced Map Type Toggle (Hybrid/Satellite/Map) */}
+          {/* Map Type Toggle (2D View/Hybrid/Satellite/Map) */}
           <button 
             id="map-type-toggle-button"
             className={`map-type-toggle-button flex-1 py-1.5 px-2 rounded-md text-xs relative ${
@@ -2113,12 +2136,18 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
                 : 'text-gray-700 bg-white border border-gray-200/50 hover:bg-gray-50'
             }`}
             onClick={() => ensureMapView(() => {
-              // Only functional in 2D mode
+              // If in 3D mode, switch to 2D mode
               if (is3DMode) {
-                toggle3DMode();
+                console.log("Switching from 3D to 2D with map type button");
+                // Call MapView's toggle3DMode directly to go back to 2D
+                if (mapRef && mapRef.current && typeof mapRef.current.toggle3DMode === 'function') {
+                  console.log("Calling MapView's toggle3DMode directly to go back to 2D");
+                  mapRef.current.toggle3DMode();
+                }
                 return;
               }
               
+              // Already in 2D mode - cycle through map types
               const btn = document.getElementById('map-type-toggle-button');
               const spanElement = btn ? btn.querySelector('span') : null;
               const currentText = spanElement ? spanElement.textContent : 'Hybrid';
@@ -2142,15 +2171,35 @@ const MapControls = ({ mapRef, mapDataRef, viewSwitchFunction }) => {
             })}
           >
             <div className="flex items-center justify-center">
-              {mapType === 'map' ? 
-                <Map className="h-3 w-3 mr-1" /> : 
-                <Layers className="h-3 w-3 mr-1" />
-              }
-              <span>{mapType === 'satellite' ? 'Satellite' : mapType === 'map' ? 'Map' : 'Hybrid'}</span>
+              {is3DMode ? (
+                <>
+                  <Grid className="h-3 w-3 mr-1" />
+                  <span>2D View</span>
+                </>
+              ) : (
+                <>
+                  {mapType === 'map' ? 
+                    <Map className="h-3 w-3 mr-1" /> : 
+                    <Layers className="h-3 w-3 mr-1" />
+                  }
+                  <span>{mapType === 'satellite' ? 'Satellite' : mapType === 'map' ? 'Map' : 'Hybrid'}</span>
+                </>
+              )}
             </div>
           </button>
         </div>
         
+        {/* Location and Zoom Info */}
+        <div className="px-2 py-1.5 bg-white rounded-md text-xs text-gray-700 mb-2 mt-1 border border-blue-200">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-medium text-blue-700">Center:</span>
+            <span className="font-mono">{center ? `${center[1].toFixed(5)}, ${center[0].toFixed(5)}` : 'N/A'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-blue-700">Zoom:</span>
+            <span className="font-mono">{zoom || 'N/A'}</span>
+          </div>
+        </div>
         
         {/* Tree Detection button removed from here and moved to Analytics section in sidebar */}
       </div>

@@ -9,6 +9,10 @@ echo "============================================================"
 echo "T4 Model Server Integration Setup"
 echo "============================================================"
 
+# Ensure groundingdino directory exists in site-packages
+mkdir -p /ttt/.venv/lib/python3.12/site-packages/groundingdino
+echo "Created groundingdino directory in site-packages to ensure proper CUDA extension building"
+
 # Variables
 DASHBOARD_DIR="/ttt/tree_ml/dashboard"
 BACKEND_CONFIG_FILE="$DASHBOARD_DIR/backend/config.py"
@@ -31,9 +35,9 @@ if grep -q "MODEL_SERVER_URL" "$BACKEND_CONFIG_FILE"; then
     sed -i "s|MODEL_SERVER_URL = .*|MODEL_SERVER_URL = \"$MODEL_SERVER_URL\"|g" "$BACKEND_CONFIG_FILE"
     echo "Updated existing MODEL_SERVER_URL configuration"
 else
-    # Add new configuration for external model server
-    sed -i "/API_VERSION = .*/a \\\n# ML Service configuration\\n# Set to True to use the external T4 model server instead of local models\\nUSE_EXTERNAL_MODEL_SERVER = os.environ.get('USE_EXTERNAL_MODEL_SERVER', 'True').lower() in ('true', '1', 't')\\n# URL for the external T4 model server\\nMODEL_SERVER_URL = os.environ.get('MODEL_SERVER_URL', '$MODEL_SERVER_URL')" "$BACKEND_CONFIG_FILE"
-    echo "Added T4 model server configuration to config.py"
+    # Add new configuration for model server
+    sed -i "/API_VERSION = .*/a \\\n# ML Service configuration\\n# URL for the model server\\nMODEL_SERVER_URL = os.environ.get('MODEL_SERVER_URL', '$MODEL_SERVER_URL')" "$BACKEND_CONFIG_FILE"
+    echo "Added model server configuration to config.py"
 fi
 
 # Create an environment file to easily configure the model server URL
@@ -48,8 +52,7 @@ if [ -f "$ENV_FILE" ] && grep -q "MODEL_SERVER_URL" "$ENV_FILE"; then
 else
     # Add to or create .env file
     echo "MODEL_SERVER_URL=$MODEL_SERVER_URL" >> "$ENV_FILE"
-    echo "USE_EXTERNAL_MODEL_SERVER=true" >> "$ENV_FILE"
-    echo "Added T4 model server configuration to .env file"
+    echo "Added model server configuration to .env file"
 fi
 
 echo "============================================================"

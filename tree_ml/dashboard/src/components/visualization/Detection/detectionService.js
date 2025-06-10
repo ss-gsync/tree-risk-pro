@@ -255,13 +255,13 @@ export async function loadDetectionData(detectionId) {
         // Add explicit paths to make it easier for consumers
         paths: {
           visualizationImage: `/api/ml/detection/${detectionId}/visualization`,
-          visualizationImageFallback: `/ttt/data/ml/${detectionId}/ml_response/combined_visualization.jpg`,
+          visualizationImageFallback: `/api/ml/detection/${detectionId}/visualization`,
           satelliteImage: `/api/ml/detection/${detectionId}/satellite`,
-          satelliteImageFallback: `/ttt/data/ml/${detectionId}/satellite_${detectionId}.jpg`,
+          satelliteImageFallback: `/api/ml/detection/${detectionId}/satellite`,
           metadataApi: `/api/ml/detection/${detectionId}/metadata`,
-          metadataFile: `/ttt/data/ml/${detectionId}/ml_response/metadata.json`,
+          metadataFile: `/api/ml/detection/${detectionId}/metadata`,
           treesApi: `/api/ml/detection/${detectionId}/trees`,
-          treesFile: `/ttt/data/ml/${detectionId}/ml_response/trees.json`,
+          treesFile: `/api/ml/detection/${detectionId}/trees`,
           loadedFrom: loadedFrom
         },
         // Include the raw data for consumers that need the original format
@@ -273,6 +273,17 @@ export async function loadDetectionData(detectionId) {
         trees: transformedData.trees,
         detections: data.detections || transformedData.detections
       };
+      
+      // CRITICAL FIX: Store the detection data in the global window object for direct access
+      window.mlDetectionData = detailData;
+      window.currentDetectionJobId = normalizedJobId;
+      
+      // Log for debugging purposes
+      console.log('detectionService: Set global mlDetectionData with:', {
+        jobId: normalizedJobId,
+        treesCount: detailData.trees?.length || 0,
+        detectionsCount: detailData.detections?.length || 0
+      });
       
       // Dispatch as both document and window events for maximum compatibility
       const earlyDataEvent = new CustomEvent('fastInferenceResults', { detail: detailData });

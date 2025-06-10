@@ -1,176 +1,201 @@
 # Tree ML - Deployment Guide (v0.2.3)
 
-> This is the deployment guide for the Tree ML project, including the dashboard, backend components, and ML model server.
-
-This guide provides instructions for deploying the Tree ML system on a Google Cloud Platform (GCP) T4 GPU instance for unified deployment. It has been thoroughly tested to ensure the GPU-accelerated model server works correctly.
+This guide provides instructions for deploying the Tree ML system on a Google Cloud Platform (GCP) T4 GPU instance. The deployment has been thoroughly tested to ensure the GPU-accelerated model server works correctly with the dashboard and backend components.
 
 ## Deployment Summary
 
-Our production server will be deployed on a T4 GPU instance for unified ML and dashboard operation.
+The production server uses a T4 GPU instance for unified ML processing and dashboard operation.
 
-**Current access credentials:**
+**Access Credentials:**
 - Username: `TestAdmin`
 - Password: `trp345!`
 
-## v0.2.3 Release Deployment Notes
+## v0.2.3 Release Notes
 
-v0.2.3 includes these key improvements requiring deployment attention:
+This version includes the following key improvements:
+
 - Integrated ML Overlay for tree detection visualization
-- Enhanced tree detection with DeepForest, SAM, and Gemini API
-- T4 GPU integration for dedicated model server capabilities
+- Enhanced tree detection with DeepForest, SAM, and Gemini API integration
+- T4 GPU support for accelerated model processing
 - Unified deployment architecture (dashboard + ML on same instance)
-- Fixed overlay controls (opacity slider, show/hide toggle)
-- Improved objects counter that preserves counts between detections
-- Fixed detection sidebar with real-time controls
-- New T4 status indicator component
+- Improved UI components:
+  - Fixed overlay controls with real-time opacity adjustment
+  - Enhanced objects counter with persistence between detections
+  - Streamlined detection sidebar with intuitive controls
+  - New T4 status indicator for GPU availability
 
-## Prerequisites
+## System Requirements
 
-### Hardware Requirements
-- T4 GPU instance (GCP n1-standard-4 with NVIDIA T4)
-- At least 4 vCPU, 16 GB memory
-- 100+ GB SSD storage
-- Ubuntu 20.04 LTS or later
+### Hardware
+- **GPU:** NVIDIA T4 (GCP n1-standard-4 instance recommended)
+- **CPU:** Minimum 4 vCPU cores
+- **Memory:** 16 GB RAM minimum
+- **Storage:** 100+ GB SSD
+- **OS:** Ubuntu 20.04 LTS or newer
 
-### Software Requirements
-- CUDA 11.8+
-- Python 3.10+
-- Node.js 18+
-- Git
-- Nginx
-- Poetry for Python dependency management
+### Software
+- **CUDA:** Version 11.8 or newer
+- **Python:** Version 3.10 or newer
+- **Node.js:** Version 18 or newer
+- **Other Tools:**
+  - Git for version control
+  - Nginx for web server
+  - Poetry for Python dependency management
 
-## Required API Keys
+## API Key Setup
 
-**IMPORTANT: You must obtain these API keys before deployment:**
+Before deployment, you must obtain the following API keys:
 
-1. **Google Maps API Key**: 
-   - Go to https://console.cloud.google.com/
-   - Navigate to Google Maps Platform > Credentials
-   - Create an API key with Maps JavaScript API access
+### 1. Google Maps API Key
+- Navigate to [Google Cloud Console](https://console.cloud.google.com/)
+- Go to Google Maps Platform > Credentials
+- Create an API key with Maps JavaScript API access
+- Restrict the key to your domains for security
 
-2. **Google Maps Map ID**:
-   - Go to Google Maps Platform > Map Management
-   - Create a new Map ID (or use existing one: e2f2ee8160dbcea0)
+### 2. Google Maps Map ID
+- Go to Google Maps Platform > Map Management
+- Create a new Map ID or use the existing one (e2f2ee8160dbcea0)
+- Configure the Map ID with appropriate styling for satellite imagery
 
-3. **Gemini API Key**:
-   - Go to https://aistudio.google.com/app/apikey
-   - Create a new API key for Gemini model access
-   - Ensure your account has access to gemini-2.0-flash model
+### 3. Gemini API Key
+- Visit [Google AI Studio](https://aistudio.google.com/app/apikey)
+- Create a new API key for Gemini model access
+- Verify your account has access to the gemini-2.0-flash model
+- Set appropriate quota limits based on expected usage
 
-## T4 GPU Manual Deployment
+## Deployment Instructions
 
-This section provides a detailed, step-by-step guide for manually deploying the application on a T4 GPU instance, ensuring the proper configuration of all components, particularly the Grounded-SAM model.
+This section provides step-by-step instructions for deploying Tree ML on a T4 GPU instance.
 
-### T4 GPU Setup Steps
+### Setup Process Overview
 
-1. **Verify CUDA Installation**:
+1. **Configure CUDA Environment**
+
+   First, verify your CUDA installation and set up the environment:
+
    ```bash
-   # Check if NVIDIA drivers are installed
+   # Verify NVIDIA drivers
    nvidia-smi
    
-   # Check CUDA compiler version
+   # Check CUDA compiler
    nvcc --version
    
-   # Find the correct CUDA location - it may vary between systems
+   # Locate CUDA installation directory
    # Common locations: /usr/lib/nvidia-cuda-toolkit, /usr/local/cuda, /usr/lib/cuda
    find /usr -name nvcc -type f 2>/dev/null
    
-   # Set CUDA environment variables (update path as needed based on your system)
+   # Set environment variables (adjust path based on your system)
    echo 'export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit' >> ~/.bashrc
    echo 'export PATH=$CUDA_HOME/bin:$PATH' >> ~/.bashrc
    source ~/.bashrc
    ```
 
-2. **Create Python Environment**:
+2. **Set Up Python Environment**
+
+   Create a dedicated environment with proper PyTorch configuration:
+
    ```bash
-   # Create a virtual environment
+   # Create and activate virtual environment
    python3 -m venv ~/tree_ml
    source ~/tree_ml/bin/activate
    
-   # Install NumPy 1.x first (important for PyTorch compatibility)
+   # Install NumPy 1.x (critical for PyTorch compatibility)
    pip install numpy==1.26.4
    
-   # Install the correct PyTorch version for your CUDA
+   # Install PyTorch with CUDA support
    # For CUDA 12.x (newer GCP instances):
    pip install torch==2.2.0 torchvision==0.17.0 --index-url https://download.pytorch.org/whl/cu121
    
    # For CUDA 11.8:
    # pip install torch==2.1.0 torchvision==0.16.0 --index-url https://download.pytorch.org/whl/cu118
    
-   # Verify PyTorch CUDA detection
+   # Verify installation
    python -c "import torch, numpy; print(f'PyTorch: {torch.__version__}, CUDA: {torch.version.cuda}, Available: {torch.cuda.is_available()}, NumPy: {numpy.__version__}')"
    ```
 
-3. **Clone Repository and Install Dependencies**:
+3. **Install Application**
+
+   Clone the repository and install dependencies:
+
    ```bash
-   # Clone the repository
+   # Clone repository
    git clone https://github.com/your-repo/tree-ml.git /ttt/tree_ml
    cd /ttt/tree_ml
    
-   # Install Python dependencies
+   # Install Python package manager and dependencies
    pip install poetry
    poetry config virtualenvs.in-project true
    poetry install
    
-   # Install additional dependencies
+   # Install additional ML dependencies
    pip install numpy opencv-python matplotlib timm tensorboard transformers pycocotools addict
    ```
 
-4. **Set Up Grounded-SAM Directories and Download Weights**:
+4. **Configure ML Model Components**
+
+   Set up the Grounded-SAM model:
+
    ```bash
-   # Create required directories
+   # Create model directory
    mkdir -p /ttt/tree_ml/pipeline/model
    
    # Clone Grounded-Segment-Anything repository
    cd /ttt/tree_ml/pipeline
    git clone https://github.com/IDEA-Research/Grounded-Segment-Anything.git grounded-sam
    
-   # Download SAM model weights
-   wget -O /ttt/tree_ml/pipeline/model/sam_vit_h_4b8939.pth https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
+   # Download model weights
+   wget -O /ttt/tree_ml/pipeline/model/sam_vit_h_4b8939.pth \
+     https://dl.fbaipublicfiles.com/segment_anything/sam_vit_h_4b8939.pth
    
-   # Download GroundingDINO weights
-   wget -O /ttt/tree_ml/pipeline/model/groundingdino_swint_ogc.pth https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
+   wget -O /ttt/tree_ml/pipeline/model/groundingdino_swint_ogc.pth \
+     https://github.com/IDEA-Research/GroundingDINO/releases/download/v0.1.0-alpha/groundingdino_swint_ogc.pth
    ```
 
-5. **Configure Environment and Install Components**:
+5. **Configure Python Environment**
+
+   Set up the Python environment for model components:
+
    ```bash
-   # Set PYTHONPATH to include all necessary directories
-   export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
+   # Set PYTHONPATH to include all required directories
+   export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:\
+   /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
    
-   # Navigate to the grounded-sam directory
+   # Install model components
    cd /ttt/tree_ml/pipeline/grounded-sam
    
-   # Install segment_anything using the correct command
+   # Install Segment Anything Model
    python -m pip install -e segment_anything
    
-   # Install GroundingDINO with no-build-isolation flag
+   # Install GroundingDINO with build isolation disabled
    pip install --no-build-isolation -e GroundingDINO
    ```
 
-6. **Build CUDA Extensions**:
+6. **Build GPU Acceleration Components**
+
+   Compile the CUDA extensions for optimal performance:
+
    ```bash
-   # Set CUDA_HOME environment variable (update based on your system's CUDA location)
+   # Set CUDA environment variable
    export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
    
-   # Make sure NumPy is the correct version (PyTorch 2.2.0 needs NumPy 1.x)
-   # THIS IS CRITICAL: NumPy 2.x will cause compatibility issues with PyTorch
+   # Ensure correct NumPy version for PyTorch compatibility
+   # CRITICAL: NumPy 2.x causes issues with PyTorch
    pip uninstall -y numpy
    pip install numpy==1.26.4
    
-   # Set up the groundingdino directory structure
+   # Prepare GroundingDINO directory
    cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
    mkdir -p groundingdino
    touch groundingdino/__init__.py
    
-   # Build the CUDA extension through the GroundingDINO setup.py
+   # Build CUDA extension
    python setup.py build develop
    
-   # Make sure PyTorch libraries are in LD_LIBRARY_PATH
+   # Configure library path for PyTorch
    PYTORCH_PATH=$(python -c "import torch, os; print(os.path.dirname(torch.__file__))")
    export LD_LIBRARY_PATH=$PYTORCH_PATH/lib:$LD_LIBRARY_PATH
    
-   # Verify the extension was built successfully
+   # Verify extension was built correctly
    cd /ttt/tree_ml
    python -c "from groundingdino import _C; print('CUDA extension loaded successfully')"
    ```
@@ -448,101 +473,95 @@ This section provides a detailed, step-by-step guide for manually deploying the 
 
 ## Model Server Troubleshooting Guide
 
-This section provides comprehensive troubleshooting for the model server, addressing common issues encountered during deployment and operation.
+This section provides a comprehensive troubleshooting guide for the T4 GPU model server, addressing common issues you might encounter during deployment and operation.
 
-### Common T4 Deployment Errors and Solutions
+### Common GPU Deployment Errors
 
-#### Error: "name '_C' is not defined" or "No module named 'groundingdino._C'"
+#### Error: CUDA Extension Not Found
+**Error Message:** `"name '_C' is not defined"` or `"No module named 'groundingdino._C'"`
 
-This error occurs when the CUDA extensions for GroundingDINO haven't been properly built or can't be found.
+**Cause:** The CUDA extensions for GroundingDINO haven't been properly built or can't be found in the Python path.
 
-**Solution**:
+**Solution:**
 ```bash
-# Set CUDA_HOME to the correct location (update based on your system)
+# 1. Set correct CUDA_HOME
 export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
 
-# Make sure PYTHONPATH includes all required directories
+# 2. Ensure PYTHONPATH includes all required directories
 export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
 
-# Make sure NumPy 1.x is installed (required for PyTorch compatibility)
+# 3. Install compatible NumPy version
 pip uninstall -y numpy
 pip install numpy==1.26.4
 
-# Create and prepare the groundingdino directory
+# 4. Create groundingdino directory structure
 cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
 mkdir -p groundingdino
 touch groundingdino/__init__.py
 
-# Build the extension
+# 5. Build the CUDA extension
 python setup.py build develop
 
-# Set LD_LIBRARY_PATH to include PyTorch libraries
+# 6. Set LD_LIBRARY_PATH for PyTorch libraries
 PYTORCH_PATH=$(python -c "import torch, os; print(os.path.dirname(torch.__file__))")
 export LD_LIBRARY_PATH=$PYTORCH_PATH/lib:$LD_LIBRARY_PATH
 
-# Verify the extension was built successfully
+# 7. Verify the extension was built successfully
 python -c "from groundingdino import _C; print('CUDA extension loaded successfully')"
 
-# Restart the service
+# 8. Restart the service
 sudo systemctl restart tree-detection
 ```
 
-#### Error: HTTP 500 from Model Server with Empty Detail
+#### Error: HTTP 500 from Model Server
+**Error Message:** HTTP 500 errors with empty detail fields when calling the `/detect` endpoint
 
-If the model server is returning 500 errors with empty detail fields when calling the `/detect` endpoint:
+**Cause:** Type conversion issues between PyTorch tensors and NumPy arrays in the model server code.
 
-**Solution**:
+**Solution:**
 
 1. First check if the model server is properly initialized:
    ```bash
    curl http://localhost:8000/status
-   # Should return {"status":"ready","initialized":true,"device":"cuda"}
+   # Expected: {"status":"ready","initialized":true,"device":"cuda"}
    ```
 
-2. If not initialized, check logs for initialization errors:
+2. If not initialized, check the model server logs:
    ```bash
    sudo journalctl -u tree-detection -n 200
    ```
 
-3. Fix type conversion issues in model_server.py:
+3. Fix the type conversion issues in model_server.py:
    ```python
-   # Open the model_server.py file
-   nano /ttt/tree_ml/pipeline/model_server.py
+   # Edit /ttt/tree_ml/pipeline/model_server.py
    
-   # Look for the predict_sam method and change:
-   # FROM:
+   # CHANGE the predict_sam method:
+   # FROM: PyTorch tensor approach
    sam_box = torch.tensor(box_pixel, device=self.device)
    sam_result = self.sam_predictor.predict(
        box=sam_box.unsqueeze(0),
        multimask_output=False
    )
+   mask = sam_result[0][0].cpu().numpy()
    
-   # TO:
-   # Convert to numpy array for SAM predictor (which expects numpy, not torch tensors)
-   sam_box = np.array(box_pixel)
+   # TO: NumPy array approach (SAM predictor expects numpy)
+   sam_box = np.array(box_pixel)  # Convert to numpy array
    sam_result = self.sam_predictor.predict(
        box=sam_box,
        multimask_output=False
    )
-   
-   # AND CHANGE:
-   # FROM:
-   mask = sam_result[0][0].cpu().numpy()
-   
-   # TO:
-   # SAM returns masks as numpy arrays when using the numpy input
    mask = sam_result[0][0]  # Already a numpy array
    ```
 
 4. Improve error handling in the detect endpoint:
    ```python
-   # Find the detect endpoint and update error handling:
-   # FROM:
+   # CHANGE the error handling in the detect endpoint:
+   # FROM: Raising HTTP exception
    if not result.get("success", False):
        logger.error(f"Processing failed: {result.get('error', 'Unknown error')}")
-       raise HTTPException(status_code=500, detail=result.get("error", "Unknown error during detection"))
+       raise HTTPException(status_code=500, detail=result.get("error", "Unknown error"))
    
-   # TO:
+   # TO: Returning detailed JSON response
    if not result.get("success", False):
        error_message = result.get("error", "Unknown error during detection")
        logger.error(f"Processing failed: {error_message}")
@@ -552,28 +571,29 @@ If the model server is returning 500 errors with empty detail fields when callin
        )
    ```
 
-5. Restart the model server service:
+5. Restart the model server:
    ```bash
    sudo systemctl restart tree-detection
    ```
 
-#### Error: "Cannot copy out of meta tensor; no data!"
+#### Error: Meta Tensor Error
+**Error Message:** `"Cannot copy out of meta tensor; no data!"`
 
-This error occurs when loading the GroundingDINO model on GPU directly without initializing on CPU first.
+**Cause:** PyTorch meta tensor issues when loading the model directly on GPU.
 
-**Solution**:
+**Solution:**
 
-Edit `/ttt/tree_ml/pipeline/model_server.py` to load models on CPU first:
+Edit model_server.py to load models on CPU first, then transfer to GPU:
 
 ```python
 # Find the model loading code in initialize_groundingdino and change:
-# FROM:
+# FROM: Direct GPU loading
 model = build_model(args)
 checkpoint = torch.load(weights_path, map_location=self.device)
 model.load_state_dict(clean_state_dict(checkpoint['model']), strict=False)
 model = model.to(self.device)
 
-# TO:
+# TO: CPU-first loading approach
 # First load the model on CPU to avoid meta tensor issues
 with torch.device('cpu'):
     model = build_model(args)
@@ -585,83 +605,27 @@ with torch.device('cpu'):
 model = model.to(self.device)
 ```
 
-#### Error: "Numpy is not available" or "C++ exception" with PyTorch Tensors
+#### Error: NumPy Compatibility Issues
+**Error Message:** `"Numpy is not available"` or `"C++ exception"` with PyTorch tensors
 
-These errors occur due to version incompatibilities between NumPy and PyTorch, or type mismatches between PyTorch tensors and NumPy arrays.
+**Cause:** Version incompatibilities between NumPy and PyTorch, particularly when NumPy 2.x is used with PyTorch 2.x (which expects NumPy 1.x).
 
-**Solution**:
+**Solution:**
 
-1. Fix NumPy version incompatibility:
+1. Fix NumPy version:
    ```bash
-   # Ensure you're using NumPy 1.x (PyTorch 2.x requirement)
+   # Install compatible NumPy version
    pip uninstall -y numpy
    pip install numpy==1.26.4
    
-   # Verify compatibility
+   # Verify installation
    python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
    python -c "import torch, numpy; print(f'PyTorch: {torch.__version__}, NumPy: {numpy.__version__}')"
    ```
 
-2. Fix tensor/array type conversions in model_server.py:
+2. Fix type conversions in model_server.py:
    ```python
-   # In process_image method, make sure conversion to numpy is correct:
-   # Convert tensor outputs to numpy arrays before further processing
-   if isinstance(image_tensor, torch.Tensor):
-       image_tensor = image_tensor.cpu().numpy()
-   
-   # When creating tensors from arrays, be explicit:
-   tensor_input = torch.tensor(numpy_array, dtype=torch.float32, device=self.device)
-   ```
-
-3. Check predict_sam method specifically:
-   ```python
-   # SAM predictor expects numpy arrays for boxes, not tensors
-   # FROM:
-   sam_box = torch.tensor(box_pixel, device=self.device)
-   # TO:
-   sam_box = np.array(box_pixel)
-   ```
-
-#### Error: "libc10.so: cannot open shared object file" or "libcudart.so.XX.Y not found"
-
-These errors occur when PyTorch's CUDA libraries can't be found in the system's library path.
-
-**Solution**:
-
-1. Find and set the PyTorch library directory in LD_LIBRARY_PATH:
-   ```bash
-   # Find the PyTorch library directory
-   PYTORCH_LIB=$(python -c "import torch, os; print(os.path.dirname(torch.__file__))")
-   echo "PyTorch lib directory: $PYTORCH_LIB"
-   
-   # Add to LD_LIBRARY_PATH
-   export LD_LIBRARY_PATH=$PYTORCH_LIB/lib:$LD_LIBRARY_PATH
-   
-   # Add permanently to your environment
-   echo "export LD_LIBRARY_PATH=$PYTORCH_LIB/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
-   ```
-
-2. Update the systemd service file with the correct path:
-   ```bash
-   sudo systemctl edit tree-detection
-   # Add:
-   [Service]
-   Environment=LD_LIBRARY_PATH=/path/to/pytorch/lib
-   
-   # Reload and restart
-   sudo systemctl daemon-reload
-   sudo systemctl restart tree-detection
-   ```
-
-#### Error: "'Tensor' object has no attribute 'astype'" or "'numpy.ndarray' object has no attribute 'cpu'"
-
-These errors occur when you're calling NumPy methods on PyTorch tensors or PyTorch methods on NumPy arrays.
-
-**Solution**:
-
-1. Check the model_server.py for type confusion:
-   ```python
-   # For tensor to numpy conversion, always use:
+   # For tensor to numpy conversion:
    if isinstance(variable, torch.Tensor):
        numpy_variable = variable.cpu().detach().numpy()
    else:
@@ -669,46 +633,99 @@ These errors occur when you're calling NumPy methods on PyTorch tensors or PyTor
    
    # For numpy to tensor conversion:
    if not isinstance(variable, torch.Tensor):
-       tensor_variable = torch.tensor(variable, device=self.device)
+       tensor_variable = torch.tensor(variable, dtype=torch.float32, device=self.device)
    else:
        tensor_variable = variable  # Already a tensor
    ```
 
-2. Pay special attention to the SAM predictor which expects numpy arrays:
-   ```python
-   # SAM box should be numpy array
-   sam_box = np.array(box_pixel)
+#### Error: Missing CUDA Libraries
+**Error Message:** `"libc10.so: cannot open shared object file"` or `"libcudart.so.XX.Y not found"`
+
+**Cause:** PyTorch's CUDA libraries can't be found in the system's library path.
+
+**Solution:**
+
+1. Add PyTorch libraries to LD_LIBRARY_PATH:
+   ```bash
+   # Find PyTorch library directory
+   PYTORCH_LIB=$(python -c "import torch, os; print(os.path.dirname(torch.__file__))")
    
-   # And the result is already a numpy array, don't call cpu().numpy()
-   mask = sam_result[0][0]  # Already a numpy array
+   # Add to current session
+   export LD_LIBRARY_PATH=$PYTORCH_LIB/lib:$LD_LIBRARY_PATH
+   
+   # Add permanently to your environment
+   echo "export LD_LIBRARY_PATH=$PYTORCH_LIB/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
+   source ~/.bashrc
    ```
 
-### Advanced Troubleshooting Steps
+2. Update the systemd service configuration:
+   ```bash
+   # Edit the service configuration
+   sudo systemctl edit tree-detection
+   
+   # Add this line (update the path based on your system):
+   [Service]
+   Environment=LD_LIBRARY_PATH=/home/yourusername/tree_ml/lib/python3.10/site-packages/torch/lib
+   
+   # Reload and restart
+   sudo systemctl daemon-reload
+   sudo systemctl restart tree-detection
+   ```
 
-If you're still encountering issues after trying the solutions above:
+#### Error: Type Confusion Errors
+**Error Message:** `"'Tensor' object has no attribute 'astype'"` or `"'numpy.ndarray' object has no attribute 'cpu'"`
 
-#### 1. Check Model Initialization and GPU Usage
+**Cause:** Mixing PyTorch tensor methods with NumPy arrays or vice versa.
+
+**Solution:**
+
+1. Add explicit type checking before method calls:
+   ```python
+   # When converting tensors to numpy:
+   if isinstance(variable, torch.Tensor):
+       numpy_variable = variable.cpu().detach().numpy()
+   else:
+       numpy_variable = variable  # Already a numpy array
+   
+   # When working with SAM predictor:
+   # SAM box should be numpy array, not a PyTorch tensor
+   sam_box = np.array(box_pixel)  # not torch.tensor()
+   
+   # And for SAM output, it's already a numpy array
+   mask = sam_result[0][0]  # not .cpu().numpy()
+   ```
+
+### Advanced Troubleshooting Techniques
+
+If the basic solutions don't resolve your issue, try these advanced troubleshooting steps:
+
+#### 1. Verify GPU Configuration
+
+Check that the GPU is properly recognized and accessible:
 
 ```bash
-# Verify GPU is working
+# Check NVIDIA driver and GPU
 nvidia-smi
 
-# Check if PyTorch can access the GPU
-python -c "import torch; print(torch.cuda.is_available()); print(torch.cuda.device_count()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'No GPU')"
+# Verify PyTorch can access the GPU
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); \
+  print(f'Device count: {torch.cuda.device_count()}'); \
+  print(f'Device name: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"No GPU\"}')"
 
-# Monitor GPU usage during model server startup
+# Monitor GPU usage during startup (run in a separate terminal)
 watch -n 0.5 nvidia-smi
 
 # In another terminal, restart the model server
 sudo systemctl restart tree-detection
 ```
 
-#### 2. Debug Model Loading Step by Step
+#### 2. Diagnostic Script for Model Loading
 
-Create a diagnostic script to test model loading:
+Create a diagnostic script to isolate model loading issues:
 
-```python
-# Save as /ttt/tree_ml/pipeline/debug_model.py
+```bash
+# Create a diagnostic script
+cat > /ttt/tree_ml/pipeline/debug_model.py << 'EOF'
 import os
 import sys
 import torch
@@ -760,25 +777,26 @@ try:
     print("GroundingDINO model loaded successfully!")
 except Exception as e:
     print(f"Error with GroundingDINO: {str(e)}")
-```
+EOF
 
-Run the diagnostic script:
-```bash
+# Run the diagnostic script
+chmod +x /ttt/tree_ml/pipeline/debug_model.py
 cd /ttt/tree_ml
 source ~/tree_ml/bin/activate
 python /ttt/tree_ml/pipeline/debug_model.py
 ```
 
-#### 3. Increase Logging Detail
+#### 3. Enhanced Logging Configuration
 
-Edit model_server.py to add more detailed logging:
+Add detailed logging to model_server.py to diagnose issues:
 
-```python
-# At the top of model_server.py, update logging configuration
+```bash
+# Edit model_server.py to add enhanced logging
+cat > /ttt/tree_ml/pipeline/model_server_logging.patch << 'EOF'
 import logging
 import sys
 
-# Configure root logger
+# Configure detailed logging
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -791,14 +809,27 @@ logging.basicConfig(
 # Get logger
 logger = logging.getLogger(__name__)
 
-# Add more logging throughout the code:
-logger.debug(f"Variable type: {type(variable)}")
-logger.debug(f"Processing image with shape: {image.shape}")
+# Add these debug statements in key functions:
+# In initialize method:
+logger.debug(f"Initializing with device: {self.device}")
+logger.debug(f"Model directory: {self.model_dir}")
+
+# In load_model methods:
+logger.debug(f"Loading model from: {model_path}")
+
+# In process_image/detect methods:
+logger.debug(f"Processing image type: {type(image)}, shape: {getattr(image, 'shape', 'unknown')}")
+logger.debug(f"Detection boxes type: {type(boxes)}, count: {len(boxes) if isinstance(boxes, list) else 'n/a'}")
+EOF
+
+# Apply enhanced logging to model_server.py
+cat /ttt/tree_ml/pipeline/model_server_logging.patch
+# Manually add these logging statements to model_server.py
 ```
 
-#### 4. Test API Endpoints Directly
+#### 4. API Endpoint Testing
 
-Test the API endpoints directly to pinpoint issues:
+Test the API endpoints directly to identify issues:
 
 ```bash
 # Test health endpoint
@@ -807,22 +838,28 @@ curl http://localhost:8000/health
 # Test status endpoint
 curl http://localhost:8000/status
 
-# Test detect endpoint with a sample image
-curl -X POST -F "image=@/ttt/data/tests/test_images/sample.jpg" -F "job_id=test123" http://localhost:8000/detect -v
+# Test detect endpoint with a sample image (verbose output)
+curl -X POST -F "image=@/ttt/data/tests/test_images/sample.jpg" \
+  -F "job_id=test123" http://localhost:8000/detect -v
 
 # Check output directory for results
 ls -la /ttt/data/ml/test123/ml_response/
 ```
 
-#### 5. Verify Environment Configuration
+#### 5. Environment Verification Script
 
-Check environment variables and paths:
+Create a comprehensive script to verify all aspects of your environment:
 
 ```bash
-# Create a script to verify environment
+# Create environment verification script
 cat > /ttt/tree_ml/verify_env.sh << 'EOF'
 #!/bin/bash
-echo "=== Python and pip ==="
+echo "=== System Environment Verification ==="
+echo "Date: $(date)"
+echo "Hostname: $(hostname)"
+echo "User: $(whoami)"
+
+echo -e "\n=== Python and pip ==="
 which python
 python --version
 which pip
@@ -844,38 +881,50 @@ python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f
 echo -e "\n=== NumPy Installation ==="
 python -c "import numpy; print(f'NumPy version: {numpy.__version__}')"
 
-echo -e "\n=== Directory Structure ==="
-ls -la /ttt/tree_ml/pipeline/grounded-sam
-ls -la /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
+echo -e "\n=== Key Directory Structure ==="
+echo "Model directory:"
 ls -la /ttt/tree_ml/pipeline/model
 
-echo -e "\n=== Extension Building ==="
+echo -e "\nGrounded-SAM directory:"
+ls -la /ttt/tree_ml/pipeline/grounded-sam
+
+echo -e "\nGroundingDINO directory:"
+ls -la /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
+
+echo -e "\n=== CUDA Extension Verification ==="
 cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
-python -c "import os; print(os.path.exists('build')); print(os.path.exists('groundingdino/_C.so') or os.path.exists('groundingdino/_C.cpython-*.so'))"
+echo "Build directory exists: $(if [ -d "build" ]; then echo "Yes"; else echo "No"; fi)"
+echo "CUDA extension exists: $(if ls groundingdino/_C*.so 1> /dev/null 2>&1; then echo "Yes"; else echo "No"; fi)"
+
+echo -e "\n=== Service Status ==="
+systemctl status tree-detection | grep Active
+
+echo -e "\nEnvironment verification complete"
 EOF
 
+# Make script executable and run it
 chmod +x /ttt/tree_ml/verify_env.sh
-/ttt/tree_ml/verify_env.sh
+/ttt/tree_ml/verify_env.sh | tee /ttt/tree_ml/logs/env_verification.log
 ```
 
-### Final Checklist for Model Server Troubleshooting
+### Deployment Verification Checklist
 
-Use this checklist to systematically verify all aspects of the model server:
+Use this checklist to systematically verify your T4 GPU deployment:
 
 1. **Environment Setup**
-   - [ ] CUDA is installed and accessible (nvidia-smi works)
-   - [ ] PyTorch can see the GPU (torch.cuda.is_available() returns True)
+   - [ ] CUDA is installed and accessible (`nvidia-smi` works)
+   - [ ] PyTorch can see the GPU (`torch.cuda.is_available()` returns `True`)
    - [ ] PYTHONPATH includes all necessary directories
    - [ ] NumPy is version 1.x (compatible with PyTorch)
    - [ ] LD_LIBRARY_PATH includes PyTorch lib directory
 
 2. **Model Weights**
-   - [ ] SAM model weights exist at /ttt/tree_ml/pipeline/model/sam_vit_h_4b8939.pth
-   - [ ] GroundingDINO weights exist at /ttt/tree_ml/pipeline/model/groundingdino_swint_ogc.pth
+   - [ ] SAM model weights exist at `/ttt/tree_ml/pipeline/model/sam_vit_h_4b8939.pth`
+   - [ ] GroundingDINO weights exist at `/ttt/tree_ml/pipeline/model/groundingdino_swint_ogc.pth`
 
 3. **CUDA Extensions**
    - [ ] GroundingDINO extension is built successfully
-   - [ ] Extension can be imported (from groundingdino import _C works)
+   - [ ] Extension can be imported (`from groundingdino import _C` works)
 
 4. **Code Fixes**
    - [ ] Tensor/array type conversions are correct in model_server.py
@@ -887,7 +936,7 @@ Use this checklist to systematically verify all aspects of the model server:
    - [ ] Service has proper working directory and permissions
    - [ ] Service can successfully start and stay running
 
-By following this troubleshooting guide, you should be able to resolve most issues with the model server and ensure it runs correctly with GPU acceleration.
+By following this structured troubleshooting guide, you should be able to resolve most issues with the T4 GPU model server deployment.
 
 ### Common Deployment Issues and Solutions
 
@@ -1159,35 +1208,56 @@ These are non-critical services and the application will still function for tree
 
 ## Monitoring and Maintenance
 
+This section covers essential monitoring and maintenance tasks to keep your Tree ML deployment running smoothly.
+
 ### Log Monitoring
 
+Use these commands to view real-time logs from different components:
+
 ```bash
-# Model server logs
+# Model server logs (real-time)
 sudo journalctl -u tree-detection -f
+
+# Model server log file
 tail -f /ttt/tree_ml/logs/model_server.log
 
-# GPU monitoring
+# GPU monitoring (updates every second)
 watch -n 1 nvidia-smi
 
-# Nginx logs
+# Nginx access logs
 sudo tail -f /var/log/nginx/access.log
+
+# Nginx error logs
 sudo tail -f /var/log/nginx/error.log
 ```
 
 ### Service Management
 
+Manage your Tree ML services with these systemd commands:
+
 ```bash
 # Restart model server
 sudo systemctl restart tree-detection
 
-# Check status
+# Check model server status
 sudo systemctl status tree-detection
 
-# View recent logs
+# View recent model server logs
 sudo journalctl -u tree-detection -n 100
+
+# Restart backend service
+sudo systemctl restart tree-backend
+
+# Restart web server
+sudo systemctl restart nginx
+
+# Check status of all services
+sudo systemctl status tree-detection tree-backend nginx
 ```
 
 ### Backup and Recovery
+
+Perform regular backups of critical data:
 
 ```bash
 # Backup model weights
@@ -1195,53 +1265,74 @@ sudo tar -czf /tmp/tree-ml-weights-$(date +%Y%m%d).tar.gz /ttt/tree_ml/pipeline/
 
 # Backup detection data
 sudo tar -czf /tmp/tree-ml-data-$(date +%Y%m%d).tar.gz /ttt/data/ml
+
+# Backup full application (excluding large directories)
+sudo tar -czf /tmp/tree-ml-full-$(date +%Y%m%d).tar.gz \
+  --exclude='node_modules' \
+  --exclude='.git' \
+  --exclude='data/ml' \
+  /ttt/tree_ml
+
+# Copy backups to secure storage
+# Example: Copy to Google Cloud Storage bucket
+# gsutil cp /tmp/tree-ml-*.tar.gz gs://your-backup-bucket/
 ```
 
 ## Updating and Redeploying the Application
 
-When you need to update the application with new code:
+This section provides step-by-step instructions for updating your Tree ML deployment with new code.
 
 ### 1. Pulling Updates
+
+First, retrieve the latest code from the repository:
 
 ```bash
 # Navigate to repository directory
 cd /ttt/tree_ml
 
-# Backup current code (optional but recommended)
+# Backup current code (recommended before updates)
 tar -czf /tmp/tree-ml-backup-$(date +%Y%m%d).tar.gz --exclude=node_modules --exclude=.git .
 
 # Pull latest changes
 git pull origin main
 
-# Check what changed
+# Review what changed
 git log -p -1
 ```
 
 ### 2. Updating Frontend
 
+Update the dashboard user interface:
+
 ```bash
 # Navigate to dashboard directory
 cd /ttt/tree_ml/dashboard
 
-# Install dependencies (in case there are changes)
+# Install any new dependencies
 npm ci
 
 # Build the frontend
 npm run build
 
-# Verify the build
+# Verify the build was successful
 ls -la dist/
 ```
 
 ### 3. Updating Backend
 
+Update the API and server components:
+
 ```bash
 # Navigate to backend directory
 cd /ttt/tree_ml/dashboard/backend
 
-# Install any new dependencies
+# Activate Python environment
 source ~/tree_ml/bin/activate
+
+# Install any new Python dependencies
 pip install -r requirements.txt
+
+# Install any new Node.js dependencies
 npm ci
 
 # Restart the backend service
@@ -1250,10 +1341,16 @@ sudo systemctl restart tree-backend
 
 ### 4. Updating ML Model Server
 
+Update the machine learning components:
+
 ```bash
 # If model weights were updated, download them
 cd /ttt/tree_ml/pipeline/model
 # Add wget commands for updated model files if necessary
+
+# If CUDA extensions need rebuilding
+cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
+python setup.py build develop
 
 # Restart the model server service
 sudo systemctl restart tree-detection
@@ -1261,10 +1358,10 @@ sudo systemctl restart tree-detection
 
 ### 5. Complete System Restart
 
-If you need to do a full system restart:
+For major updates, perform a full system restart:
 
 ```bash
-# Stop all services
+# Stop all services in reverse order of dependencies
 sudo systemctl stop tree-detection
 sudo systemctl stop tree-backend
 sudo systemctl stop nginx
@@ -1272,53 +1369,72 @@ sudo systemctl stop nginx
 # Clear any cached data (if necessary)
 rm -rf /ttt/data/ml/temp/*
 
-# Start services in the right order
+# Start services in the correct dependency order
 sudo systemctl start tree-detection
+sleep 10  # Allow model server to initialize
 sudo systemctl start tree-backend
 sudo systemctl start nginx
 
-# Verify all services are running
-sudo systemctl status tree-detection
-sudo systemctl status tree-backend
-sudo systemctl status nginx
+# Verify all services are running properly
+sudo systemctl status tree-detection tree-backend nginx
 ```
 
-### 6. Troubleshooting Common Update Issues
+### 6. Troubleshooting Update Issues
 
 #### Frontend Build Failures
 
+If the frontend build fails:
+
 ```bash
-# Check for Node.js/npm errors
+# Get detailed npm errors
 cd /ttt/tree_ml/dashboard
 npm ci --verbose
 
-# Try clearing npm cache
+# Try clearing npm cache and rebuilding
 npm cache clean --force
 npm ci
 npm run build
+
+# Check for JavaScript errors in source files
+npx eslint src/
 ```
 
 #### Backend Update Issues
 
+If the backend service fails to start:
+
 ```bash
-# Check Python dependencies
+# Check for missing Python dependencies
 pip list | grep -E 'fastapi|uvicorn|sqlalchemy'
 
-# Manually restart with verbose output
+# Try running the server manually to see errors
 cd /ttt/tree_ml/dashboard/backend
 source ~/tree_ml/bin/activate
 python server.js
+
+# Check logs for errors
+sudo journalctl -u tree-backend -n 100
 ```
 
 #### ML Model Server Issues
 
+If the model server fails to start or process requests:
+
 ```bash
-# Manually start the model server to see errors
+# Run the server manually to see startup errors
 cd /ttt/tree_ml
 source ~/tree_ml/bin/activate
 bash /ttt/tree_ml/pipeline/run_model_server.sh
 
-# Check logs
+# Check systemd service logs
 sudo journalctl -u tree-detection -n 100
+
+# Check application logs
 cat /ttt/tree_ml/logs/model_server.log
+
+# Verify CUDA is working with PyTorch
+python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}')"
+
+# Test if model extensions are properly built
+python -c "from groundingdino import _C; print('CUDA extension loaded successfully')"
 ```

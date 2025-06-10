@@ -17,7 +17,7 @@ import {
 // Import the components for detection categories and preview
 import DetectionCategories from './DetectionCategories';
 import DetectionPreview from './DetectionPreview';
-import T4StatusIndicator from './T4StatusIndicator';
+import MLStatusIndicator from './MLStatusIndicator';
 
 /**
  * Detection Sidebar Component
@@ -168,28 +168,39 @@ const DetectionSidebar = ({
   if (!window._mlSettingsInitialized) {
     console.log('DetectionSidebar: ONE-TIME INITIALIZATION of global settings');
     
-    // Initialize global settings
+    // Initialize global settings with 30% opacity default
     window.mlOverlaySettings = {
       showOverlay: true,
       showSegmentation: true,
-      opacity: 0.7
+      opacity: 0.3
     };
     
     window.detectionShowOverlay = true;
+    
+    // Override any previously saved value with our new default
+    try {
+      // First clear any existing saved value
+      localStorage.removeItem('ml-overlay-opacity');
+      
+      // Then save our new default
+      localStorage.setItem('ml-overlay-opacity', '0.3');
+      
+      console.log(`DetectionSidebar: Set default opacity to 0.3`);
+    } catch (e) {
+      console.error("DetectionSidebar: Error accessing localStorage for opacity setting:", e);
+    }
     window._mlSettingsInitialized = true;
     
-    // CRITICAL FIX: Ensure our global settings reflect the working implementation
-    setTimeout(() => {
-      console.log('DetectionSidebar: FIXING ML OVERLAY IMPLEMENTATION');
+    // Initialize global settings directly without delay
       
-      // Ensure global settings are initialized correctly
-      window.mlOverlaySettings = {
-        showOverlay: true,
-        showSegmentation: true,
-        opacity: 0.7
-      };
-      
-      window.detectionShowOverlay = true;
+    // Ensure global settings are initialized correctly
+    window.mlOverlaySettings = {
+      showOverlay: true,
+      showSegmentation: true,
+      opacity: 0.3
+    };
+    
+    window.detectionShowOverlay = true;
       
       // Make sure we have the correct functions registered globally
       // If MLOverlayInitializer has done its job, these should already be available
@@ -276,7 +287,7 @@ const DetectionSidebar = ({
             overlay.style.left = '0';
             overlay.style.width = '100%';
             overlay.style.height = '100%';
-            overlay.style.backgroundColor = `rgba(0, 30, 60, ${window.mlOverlaySettings.opacity || 0.7})`;
+            overlay.style.backgroundColor = `rgba(0, 30, 60, ${window.mlOverlaySettings.opacity || 0.3})`;
             overlay.style.pointerEvents = 'none';
             overlay.style.zIndex = '50';
             overlay.style.display = window.mlOverlaySettings.showOverlay ? 'block' : 'none';
@@ -296,7 +307,6 @@ const DetectionSidebar = ({
           opacity: window.mlOverlaySettings.opacity
         }
       }));
-    }, 1000);
   }
   
   // Track last toggle timestamp to prevent duplicate events
@@ -381,7 +391,7 @@ const DetectionSidebar = ({
       detail: { 
         showOverlay: newValue,
         showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
-        opacity: window.mlOverlaySettings?.opacity || 0.7,
+        opacity: window.mlOverlaySettings?.opacity || 0.3,
         source: 'detection_sidebar_toggle_function',
         timestamp: now
       }
@@ -655,7 +665,7 @@ const DetectionSidebar = ({
       <div className="px-3 pt-3 pb-2 mb-1 border-b border-slate-200">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
-            <T4StatusIndicator />
+            <MLStatusIndicator />
           </div>
           
           <div className="flex items-center">
@@ -694,7 +704,7 @@ const DetectionSidebar = ({
                       mapInstance,
                       window.mlDetectionData,
                       {
-                        opacity: window.mlOverlaySettings?.opacity || 0.7,
+                        opacity: window.mlOverlaySettings?.opacity || 0.3,
                         showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
                         forceVisible: true // Added flag to force visibility
                       }
@@ -704,7 +714,28 @@ const DetectionSidebar = ({
                   }
                   
                   // Show the preview with detection data
-                  window.showDetectionPreview(window.mlDetectionData);
+                  // Add more debugging to identify potential data issues
+                  console.log('DetectionSidebar: ML detection data structure:', {
+                    jobId: window.mlDetectionData?.job_id,
+                    treesLength: window.mlDetectionData?.trees?.length,
+                    detectionsLength: window.mlDetectionData?.detections?.length,
+                    hasDetections: !!window.mlDetectionData?.detections,
+                    hasTrees: !!window.mlDetectionData?.trees
+                  });
+                  
+                  // Ensure we have a properly structured object to pass to preview
+                  const enhancedData = {
+                    ...window.mlDetectionData,
+                    job_id: window.mlDetectionData?.job_id || window.currentDetectionJobId,
+                    timestamp: window.mlDetectionData?.timestamp || new Date().toISOString(),
+                    // Ensure we have the trees array populated, using detections as fallback
+                    trees: window.mlDetectionData?.trees || window.mlDetectionData?.detections || [],
+                    // Always include both trees and detections arrays for maximum compatibility
+                    detections: window.mlDetectionData?.detections || window.mlDetectionData?.trees || []
+                  };
+                  
+                  // Call the preview with the enhanced data
+                  window.showDetectionPreview(enhancedData);
                 } else if (typeof window.checkAndShowDetectionPreview === 'function') {
                   console.log('DetectionSidebar: Checking for detection data to show preview');
                   window.checkAndShowDetectionPreview();
@@ -819,7 +850,7 @@ const DetectionSidebar = ({
           className={`flex-1 py-2 text-sm font-medium ${activeTab === 'trees' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
           onClick={() => setActiveTab('trees')}
         >
-          Objects
+          Detected
         </button>
         <button
           className={`flex-1 py-2 text-sm font-medium ${activeTab === 'params' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-gray-500'}`}
@@ -957,7 +988,7 @@ const DetectionSidebar = ({
                       {/* Opacity slider */}
                       <div className="mb-3">
                         <label htmlFor="opacity-slider" className="block text-sm text-gray-700 mb-1">
-                          Overlay Opacity ({Math.round(overlayOpacity * 100)}%)
+                          Overlay Opacity ({Math.round((window.mlOverlaySettings?.opacity || overlayOpacity) * 100)}%)
                         </label>
                         <input
                           id="opacity-slider"
@@ -972,6 +1003,11 @@ const DetectionSidebar = ({
                             handleOpacityChange(newOpacity);
                           }}
                           className="w-full"
+                          // Add a fast initial load animation to draw attention
+                          style={{
+                            transition: "all 0.2s ease",
+                            opacity: 1
+                          }}
                         />
                       </div>
                     </div>
@@ -983,10 +1019,10 @@ const DetectionSidebar = ({
                   <h3 className="text-sm font-semibold mb-2">ML Engine Status</h3>
                   <div className="bg-gray-50 p-3 rounded border border-gray-200">
                     <div>
-                      <T4StatusIndicator />
+                      <MLStatusIndicator />
                       
                       <div className="mt-2 text-xs text-gray-600">
-                        <p>Tree detection can run on the local CPU, local GPU, or remote T4 GPU for faster processing.</p>
+                        <p>Tree detection can run on the local CPU or GPU for faster processing.</p>
                       </div>
                     </div>
                   </div>
@@ -1304,7 +1340,7 @@ const DetectionSidebar = ({
           <Button
             variant="outline"
             size="sm"
-            className="flex-none px-4 bg-blue-700 hover:bg-blue-800 text-white border-blue-600"
+            className="flex-none px-4 bg-blue-700 hover:bg-blue-800 border-blue-600 font-medium text-black"
             id="detect-trees-btn"
             onClick={e => {
               console.log("DetectionSidebar: Detect button clicked - starting ML pipeline");
@@ -1312,9 +1348,8 @@ const DetectionSidebar = ({
               // Show a loading state for the button
               const button = e.currentTarget;
               const originalText = button.innerHTML;
-              button.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>Detecting...';
+              button.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="text-gray-300">Detecting...</span>';
               button.disabled = true;
-              button.style.backgroundColor = '#CBD5E1'; // Light gray
               button.style.cursor = 'not-allowed';
               
               // Create progress indicator
@@ -1445,7 +1480,7 @@ const DetectionSidebar = ({
                     window.mlOverlaySettings = {
                       ...(window.mlOverlaySettings || {}),
                       showOverlay: true,
-                      opacity: 0.7,
+                      opacity: 0.3,
                       showSegmentation: true
                     };
                     window.detectionShowOverlay = true;
@@ -1461,7 +1496,7 @@ const DetectionSidebar = ({
                           mapInstance, 
                           detectionData,
                           {
-                            opacity: window.mlOverlaySettings?.opacity || 0.7,
+                            opacity: window.mlOverlaySettings?.opacity || 0.3,
                             showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
                             forceRenderBoxes: true
                           }
@@ -1479,7 +1514,7 @@ const DetectionSidebar = ({
                           detail: { 
                             showOverlay: true, 
                             showSegmentation: true, 
-                            opacity: window.mlOverlaySettings?.opacity || 0.7,
+                            opacity: window.mlOverlaySettings?.opacity || 0.3,
                             source: 'detection_completion'
                           }
                         }));
@@ -1565,7 +1600,7 @@ const DetectionSidebar = ({
               window.mlOverlaySettings = {
                 ...(window.mlOverlaySettings || {}),
                 showOverlay: true,
-                opacity: window.mlOverlaySettings?.opacity || 0.7
+                opacity: window.mlOverlaySettings?.opacity || 0.3
               };
               window.detectionShowOverlay = true;
               
@@ -1594,7 +1629,7 @@ const DetectionSidebar = ({
                 cleanupDetection();
                 window.removeEventListener('treeDetectionComplete', handleDetectionComplete);
                 window.removeEventListener('treeDetectionError', handleDetectionError);
-              }, 20000); // 20 second safety timeout
+              }, 3000); // 3 second safety timeout - reduced from 20 seconds for better UX
             }}
           >
             <BarChart size={14} className="mr-1" />

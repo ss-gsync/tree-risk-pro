@@ -1,16 +1,16 @@
-// T4StatusIndicator.jsx
+// MLStatusIndicator.jsx
 //
-// Component to display the status of the T4 GPU server integration
+// Component to display the status of the ML model server
 
 import React, { useState, useEffect } from 'react';
 import { Zap, Server, AlertTriangle, Check } from 'lucide-react';
 
 /**
- * T4StatusIndicator Component
+ * MLStatusIndicator Component
  * 
- * Displays the status of the T4 GPU server integration in the dashboard
+ * Displays the status of the ML model server in the dashboard
  */
-const T4StatusIndicator = () => {
+const MLStatusIndicator = () => {
   const [status, setStatus] = useState({
     loading: true,
     using_external_server: false,
@@ -27,7 +27,10 @@ const T4StatusIndicator = () => {
       try {
         const response = await fetch('/api/ml/status');
         if (response.ok) {
-          const data = await response.json();
+          const responseData = await response.json();
+          // Extract the actual status object from the nested response
+          const data = responseData.status || responseData;
+          
           setStatus({
             loading: false,
             ...data
@@ -41,7 +44,7 @@ const T4StatusIndicator = () => {
             detail: data
           }));
           
-          console.log('T4StatusIndicator: ML engine status updated', data);
+          console.log('MLStatusIndicator: ML engine status updated', data);
         } else {
           setStatus({
             loading: false,
@@ -63,7 +66,7 @@ const T4StatusIndicator = () => {
     
     // Also refresh when T4 connection status might have changed
     const handleStatusChangeRequest = () => {
-      console.log('T4StatusIndicator: Refreshing status due to external request');
+      console.log('MLStatusIndicator: Refreshing status due to external request');
       fetchStatus();
     };
     
@@ -106,12 +109,12 @@ const T4StatusIndicator = () => {
       backgroundColor = 'bg-green-50';
       textColor = 'text-green-700';
       icon = <Server size={12} className="text-green-600" />;
-      label = 'T4 GPU Active';
+      label = 'GPU Active';
     } else {
       backgroundColor = 'bg-amber-50';
       textColor = 'text-amber-700';
       icon = <AlertTriangle size={12} className="text-amber-600" />;
-      label = 'T4 Disconnected';
+      label = 'Server Disconnected';
     }
   } else if (status.cuda_available) {
     backgroundColor = 'bg-blue-50';
@@ -190,4 +193,4 @@ const T4StatusIndicator = () => {
   );
 };
 
-export default T4StatusIndicator;
+export default MLStatusIndicator;

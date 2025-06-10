@@ -684,6 +684,7 @@ class DetectionService:
                     image_array = np.array(img)
                 
                 # Process the image for detection with the correct parameters
+                # Pass the image array for processing - the ModelService only accepts numpy arrays
                 results = self.detect_trees(
                     image=image_array,
                     confidence_threshold=0.3,
@@ -725,69 +726,9 @@ class DetectionService:
                     json.dump(metadata, f, indent=2)
                 logger.info(f"Saved metadata to {metadata_path}")
                 
-                # 3. Generate visualization image if possible
-                try:
-                    # Create a visualization of the detection results
-                    visualization_path = os.path.join(ml_response_dir, "combined_visualization.jpg")
-                    
-                    # Use the model service to generate the visualization
-                    if self.ml_service:
-                        # Load the original image
-                        with Image.open(image_path) as img:
-                            image_array = np.array(img.convert('RGB'))
-                        
-                        # Generate visualization
-                        vis_img_array = self.ml_service.generate_combined_visualization(image_array, results)
-                        
-                        # Convert back to PIL and save
-                        vis_img = Image.fromarray(vis_img_array)
-                        vis_img.save(visualization_path)
-                        logger.info(f"Saved visualization to {visualization_path}")
-                    else:
-                        # Fallback to simple visualization if model service is not available
-                        # Load the original image
-                        with Image.open(image_path) as img:
-                            vis_img = img.copy().convert('RGB')
-                        
-                        # Create a draw object
-                        from PIL import ImageDraw
-                        draw = ImageDraw.Draw(vis_img)
-                        
-                        # Draw bounding boxes for each detection
-                        for i, detection in enumerate(detections):
-                            bbox = detection.get('bbox', [0, 0, 0, 0])
-                            confidence = detection.get('confidence', 0)
-                            class_name = detection.get('class', 'unknown')
-                            
-                            # Convert normalized coordinates to pixel coordinates
-                            width, height = vis_img.size
-                            x1, y1, x2, y2 = [
-                                int(bbox[0] * width),
-                                int(bbox[1] * height),
-                                int(bbox[2] * width),
-                                int(bbox[3] * height)
-                            ]
-                            
-                            # Draw rectangle with color based on confidence
-                            # Higher confidence = more green, lower = more red
-                            green = min(255, int(confidence * 255))
-                            red = min(255, int((1 - confidence) * 255))
-                            color = (red, green, 0)
-                            
-                            # Draw the bounding box
-                            draw.rectangle([x1, y1, x2, y2], outline=color, width=2)
-                            
-                            # Add label with confidence
-                            label = f"{class_name}: {confidence:.2f}"
-                            draw.text((x1, y1-10), label, fill=color)
-                        
-                        # Save the visualization
-                        vis_img.save(visualization_path)
-                        logger.info(f"Saved visualization to {visualization_path}")
-                    
-                except Exception as e:
-                    logger.error(f"Error creating visualization: {e}")
-                    # Continue processing even if visualization fails
+                # 3. Use visualization from model server
+                visualization_path = os.path.join(ml_response_dir, "combined_visualization.jpg")
+                logger.info(f"Using visualization from model server at {visualization_path}")
                 
                 # Extract detection results
                 logger.info(f"Detected {detection_count} objects in {image_path}")

@@ -26,9 +26,19 @@ const DetectionPopup = ({ data, onClose }) => {
   // Image paths
   const jobId = data?.job_id;
   const imagePath = data?.paths?.visualizationImage || 
-    (jobId ? `/ttt/data/ml/${jobId}/ml_response/combined_visualization.jpg` : null);
+    (jobId ? `/api/ml/detection/${jobId}/visualization` : null);
   const satellitePath = data?.paths?.satelliteImage || 
-    (jobId ? `/ttt/data/ml/${jobId}/satellite_${jobId}.jpg` : null);
+    (jobId ? `/api/ml/detection/${jobId}/satellite` : null);
+    
+  // Debug logs
+  console.log(`DetectionPreview - Image paths:`, {
+    jobId,
+    visualizationPath: imagePath,
+    satellitePath,
+    dataKeys: data ? Object.keys(data) : [],
+    hasPaths: !!data?.paths,
+    pathsKeys: data?.paths ? Object.keys(data.paths) : []
+  });
   
   // UI state
   const [fullscreenImage, setFullscreenImage] = useState(null);
@@ -515,7 +525,47 @@ function useTreeData(data) {
       console.log(`Normalized ${normalizedTrees.length} trees for display`);
     } else {
       console.warn('No tree data found in any format');
-      setTrees([]);
+      
+      // CRITICAL FIX: Check for other detection data formats as a last resort
+      if (data && data.job_id) {
+        console.log(`Attempting to load detection data from direct API for job ${data.job_id}`);
+        // Try loading trees.json directly from the API as a fallback
+        fetch(`/api/ml/detection/${data.job_id}/trees`)
+          .then(response => {
+            if (response.ok) return response.json();
+            throw new Error(`Failed to load trees data: ${response.status}`);
+          })
+          .then(treesData => {
+            console.log(`Successfully loaded trees data from API with ${treesData.detections?.length || 0} detections`);
+            
+            // If we have detections, update our local state
+            if (treesData.detections && treesData.detections.length > 0) {
+              const normalizedTrees = treesData.detections.map(detection => {
+                // Convert to normalized form
+                const originalClass = detection.class || detection.category || 'healthy tree';
+                const normalizedClass = typeof originalClass === 'string' 
+                  ? originalClass.toLowerCase().replace(/\s+/g, '_') 
+                  : 'healthy_tree';
+                
+                return {
+                  ...detection,
+                  class: normalizedClass,
+                  category: normalizedClass
+                };
+              });
+              setTrees(normalizedTrees);
+              console.log(`Loaded ${normalizedTrees.length} trees from direct API call`);
+            } else {
+              setTrees([]);
+            }
+          })
+          .catch(err => {
+            console.error('Error loading trees data from API:', err);
+            setTrees([]);
+          });
+      } else {
+        setTrees([]);
+      }
     }
   }, [data]);
   
@@ -622,7 +672,7 @@ async function loadTreesJsonDirectly(jobId) {
   
   try {
     console.log(`Direct loader: Attempting to load trees.json for job ${jobId}`);
-    const response = await fetch(`/ttt/data/ml/${jobId}/ml_response/trees.json`);
+    const response = await fetch(`/api/ml/detection/${jobId}/trees`);
     
     if (!response.ok) {
       throw new Error(`Failed to load trees.json: ${response.status}`);

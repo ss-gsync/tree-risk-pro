@@ -332,13 +332,13 @@ class ModelService:
             # Process each detection
             for i, detection in enumerate(detection_results.get('detections', [])):
                 # Get normalized box and convert to pixel coordinates
+                # bbox format is [x, y, width, height] in normalized coordinates
                 bbox = detection.get('bbox', [0, 0, 0, 0])
-                x_min, y_min, x_max, y_max = [
-                    int(bbox[0] * width),
-                    int(bbox[1] * height),
-                    int(bbox[2] * width),
-                    int(bbox[3] * height)
-                ]
+                x_min = int(bbox[0] * width)
+                y_min = int(bbox[1] * height)
+                x_max = int((bbox[0] + bbox[2]) * width)  # x + width
+                y_max = int((bbox[1] + bbox[3]) * height) # y + height
+                logger.info(f"Drawing bbox with coordinates: {x_min},{y_min},{x_max},{y_max} from {bbox}")
                 
                 # Get class and confidence
                 class_name = detection.get('class', 'tree')

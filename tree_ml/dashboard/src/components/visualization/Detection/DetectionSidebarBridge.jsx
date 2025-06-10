@@ -22,7 +22,7 @@ const DetectionSidebarBridge = () => {
   const [sidebarElement, setSidebarElement] = useState(null);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
   const [showOverlay, setShowOverlay] = useState(true);
-  const [overlayOpacity, setOverlayOpacity] = useState(0.7);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.3);
   const [showSegmentation, setShowSegmentation] = useState(true);
   const [trees, setTrees] = useState([]);
   const [selectedTree, setSelectedTree] = useState(null);
@@ -103,7 +103,7 @@ const DetectionSidebarBridge = () => {
     window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
       detail: {
         showOverlay: true,
-        opacity: window.mlOverlaySettings?.opacity || 0.7,
+        opacity: window.mlOverlaySettings?.opacity || 0.3,
         source: 'detection_sidebar_bridge_init'
       }
     }));

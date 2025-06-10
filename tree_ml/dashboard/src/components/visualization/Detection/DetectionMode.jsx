@@ -64,7 +64,7 @@ const DetectionMode = (props) => {
   // Visualization settings
   const [manualPlacement, setManualPlacement] = useState(false);
   const [showOverlay, setShowOverlay] = useState(true);
-  const [overlayOpacity, setOverlayOpacity] = useState(0.7);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.3);
   const [width, setWidth] = useState(384); // Width of the sidebar in pixels
   const [showPreview, setShowPreview] = useState(false); // Track if detection preview is showing
   
@@ -139,10 +139,8 @@ const DetectionMode = (props) => {
       // Update UI state
       setShowPreview(true);
       
-      // Show preview after DOM update
-      setTimeout(() => {
-        window.showDetectionPreview(data);
-      }, 50);
+      // Show preview immediately without delay
+      window.showDetectionPreview(data);
       
       // Add a global listener to prevent any component from collapsing the sidebar
       // while the preview is showing

@@ -1423,9 +1423,8 @@ const DetectionRenderer = ({
         <div id="ml-overlay-react-container">
           {/* Use direct function call instead of component to avoid issues */}
           {(() => {
-            // This IIFE executes once the component renders
-            setTimeout(() => {
-              if (typeof MLOverlayModule.renderDetectionOverlay === 'function' && detectionData) {
+            // This IIFE executes immediately once the component renders
+            if (typeof MLOverlayModule.renderDetectionOverlay === 'function' && detectionData) {
                 console.log('Rendering detection overlay through direct function call');
                 
                 // Force initialization and ensure multiple attempts to render
@@ -1460,7 +1459,6 @@ const DetectionRenderer = ({
                 // Start rendering attempts immediately
                 attemptRender();
               }
-            }, 50);
             return null; // This doesn't render anything, just triggers the function
           })()}
         </div>

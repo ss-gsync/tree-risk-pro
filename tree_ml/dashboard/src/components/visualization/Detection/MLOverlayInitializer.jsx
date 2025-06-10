@@ -199,10 +199,8 @@ const MLOverlayInitializer = () => {
       console.log('MLOverlayInitializer: Maps API initialized event received');
       clearInterval(checkInterval);
       
-      // Wait a short delay to ensure full initialization
-      setTimeout(() => {
-        attemptInitialization();
-      }, 100);
+      // Immediately attempt initialization without delay
+      attemptInitialization();
     };
     
     // Listen for custom map initialization events
@@ -236,30 +234,39 @@ const MLOverlayInitializer = () => {
     
     // Make overlay visible by default - this is the key fix
     console.log('MLOverlayInitializer: Setting overlay to visible state');
+    
+    // Use existing opacity settings if present, otherwise default to 0.3 (30%)
+    const currentOpacity = window.mlOverlaySettings?.opacity || 0.3;
+    
     window.mlOverlaySettings = {
       ...(window.mlOverlaySettings || {}),
       showOverlay: true,
       initialVisibility: true,
-      pendingButtonTrigger: false  // Don't wait for explicit trigger
+      pendingButtonTrigger: false,  // Don't wait for explicit trigger
+      opacity: currentOpacity       // Preserve existing opacity setting
     };
     window.detectionShowOverlay = true;
     
-    // Dispatch event to make sure overlay is immediately visible
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
-        detail: {
-          showOverlay: true,
-          showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
-          opacity: window.mlOverlaySettings?.opacity || 0.7,
-          source: 'initialization'
-        }
-      }));
-    }, 100);
+    // Dispatch event to make sure overlay is immediately visible without delay
+    window.dispatchEvent(new CustomEvent('mlOverlaySettingsChanged', {
+      detail: {
+        showOverlay: true,
+        showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
+        opacity: window.mlOverlaySettings?.opacity || 0.3,
+        source: 'initialization'
+      }
+    }));
     
-    // Try to make the overlay visible if it exists
+    // IMMEDIATE INITIALIZATION: Make the overlay visible without delay
+    // First try direct manipulation of existing overlay (fastest)
     if (window._mlDetectionOverlay && window._mlDetectionOverlay.div) {
-      console.log('MLOverlayInitializer: Making existing overlay div visible');
+      console.log('MLOverlayInitializer: Making existing overlay div immediately visible');
       window._mlDetectionOverlay.div.style.display = 'block';
+      
+      // Also update opacity to match current settings
+      if (window.mlOverlaySettings && window.mlOverlaySettings.opacity !== undefined) {
+        window._mlDetectionOverlay.div.style.opacity = window.mlOverlaySettings.opacity.toString();
+      }
     } else {
       // Create an overlay even if we don't have data - this is critical for first click to work
       const mapInstance = window.map || window.googleMapsInstance || window._googleMap;
@@ -273,9 +280,10 @@ const MLOverlayInitializer = () => {
               mapInstance,
               window.mlDetectionData,
               {
-                opacity: window.mlOverlaySettings?.opacity || 0.7,
+                opacity: window.mlOverlaySettings?.opacity || 0.3,
                 showSegmentation: window.mlOverlaySettings?.showSegmentation !== false,
-                forceRenderBoxes: true
+                forceRenderBoxes: true,
+                immediate: true  // Signal that this should be immediate, no animation delays
               }
             );
           } else {
@@ -285,9 +293,10 @@ const MLOverlayInitializer = () => {
               mapInstance,
               { trees: [], metadata: window.mapViewInfo?.viewData || {} },
               {
-                opacity: window.mlOverlaySettings?.opacity || 0.7,
+                opacity: window.mlOverlaySettings?.opacity || 0.3,
                 showSegmentation: false,
-                placeholderMode: true
+                placeholderMode: true,
+                immediate: true  // Signal that this should be immediate, no animation delays
               }
             );
           }
@@ -387,7 +396,7 @@ const MLOverlayInitializer = () => {
                 mapInstance,
                 window.mlDetectionData || window.detectionData,
                 {
-                  opacity: opacity !== undefined ? opacity : 0.7,
+                  opacity: opacity !== undefined ? opacity : 0.3,
                   showSegmentation: showSegmentation !== undefined ? showSegmentation : true,
                   forceRenderBoxes: true
                 }
@@ -506,7 +515,7 @@ const MLOverlayInitializer = () => {
               mapInstance,
               window.mlDetectionData || window.detectionData,
               {
-                opacity: opacity !== undefined ? opacity : 0.7,
+                opacity: opacity !== undefined ? opacity : 0.3,
                 showSegmentation: showSegmentation !== undefined ? showSegmentation : true,
                 forceRenderBoxes: true
               }
@@ -579,7 +588,7 @@ const MLOverlayInitializer = () => {
               mapInstance,
               event.detail,
               {
-                opacity: settings.opacity !== undefined ? settings.opacity : 0.7,
+                opacity: settings.opacity !== undefined ? settings.opacity : 0.3,
                 showSegmentation: settings.showSegmentation !== undefined ? settings.showSegmentation : true,
                 forceRenderBoxes: true,
                 appendMode: true  // Use append mode to add to existing overlay

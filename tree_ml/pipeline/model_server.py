@@ -309,9 +309,10 @@ class GroundedSAMServer:
             
             # Define text prompt for tree detection aligned with DetectionCategories.jsx
             text_prompt = "tree. healthy tree. hazardous tree. dead tree. low canopy tree. pest disease tree. flood prone tree. utility conflict tree. structural hazard tree. fire risk tree."
-            # Lower thresholds to improve detection sensitivity
-            box_threshold = min(0.15, box_threshold)  # Use at most 0.15 for box threshold 
-            text_threshold = min(0.15, text_threshold)  # Use at most 0.15 for text threshold
+            # Slightly increase thresholds to reduce false positives (like houses being detected as trees)
+            # while still maintaining good detection sensitivity
+            box_threshold = max(0.20, box_threshold)  # Use at least 0.20 for box threshold 
+            text_threshold = max(0.18, text_threshold)  # Use at least 0.18 for text threshold
             logger.info(f"Using detection thresholds: box_threshold={box_threshold}, text_threshold={text_threshold}")
             logger.info(f"Using prompt with category prefixes: {text_prompt}")
             

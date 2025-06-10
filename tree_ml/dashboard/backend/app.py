@@ -1412,6 +1412,93 @@ def create_app():
             logger.error(f"Error serving ML data file: {str(e)}")
             return jsonify({"error": str(e)}), 500
             
+    # Route to serve ML detection specific endpoints
+    @app.route('/api/ml/detection/<detection_id>/visualization', methods=['GET'])
+    def serve_detection_visualization(detection_id):
+        """Serve the visualization image for a specific detection"""
+        try:
+            # Set the path to the visualization image
+            image_path = os.path.join(ML_DIR, detection_id, "ml_response", "combined_visualization.jpg")
+            
+            # Check if the file exists
+            if not os.path.exists(image_path):
+                logger.warning(f"Visualization image not found at {image_path}")
+                return jsonify({"error": "Visualization image not found"}), 404
+                
+            # Serve the file
+            return send_from_directory(
+                os.path.dirname(image_path),
+                os.path.basename(image_path),
+                mimetype='image/jpeg'
+            )
+        except Exception as e:
+            logger.error(f"Error serving visualization image: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+            
+    @app.route('/api/ml/detection/<detection_id>/satellite', methods=['GET'])
+    def serve_detection_satellite(detection_id):
+        """Serve the satellite image for a specific detection"""
+        try:
+            # Set the path to the satellite image
+            image_path = os.path.join(ML_DIR, detection_id, f"satellite_{detection_id}.jpg")
+            
+            # Check if the file exists
+            if not os.path.exists(image_path):
+                logger.warning(f"Satellite image not found at {image_path}")
+                return jsonify({"error": "Satellite image not found"}), 404
+                
+            # Serve the file
+            return send_from_directory(
+                os.path.dirname(image_path),
+                os.path.basename(image_path),
+                mimetype='image/jpeg'
+            )
+        except Exception as e:
+            logger.error(f"Error serving satellite image: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+            
+    @app.route('/api/ml/detection/<detection_id>/metadata', methods=['GET'])
+    def serve_detection_metadata(detection_id):
+        """Serve the metadata for a specific detection"""
+        try:
+            # Set the path to the metadata file
+            metadata_path = os.path.join(ML_DIR, detection_id, "ml_response", "metadata.json")
+            
+            # Check if the file exists
+            if not os.path.exists(metadata_path):
+                logger.warning(f"Metadata not found at {metadata_path}")
+                return jsonify({"error": "Metadata not found"}), 404
+                
+            # Read and return the metadata
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                
+            return jsonify(metadata)
+        except Exception as e:
+            logger.error(f"Error serving metadata: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+            
+    @app.route('/api/ml/detection/<detection_id>/trees', methods=['GET'])
+    def serve_detection_trees(detection_id):
+        """Serve the trees.json for a specific detection"""
+        try:
+            # Set the path to the trees.json file
+            trees_path = os.path.join(ML_DIR, detection_id, "ml_response", "trees.json")
+            
+            # Check if the file exists
+            if not os.path.exists(trees_path):
+                logger.warning(f"Trees data not found at {trees_path}")
+                return jsonify({"error": "Trees data not found"}), 404
+                
+            # Read and return the trees data
+            with open(trees_path, 'r') as f:
+                trees_data = json.load(f)
+                
+            return jsonify(trees_data)
+        except Exception as e:
+            logger.error(f"Error serving trees data: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+            
     # Gemini API integration for tree detection and satellite imagery
     @app.route('/api/gemini/save-results', methods=['POST'])
     @require_auth
@@ -1670,9 +1757,7 @@ def create_app():
             
             # Check directories
             status["directories"] = {
-                "temp_exists": os.path.exists(TEMP_DIR),
                 "zarr_exists": os.path.exists(ZARR_DIR),
-                "temp_path": TEMP_DIR,
                 "zarr_path": ZARR_DIR
             }
             

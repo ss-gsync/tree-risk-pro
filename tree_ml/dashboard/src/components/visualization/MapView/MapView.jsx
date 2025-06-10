@@ -986,11 +986,16 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
   
   // Function to toggle 3D mode
   const toggle3DMode = () => {
+    // Force enabled for testing
+    const is3DSupported = true;
     if (!is3DSupported) return;
     
     try {
       const newMode = !is3DMode;
-      console.log(`Toggling 3D mode: ${is3DMode} → ${newMode}`);
+      console.log(`MAPVIEW: Toggling 3D mode: ${is3DMode} → ${newMode}`);
+      
+      // CRITICAL: Update global flag first
+      window.is3DModeActive = newMode;
       
       if (newMode) {
         // Going from 2D to 3D
@@ -1010,8 +1015,9 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
           
           // Use hybrid map type in 3D
           map.current.setMapTypeId(google.maps.MapTypeId.HYBRID);
-          map.current.setTilt(0);
+          map.current.setTilt(45); // Apply tilt immediately
           setMapTilt(45);
+          
         }
         
         window.dispatchEvent(new CustomEvent('mapModeChanged', { 
@@ -1037,6 +1043,7 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
           // Reset tilt for 2D view
           map.current.setTilt(0);
           setMapTilt(0);
+          
         }
         
         window.dispatchEvent(new CustomEvent('mapModeChanged', { 
@@ -1044,6 +1051,7 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
         }));
       }
       
+      // Update local state
       setIs3DMode(newMode);
       
       // Set a global flag for 3D mode that can be checked anywhere
@@ -1396,6 +1404,7 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
     // Basic map controls
     getMap: () => map.current,
     getMarkers: () => markersRef.current,
+    toggle3DMode, // CRITICAL FIX: Expose the toggle3DMode function directly
     fitBounds: (bounds) => {
       if (map.current && bounds) {
         map.current.fitBounds(bounds);
