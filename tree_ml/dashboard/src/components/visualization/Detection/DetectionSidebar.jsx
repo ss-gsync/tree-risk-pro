@@ -100,13 +100,21 @@ const DetectionSidebar = ({
       mapContainer.style.right = newCollapsedState ? '0px' : `${width}px`;
     }
     
-    // Dispatch validationSidebarToggle event to notify other components of this change
+    // Dispatch both validationSidebarToggle (for legacy support) and detectionSidebarToggle events
+    const eventDetail = {
+      collapsed: newCollapsedState,
+      source: 'tree_detection',
+      width: newCollapsedState ? 0 : width
+    };
+    
+    // Legacy event
     window.dispatchEvent(new CustomEvent('validationSidebarToggle', {
-      detail: {
-        collapsed: newCollapsedState,
-        source: 'tree_detection',
-        width: newCollapsedState ? 0 : width
-      }
+      detail: eventDetail
+    }));
+    
+    // New specific event
+    window.dispatchEvent(new CustomEvent('detectionSidebarToggle', {
+      detail: eventDetail
     }));
     
     // Force window resize to update map rendering
@@ -1718,9 +1726,21 @@ const DetectionSidebar = ({
             // Update badge position - call our enhanced function
             updateBadgePosition(newWidth);
             
-            // Also dispatch event during resize for other components that might need it
+            // Also dispatch both events during resize for other components
+            const eventDetail = { 
+              width: newWidth,
+              collapsed: false,
+              source: 'detection_sidebar_resize'
+            };
+            
+            // New specific event for real-time resizing
             window.dispatchEvent(new CustomEvent('detectionSidebarResizing', {
-              detail: { width: newWidth }
+              detail: eventDetail
+            }));
+            
+            // Also dispatch the toggle event so the MapView can react to the width change
+            window.dispatchEvent(new CustomEvent('detectionSidebarToggle', {
+              detail: eventDetail
             }));
           };
           
@@ -1735,12 +1755,29 @@ const DetectionSidebar = ({
               badge.style.transition = 'right 0.2s ease'; // Re-enable transitions after resize
             }
             
+            // Force Google Maps to recalculate its size
+            const mapInstance = window.googleMapsInstance || window._googleMap;
+            if (mapInstance && window.google && window.google.maps) {
+              window.google.maps.event.trigger(mapInstance, 'resize');
+            }
+            
             // Force resize to ensure map redraws correctly
             window.dispatchEvent(new Event('resize'));
             
-            // Dispatch event to notify other components of the sidebar width change
+            // Dispatch final event to notify other components of the sidebar width change
+            const finalEventDetail = {
+              width: width,
+              collapsed: false,
+              source: 'detection_sidebar_resize_complete'
+            };
+            
             window.dispatchEvent(new CustomEvent('detectionSidebarResized', {
-              detail: { width: width }
+              detail: finalEventDetail
+            }));
+            
+            // Also dispatch the toggle event for MapView to handle
+            window.dispatchEvent(new CustomEvent('detectionSidebarToggle', {
+              detail: finalEventDetail
             }));
           };
           
@@ -1753,7 +1790,31 @@ const DetectionSidebar = ({
       {collapsed && (
         <div 
           className="fixed right-0 top-1/2 transform -translate-y-1/2 bg-white shadow-md rounded-l-md cursor-pointer z-30 transition-all hover:bg-blue-50"
-          onClick={toggleCollapse}
+          onClick={() => {
+            // When clicking to expand the sidebar, make sure the map container resizes properly
+            const mapContainer = document.querySelector('#map-container');
+            if (mapContainer) {
+              // First update the map container immediately
+              mapContainer.style.right = `${width}px`;
+              
+              // Then toggle the collapsed state which will dispatch events
+              toggleCollapse();
+              
+              // Force Google Maps to recalculate its size
+              setTimeout(() => {
+                const mapInstance = window.googleMapsInstance || window._googleMap;
+                if (mapInstance && window.google && window.google.maps) {
+                  window.google.maps.event.trigger(mapInstance, 'resize');
+                }
+                
+                // Also dispatch a resize event
+                window.dispatchEvent(new Event('resize'));
+              }, 100);
+            } else {
+              // Just toggle if no map container found
+              toggleCollapse();
+            }
+          }}
           style={{ top: `calc(50% + ${headerCollapsed ? '0px' : '30px'})` }}
         >
           <div className="p-2">

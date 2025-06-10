@@ -431,9 +431,18 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
   useEffect(() => {
     if (headerState !== undefined) {
       setHeaderCollapsed(headerState);
+      
+      // Dispatch event to notify other components
       window.dispatchEvent(new CustomEvent('headerCollapse', {
         detail: { collapsed: headerState }
       }));
+      
+      // Force map resize after header state change
+      setTimeout(() => {
+        if (map.current && window.google && window.google.maps) {
+          window.google.maps.event.trigger(map.current, 'resize');
+        }
+      }, 50);
     }
   }, [headerState]);
   
@@ -1084,14 +1093,82 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
     
     const handleHeaderCollapse = (event) => {
       setHeaderCollapsed(event.detail.collapsed);
+      
+      // Adjust map container when header collapses/expands
+      const mapContainer = document.getElementById('map-container');
+      const mapWrapper = document.getElementById('map-wrapper');
+      
+      if (mapContainer && mapWrapper) {
+        const isCollapsed = event.detail.collapsed;
+        
+        // Get the current header element
+        const header = document.querySelector('header');
+        const headerHeight = header ? header.offsetHeight : 0;
+        
+        // When header is collapsed, header height is 0
+        // When expanded, header height is approximately 60px
+        const newTop = isCollapsed ? '0' : `${headerHeight}px`;
+        const newHeight = isCollapsed ? '100vh' : `calc(100vh - ${headerHeight}px)`;
+        
+        console.log(`MapView: Adjusting map to header ${isCollapsed ? 'collapsed' : 'expanded'}, height: ${newHeight}, top: ${newTop}`);
+        
+        // Apply the changes
+        mapWrapper.style.height = newHeight;
+        mapWrapper.style.top = newTop;
+        
+        // For map container, it's better to use position rather than height
+        // so it properly fills the available space
+        mapContainer.style.position = 'absolute';
+        mapContainer.style.top = '0';
+        mapContainer.style.left = '0';
+        mapContainer.style.right = '0';
+        mapContainer.style.bottom = '0';
+        
+        // Force resize after adjustment with a slight delay to let DOM update
+        setTimeout(() => {
+          if (map.current && window.google && window.google.maps) {
+            window.google.maps.event.trigger(map.current, 'resize');
+          }
+        }, 100);
+      }
+    };
+    
+    // Handle sidebar toggle events and adjust map container width
+    const handleSidebarToggle = (event) => {
+      const mapContainer = document.getElementById('map-container');
+      
+      if (mapContainer && event.detail) {
+        const isCollapsed = event.detail.collapsed;
+        const sidebarWidth = event.detail.width || 0;
+        
+        // Adjust map container width based on sidebar state
+        if (event.type === 'validationSidebarToggle' || event.type === 'detectionSidebarToggle') {
+          mapContainer.style.right = isCollapsed ? '0' : `${sidebarWidth}px`;
+        } else if (event.type === 'leftSidebarToggle') {
+          mapContainer.style.left = isCollapsed ? '0' : `${sidebarWidth}px`;
+        }
+        
+        // Force resize after adjustment
+        setTimeout(() => {
+          if (map.current && window.google && window.google.maps) {
+            window.google.maps.event.trigger(map.current, 'resize');
+          }
+        }, 50);
+      }
+      
+      // Always trigger resize for any sidebar change
+      handleResize();
     };
     
     // Add event listeners
     window.addEventListener('validationQueueToggle', handleResize);
-    window.addEventListener('validationSidebarToggle', handleResize);
-    window.addEventListener('leftSidebarToggle', handleResize);
+    window.addEventListener('validationSidebarToggle', handleSidebarToggle);
+    window.addEventListener('leftSidebarToggle', handleSidebarToggle);
+    window.addEventListener('detectionSidebarToggle', handleSidebarToggle);
     window.addEventListener('headerCollapse', handleHeaderCollapse);
     window.addEventListener('resize', handleResize);
+    window.addEventListener('forceCloseObjectDetection', handleResize);
+    window.addEventListener('forceCloseImageryPanel', handleResize);
     
     // Set up ResizeObserver to monitor map container and header size changes
     const resizeObserver = new ResizeObserver(() => {
@@ -1127,14 +1204,48 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
     // Initial resize
     handleResize();
     
+    // Apply initial header state and adjust map container accordingly
+    if (headerCollapsed !== undefined) {
+      const mapWrapper = document.getElementById('map-wrapper');
+      const mapContainer = document.getElementById('map-container');
+      const header = document.querySelector('header');
+      
+      if (mapWrapper && mapContainer) {
+        const headerHeight = header ? header.offsetHeight : 0;
+        
+        // Set the initial map position and size based on header state
+        const newTop = headerCollapsed ? '0' : `${headerHeight}px`;
+        const newHeight = headerCollapsed ? '100vh' : `calc(100vh - ${headerHeight}px)`;
+        
+        console.log(`MapView: Setting initial map position - height: ${newHeight}, top: ${newTop}`);
+        
+        // Apply to wrapper
+        mapWrapper.style.height = newHeight;
+        mapWrapper.style.top = newTop;
+        
+        // Make sure map container properly fills its parent
+        mapContainer.style.position = 'absolute';
+        mapContainer.style.top = '0';
+        mapContainer.style.left = '0';
+        mapContainer.style.right = '0';
+        mapContainer.style.bottom = '0';
+        
+        // Force resize after a delay to ensure map is properly initialized
+        setTimeout(handleResize, 100);
+      }
+    }
+    
     // Clean up
     return () => {
       clearTimeout(resizeTimeout);
       window.removeEventListener('validationQueueToggle', handleResize);
-      window.removeEventListener('validationSidebarToggle', handleResize);
-      window.removeEventListener('leftSidebarToggle', handleResize);
+      window.removeEventListener('validationSidebarToggle', handleSidebarToggle);
+      window.removeEventListener('leftSidebarToggle', handleSidebarToggle);
+      window.removeEventListener('detectionSidebarToggle', handleSidebarToggle);
       window.removeEventListener('headerCollapse', handleHeaderCollapse);
       window.removeEventListener('resize', handleResize);
+      window.removeEventListener('forceCloseObjectDetection', handleResize);
+      window.removeEventListener('forceCloseImageryPanel', handleResize);
       
       if (mapContainer) {
         resizeObserver.unobserve(mapContainer);
@@ -1146,7 +1257,7 @@ const MapView = forwardRef(({ onDataLoaded, headerState }, ref) => {
       
       resizeObserver.disconnect();
     };
-  }, []);
+  }, [headerCollapsed]);
   
   // Listen for viewGeminiResponse events
   useEffect(() => {
