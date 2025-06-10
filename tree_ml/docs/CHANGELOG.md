@@ -5,7 +5,7 @@ All notable changes to the Tree ML project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.3] - 2025-06-07
+## [0.2.3] - 2025-06-09
 
 ### Changed
 - Replaced YOLO detection with DeepForest, SAM, and Gemini API integration
@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Restructured model architecture to support both local and external model servers
 - Simplified ML overlay implementation with integrated approach
 - Improved real-time opacity and visibility controls for detection overlay
+- Enhanced UI components with more consistent button styling and interaction
 
 ### Added
 - DeepForest integration for tree crown detection
@@ -31,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integrated ML overlay module directly in dashboard codebase
 - Enhanced detection sidebar with improved overlay controls
 - Immediate overlay display when detection sidebar is opened
+- Improved Analytics panel with consistent UI and better visibility for buttons
 
 ### Fixed
 - Resolved the issue with YOLO not detecting trees in satellite imagery by replacing it with models designed for aerial imagery
@@ -41,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed "Show Overlay" toggle functionality
 - Fixed objects counter consistency across multiple detections
 - Eliminated external script dependencies for ML overlay
+- Fixed styling of buttons in Analytics panel for better visibility and consistency
+- Fixed duplicate Analytics panel issue when clicking Analytics button
+- Improved sidebar behavior to ensure proper closing of all panels when opening a new one
 
 ## [0.2.2] - 2025-05-27
 

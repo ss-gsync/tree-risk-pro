@@ -436,20 +436,15 @@ For tree care professionals, please use arborist terminology where appropriate.`
     }
   };
   
-  // Function to close the panel
-  const closePanel = () => {
-    window.dispatchEvent(new CustomEvent('closeAnalyticsPanel', {
-      detail: { source: 'close_button' }
-    }));
-  };
+  // Function to close the panel - not needed now that we're using
+  // the parent's close functionality
 
+  // Important: We're rendering this component in App.jsx already,
+  // so don't create another fixed overlay here
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 animate-fadeIn"
-      onClick={closePanel} // Close when clicking the backdrop
-    >
+    <div className="h-full w-full">
       <div 
-        className="bg-white rounded-md shadow-xl overflow-hidden w-5/6 max-w-5xl h-5/6 flex flex-col animate-scaleIn"
+        className="bg-white rounded-md overflow-hidden w-full h-full flex flex-col"
         onClick={(e) => e.stopPropagation()} // Prevent closing when clicking the panel itself
       >
         {/* Header with Navigation tabs - Dark Emerald Green Theme */}
@@ -492,7 +487,9 @@ For tree care professionals, please use arborist terminology where appropriate.`
             </div>
             <button 
               className="text-emerald-200 hover:text-white focus:outline-none p-1 flex items-center mr-1"
-              onClick={closePanel}
+              onClick={() => window.dispatchEvent(new CustomEvent('closeAnalyticsPanel', {
+                detail: { source: 'close_button' }
+              }))}
               title="Close analytics panel"
             >
               <X size={16} />
@@ -733,17 +730,21 @@ For tree care professionals, please use arborist terminology where appropriate.`
                           </div>
                         )}
                         
-                        <div className="flex space-x-2 mt-3">
+                        <div className="grid grid-cols-2 gap-2 mt-4 w-full">
                           <Button 
-                            className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-1.5 h-auto rounded-md"
-                            onClick={() => setActiveTab('health')}
+                            className="w-full bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-2 h-auto rounded-md opacity-70 cursor-not-allowed"
+                            onClick={() => {}}
+                            disabled={true}
+                            style={{minWidth: "100%"}}
                           >
                             <CircleAlert className="h-3.5 w-3.5 mr-1.5" />
                             Edit Analysis
                           </Button>
                           <Button 
-                            className="flex-1 bg-white hover:bg-emerald-50 text-emerald-800 text-sm px-2 py-1.5 h-auto rounded-md border border-emerald-300"
-                            onClick={() => saveToValidationQueue()}
+                            className="w-full bg-white hover:bg-emerald-50 text-emerald-700 text-sm px-2 py-2 h-auto rounded-md border border-emerald-500 opacity-70 cursor-not-allowed"
+                            onClick={() => {}}
+                            disabled={true}
+                            style={{minWidth: "100%"}}
                           >
                             <Save className="h-3.5 w-3.5 mr-1.5" />
                             Save to Queue
@@ -760,21 +761,22 @@ For tree care professionals, please use arborist terminology where appropriate.`
                           </p>
                         </div>
                         
-                        <div className="mt-4 grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-2 gap-2 mt-4 w-full">
                           <Button 
-                            className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-2 h-auto rounded-md border border-emerald-600"
-                            onClick={() => setActiveTab('health')}
+                            className="w-full bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-2 h-auto rounded-md border border-emerald-600 opacity-70 cursor-not-allowed"
+                            onClick={() => {}}
+                            disabled={true}
+                            style={{minWidth: "100%"}}
                           >
                             <CircleAlert className="h-3.5 w-3.5 mr-1.5" />
                             Start Analysis
                           </Button>
                           
                           <Button 
-                            className="flex-1 bg-white hover:bg-emerald-50 text-emerald-800 font-semibold text-sm py-2 h-auto rounded-md border border-emerald-300"
-                            onClick={() => {
-                              // Display a dialog or modal to review the prompt
-                              alert("Review Prompt: This would show the current analysis prompt for review.");
-                            }}
+                            className="w-full bg-white hover:bg-emerald-50 text-emerald-700 font-semibold text-sm py-2 h-auto rounded-md border border-emerald-500 opacity-70 cursor-not-allowed"
+                            onClick={() => {}}
+                            disabled={true}
+                            style={{minWidth: "100%"}}
                           >
                             <FileCheck className="h-3.5 w-3.5 mr-1.5" />
                             Review Prompt
@@ -1075,30 +1077,21 @@ For tree care professionals, please use arborist terminology where appropriate.`
                       </div>
                       
                       {/* Add the buttons at the bottom of Health Assessment card */}
-                      <div className="mt-4 grid grid-cols-2 gap-2">
+                      <div className="mt-4 grid grid-cols-2 gap-2 w-full">
                         <Button 
-                          className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-2 h-auto rounded-md border border-emerald-600"
-                          onClick={handleGeminiAnalysis}
-                          disabled={isAnalyzing || !customQuery}
+                          className="w-full bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-2 h-auto rounded-md border border-emerald-600 opacity-70 cursor-not-allowed"
+                          onClick={() => {}}
+                          disabled={true}
+                          style={{minWidth: "100%"}}
                         >
-                          {isAnalyzing ? (
-                            <>
-                              <div className="h-3.5 w-3.5 mr-1.5 animate-spin border-2 border-white border-opacity-20 border-t-white rounded-full"></div>
-                              Analyzing...
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-                              Full Assessment
-                            </>
-                          )}
+                          <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                          Full Assessment
                         </Button>
                         <Button 
-                          className="flex-1 bg-white hover:bg-emerald-50 text-emerald-800 font-semibold text-sm py-2 h-auto rounded-md border border-emerald-300"
-                          onClick={() => {
-                            // Save health report
-                            alert("Health report saved successfully");
-                          }}
+                          className="w-full bg-white hover:bg-emerald-50 text-emerald-700 font-semibold text-sm py-2 h-auto rounded-md border border-emerald-500 opacity-70 cursor-not-allowed"
+                          onClick={() => {}}
+                          disabled={true}
+                          style={{minWidth: "100%"}}
                         >
                           <Save className="h-3.5 w-3.5 mr-1.5" />
                           Health Report
@@ -1260,15 +1253,19 @@ For tree care professionals, please use arborist terminology where appropriate.`
                         Species identification is based on visual recognition and database matching.
                       </p>
                       
-                      <div className="grid grid-cols-2 gap-3 mt-4">
+                      <div className="grid grid-cols-2 gap-2 mt-4 w-full">
                         <Button 
-                          className="flex-1 bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-1.5 h-auto rounded-md"
+                          className="w-full bg-emerald-800 hover:bg-emerald-700 text-white shadow-[0_1px_2px_0_rgba(6,78,59,0.1)] text-sm py-2 h-auto rounded-md opacity-70 cursor-not-allowed"
+                          disabled={true}
+                          style={{minWidth: "100%"}}
                         >
                           <Search className="h-3.5 w-3.5 mr-1.5" />
                           Analyze Image
                         </Button>
                         <Button 
-                          className="flex-1 bg-white hover:bg-emerald-50 text-emerald-800 text-sm px-2 py-1.5 h-auto rounded-md border border-emerald-300"
+                          className="w-full bg-white hover:bg-emerald-50 text-emerald-700 text-sm px-2 py-2 h-auto rounded-md border border-emerald-500 opacity-70 cursor-not-allowed"
+                          disabled={true}
+                          style={{minWidth: "100%"}}
                         >
                           <FileText className="h-3.5 w-3.5 mr-1.5" />
                           View Species Data

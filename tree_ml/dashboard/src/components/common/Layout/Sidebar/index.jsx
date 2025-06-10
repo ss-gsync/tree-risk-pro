@@ -422,7 +422,7 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                 >
                   {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
                 </button>
-                {!collapsed && <h3 className="text-sm font-semibold text-gray-700 cursor-pointer hover:text-gray-900" onClick={toggleSidebar}>Map Controls</h3>}
+                {!collapsed && <h3 className="text-sm font-semibold text-gray-700 cursor-pointer hover:text-gray-900" onClick={toggleSidebar}>Controls</h3>}
               </div>
             </div>
           </div>
@@ -435,8 +435,8 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
               )}
               
               {/* Reports & Review buttons */}
-              <div className="mt-2">
-                <div className="border-t border-gray-200 mb-2"></div>
+              <div className="mt-4">
+                <div className="border-t border-gray-200 mb-4"></div>
                 <div className="grid grid-cols-2 gap-2">
                   {/* Reports Button */}
                   <button
@@ -473,7 +473,10 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                         window.dispatchEvent(new Event('resize'));
                       }, 100);
                     }}
-                    className="flex items-center justify-center p-2 bg-gray-50 text-gray-600 hover:bg-gray-100 rounded-md"
+                    className="flex items-center justify-center p-2 rounded-md border border-gray-300 shadow-sm"
+                    style={{ backgroundColor: '#f5f5f5', color: '#4b5563' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e5e5e5'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
                   >
                     <FileText className="h-4 w-4 mr-2" />
                     <span className="text-xs font-medium">Reports</span>
@@ -509,7 +512,10 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                         }
                       }));
                     }}
-                    className="flex items-center justify-center p-2 bg-gray-50 text-gray-600 hover:bg-gray-100 rounded-md"
+                    className="flex items-center justify-center p-2 rounded-md border border-gray-300 shadow-sm"
+                    style={{ backgroundColor: '#f5f5f5', color: '#4b5563' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e5e5e5'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f5f5f5'}
                   >
                     <ClipboardList className="h-4 w-4 mr-2" />
                     <span className="text-xs font-medium">Validate</span>
@@ -566,7 +572,7 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                     }
                   }));
                 }}
-                className="flex items-center justify-center p-2 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 rounded-md cursor-pointer"
+                className="flex items-center justify-center p-2 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 rounded-md cursor-pointer border border-indigo-200"
               >
                 <Layers className={`h-4 w-4 ${!collapsed && 'mr-1'}`} />
                 {!collapsed && <span className="text-xs">Aerial</span>}
@@ -1002,7 +1008,7 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                     }, 300);
                   }
                 }}
-                className="flex items-center justify-center p-2 bg-blue-50 text-blue-900 hover:bg-blue-100 rounded-md cursor-pointer"
+                className="flex items-center justify-center p-2 bg-blue-50 text-blue-900 hover:bg-blue-100 rounded-md cursor-pointer border border-blue-200"
               >
                 <Box className={`h-4 w-4 ${!collapsed && 'mr-1'}`} />
                 {!collapsed && <span className="text-xs">Detection</span>}
@@ -1269,13 +1275,23 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
               {/* Analytics Button */}
               <button
                 onClick={() => {
-                  // First, make sure other panels are closed
-                  const closeImageryEvent = new CustomEvent('forceCloseImageryPanel', {
+                  // First, close ALL sidebars
+                  window.dispatchEvent(new CustomEvent('forceCloseImageryPanel', {
                     detail: { source: 'analytics' }
-                  });
-                  window.dispatchEvent(closeImageryEvent);
+                  }));
                   
-                  // Exit any active validation mode
+                  window.dispatchEvent(new CustomEvent('forceCloseObjectDetection', {
+                    detail: { source: 'analytics' }
+                  }));
+                  
+                  window.dispatchEvent(new CustomEvent('forceCloseTreeDatabase', {
+                    detail: { source: 'analytics' }
+                  }));
+                  
+                  window.dispatchEvent(new CustomEvent('closeReviewPanel', {
+                    detail: { source: 'analytics' }
+                  }));
+                  
                   window.dispatchEvent(new CustomEvent('exitValidationMode', {
                     detail: { 
                       source: 'analytics', 
@@ -1283,18 +1299,25 @@ const Sidebar = ({ onNavigate, mapRef, mapDataRef }) => {
                     }
                   }));
                   
-                  // Close the Review panel if it's open
-                  window.dispatchEvent(new CustomEvent('closeReviewPanel', {
-                    detail: { source: 'analytics' }
-                  }));
+                  // Reset map container to full width
+                  const mapContainer = document.getElementById('map-container');
+                  if (mapContainer) {
+                    mapContainer.style.right = '0';
+                  }
                   
-                  // Create a custom event to open the analytics panel
-                  const analyticsEvent = new CustomEvent('openAnalyticsPanel', {
-                    detail: {
-                      source: 'sidebar'
-                    }
-                  });
-                  window.dispatchEvent(analyticsEvent);
+                  // Force resize event after closing sidebars
+                  setTimeout(() => {
+                    window.dispatchEvent(new Event('resize'));
+                  }, 100);
+                  
+                  // Finally, open the analytics panel
+                  setTimeout(() => {
+                    window.dispatchEvent(new CustomEvent('openAnalyticsPanel', {
+                      detail: {
+                        source: 'sidebar'
+                      }
+                    }));
+                  }, 150);
                 }}
                 className="flex items-center justify-center p-2 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 rounded-md cursor-pointer border border-emerald-300/20"
               >

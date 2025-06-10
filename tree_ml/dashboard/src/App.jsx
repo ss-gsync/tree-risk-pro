@@ -563,21 +563,7 @@ const AerialImagery = () => {
 };
 
 // Analytics sidebar component
-const AnalyticsSidebar = () => {
-  // Use the existing AnalyticsPanel component for consistent behavior
-  return (
-    <ResizableSidebar
-      id="analytics-sidebar"
-      title="Analytics"
-      icon={BarChart}
-      color="dark-purple"
-      openEventName="openAnalyticsPanel"
-      closeEventName="closeAnalyticsPanel"
-    >
-      <AnalyticsPanel />
-    </ResizableSidebar>
-  );
-};
+// AnalyticsSidebar removed - analytics now shown in popup window
 
 // Database sidebar component
 const DatabaseSidebar = () => {
@@ -1821,6 +1807,30 @@ const DashboardContent = () => {
   const [currentView, setCurrentView] = useState('Reports'); // Default to Reports view instead of Map
   const [selectedObject, setSelectedObject] = useState(null); // For object reports from database
   const [headerCollapsed, setHeaderCollapsed] = useState(false); // Track header collapse state
+  const [showAnalyticsPopup, setShowAnalyticsPopup] = useState(false); // For analytics popup window
+  
+  // Effect to handle opening/closing analytics popup
+  React.useEffect(() => {
+    const handleOpenAnalytics = () => {
+      console.log('Opening analytics popup');
+      setShowAnalyticsPopup(true);
+    };
+    
+    const handleCloseAnalytics = () => {
+      console.log('Closing analytics popup');
+      setShowAnalyticsPopup(false);
+    };
+    
+    // Add event listeners
+    window.addEventListener('openAnalyticsPanel', handleOpenAnalytics);
+    window.addEventListener('closeAnalyticsPanel', handleCloseAnalytics);
+    
+    // Clean up event listeners
+    return () => {
+      window.removeEventListener('openAnalyticsPanel', handleOpenAnalytics);
+      window.removeEventListener('closeAnalyticsPanel', handleCloseAnalytics);
+    };
+  }, []);
   
   // Header collapse state tracking
   React.useEffect(() => {
@@ -1871,18 +1881,283 @@ const DashboardContent = () => {
   React.useEffect(() => {
     // Handler for 3D view toggle request from MapControls
     const handleToggle3DViewRequest = (event) => {
-      const { show3D } = event.detail;
+      const { show3D, directLoad } = event.detail;
       setShowNewInterface(false); // Always stay in Classic View
       
-      // Set global flag for 3D mode
+      console.log("3D view toggle request:", { show3D, directLoad });
+      
+      // Set global flags for 3D mode - use multiple for compatibility
       window.is3DModeActive = show3D;
+      window.is3DMode = show3D;
+      window._is3DMode = show3D;
+      
+      // CRITICAL FIX: Trigger map updates
+      console.log(`DIRECT 3D TOGGLE: ${show3D ? 'Enabling' : 'Disabling'} 3D Mode`);
+      
+      // CRITICAL: Make sure we navigate to Map view first, not Reports view
+      if (currentView !== 'Map') {
+        console.log('Switching to Map view for 3D toggle');
+        
+        // If directLoad is true, set currentView directly to avoid rerender of 2D map
+        if (directLoad === true) {
+          console.log('Direct load mode - skipping intermediate map view');
+          setCurrentView('Map');
+          
+          // Don't dispatch a second navigation event to avoid loops
+        } else {
+          // Standard approach - navigate and preserve 3D state
+          setCurrentView('Map');
+          
+          // Also trigger navigation event for consistency
+          window.dispatchEvent(new CustomEvent('navigateTo', {
+            detail: { 
+              view: 'Map',
+              preserve3DState: true,
+              is3DMode: show3D
+            }
+          }));
+        }
+      }
+      
+      // Store current map type before switching to 3D
+      if (show3D) {
+        // Save current map type for when returning to 2D
+        const currentMapInstance = window._map || window.googleMapsInstance || window._googleMap;
+        if (currentMapInstance && currentMapInstance.getMapTypeId) {
+          const currentMapTypeId = currentMapInstance.getMapTypeId();
+          console.log("Saving current map type before 3D:", currentMapTypeId);
+          localStorage.setItem('lastMapTypeBefore3D', currentMapTypeId);
+        }
+      }
+      
+      // Load the appropriate viewer based on 3D/2D mode
+      if (show3D) {
+        console.log("Loading 3D viewer...");
+        
+        // Force immediate loading of Cesium 3D viewer
+        try {
+          // Handle direct loading differently
+          if (directLoad === true) {
+            console.log("DIRECT LOAD mode - ensuring Cesium loads immediately without intermediate steps");
+          }
+          
+          // Dispatch event to load Cesium
+          window.dispatchEvent(new CustomEvent('loadCesium3D', {
+            detail: { 
+              immediate: true,
+              directLoad: directLoad
+            }
+          }));
+          
+          // Force map container to rebuild with 3D viewer
+          const mapContainer = document.getElementById('map-container');
+          if (mapContainer) {
+            // Apply special class to indicate 3D mode
+            mapContainer.classList.add('mode-3d');
+            
+            // Get current map center and zoom for 3D view
+            const currentMapInstance = window._map || window.googleMapsInstance || window._googleMap;
+            if (currentMapInstance) {
+              try {
+                const center = currentMapInstance.getCenter();
+                const zoom = currentMapInstance.getZoom();
+                
+                // Store current view for 3D viewer to use
+                window._map3DInitialView = {
+                  center: [center.lng(), center.lat()],
+                  zoom: zoom
+                };
+                
+                console.log("Stored initial 3D view:", window._map3DInitialView);
+              } catch (e) {
+                console.error("Error capturing initial view for 3D:", e);
+              }
+            }
+            
+            // Clear and set up for 3D viewer
+            console.log("Setting up 3D viewer container");
+            
+            // Get Cesium reference if available
+            const cesiumContainer = document.getElementById('cesium-container');
+            
+            // Check if Cesium container exists, create it if not
+            if (!cesiumContainer) {
+              console.log("Creating Cesium container");
+              const newCesiumContainer = document.createElement('div');
+              newCesiumContainer.id = 'cesium-container';
+              newCesiumContainer.className = 'cesium-viewer-container';
+              newCesiumContainer.style.position = 'absolute';
+              newCesiumContainer.style.top = '0';
+              newCesiumContainer.style.left = '0';
+              newCesiumContainer.style.width = '100%';
+              newCesiumContainer.style.height = '100%';
+              newCesiumContainer.style.zIndex = '50';
+              
+              // Append to map container
+              mapContainer.appendChild(newCesiumContainer);
+            }
+            
+            // First try direct method
+            if (typeof window.initCesium3DView === 'function') {
+              console.log("Initializing Cesium 3D viewer directly");
+              window.initCesium3DView(true);
+            }
+            // Then try direct access to Cesium object
+            else if (typeof Cesium !== 'undefined') {
+              console.log("Initializing Cesium using global Cesium object");
+              try {
+                // Create viewer with terrain
+                window.cesiumViewer = new Cesium.Viewer('cesium-container', {
+                  terrainProvider: Cesium.createWorldTerrain(),
+                  baseLayerPicker: false,
+                  infoBox: false
+                });
+                
+                // Set view to current map center
+                if (window._map3DInitialView) {
+                  const {center, zoom} = window._map3DInitialView;
+                  // Convert to Cesium coordinates and zoom
+                  window.cesiumViewer.camera.flyTo({
+                    destination: Cesium.Cartesian3.fromDegrees(center[0], center[1], 1000)
+                  });
+                }
+              } catch (e) {
+                console.error("Error initializing Cesium viewer:", e);
+                // Fall back to Google Maps 3D
+                fallbackToGoogleMaps3D();
+              }
+            }
+            // Fallback to Google Maps 3D
+            else {
+              fallbackToGoogleMaps3D();
+            }
+            
+            function fallbackToGoogleMaps3D() {
+              console.log("Falling back to Google Maps 3D");
+              // Get map instance
+              const mapInstance = window._map || window.googleMapsInstance || window._googleMap;
+              if (mapInstance && typeof mapInstance.setTilt === 'function') {
+                // Set 3D mode with tilt
+                console.log("Setting Google Maps 3D tilt");
+                mapInstance.setMapTypeId(window.google.maps.MapTypeId.HYBRID);
+                mapInstance.setTilt(45);
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Error initializing 3D view:", e);
+        }
+      } else {
+        // Switching to 2D mode
+        console.log("Switching back to 2D mode");
+        
+        try {
+          // Remove 3D mode class
+          const mapContainer = document.getElementById('map-container');
+          if (mapContainer) {
+            mapContainer.classList.remove('mode-3d');
+          }
+          
+          // Terminate Cesium if it's active
+          if (typeof window.terminateCesium3DView === 'function') {
+            console.log("Terminating Cesium 3D viewer via terminateCesium3DView");
+            window.terminateCesium3DView();
+          }
+          
+          // If cesiumViewer exists, try to destroy it directly
+          if (window.cesiumViewer) {
+            try {
+              console.log("Destroying Cesium viewer directly");
+              window.cesiumViewer.destroy();
+              window.cesiumViewer = null;
+            } catch (e) {
+              console.error("Error destroying Cesium viewer:", e);
+            }
+          }
+          
+          // Remove the cesium container from DOM
+          const cesiumContainer = document.getElementById('cesium-container');
+          if (cesiumContainer && cesiumContainer.parentNode) {
+            console.log("Removing Cesium container from DOM");
+            cesiumContainer.parentNode.removeChild(cesiumContainer);
+          }
+          
+          // Restore 2D Google Maps with saved map type
+          const mapInstance = window._map || window.googleMapsInstance || window._googleMap;
+          if (mapInstance) {
+            // Set tilt to 0 for 2D mode
+            if (typeof mapInstance.setTilt === 'function') {
+              mapInstance.setTilt(0);
+              console.log("Set tilt=0 for 2D mode");
+            }
+            
+            // Restore previous map type
+            try {
+              const savedMapType = localStorage.getItem('lastMapTypeBefore3D');
+              if (savedMapType && typeof mapInstance.setMapTypeId === 'function') {
+                console.log("Restoring previous map type:", savedMapType);
+                mapInstance.setMapTypeId(savedMapType);
+              }
+            } catch (e) {
+              console.error("Error restoring map type:", e);
+            }
+          }
+        } catch (e) {
+          console.error("Error returning to 2D mode:", e);
+        }
+      }
+      
+      // Dispatch a mapModeChanged event for components to respond to
+      window.dispatchEvent(new CustomEvent('mapModeChanged', {
+        detail: { 
+          mode: show3D ? '3D' : '2D', 
+          tilt: show3D ? 45 : 0 
+        }
+      }));
+      
+      // Force UI refresh to make sure changes take effect
+      window.dispatchEvent(new Event('resize'));
+      
+      // Update map-related UI elements to reflect 3D state
+      const map3DButton = document.querySelector('button[title="3D View"]');
+      const mapTypeButton = document.getElementById('map-type-toggle-button');
+      
+      if (map3DButton && mapTypeButton) {
+        if (show3D) {
+          // 3D mode is active - highlight 3D button, deactivate map type button
+          map3DButton.classList.add('active-3d-button');
+          mapTypeButton.classList.remove('active-map-button');
+        } else {
+          // 2D mode is active - highlight map type button, deactivate 3D button
+          map3DButton.classList.remove('active-3d-button');
+          mapTypeButton.classList.add('active-map-button');
+        }
+      }
     };
     
     // Handler for navigation events from components
     const handleNavigationEvent = (event) => {
-      const { view } = event.detail;
+      const { view, is3DMode, force3D } = event.detail;
       if (view) {
-        console.log("Navigation event received:", view);
+        console.log("Navigation event received:", view, is3DMode ? "with 3D mode" : "", force3D ? "(forced)" : "");
+        
+        // If force3D is true, set the global 3D mode flags immediately
+        if (force3D === true) {
+          console.log("Forcing 3D mode before navigation");
+          window.is3DModeActive = true;
+          window.is3DMode = true;
+          window._is3DMode = true;
+          
+          // Also directly trigger 3D mode to ensure it loads properly
+          window.dispatchEvent(new CustomEvent('requestToggle3DViewType', {
+            detail: { 
+              show3D: true,
+              directLoad: true
+            }
+          }));
+        }
+        
+        // Navigate to the requested view
         handleNavigation(view);
       }
     };
@@ -2375,7 +2650,7 @@ const DashboardContent = () => {
       let rightMargin = 0;
       const rightSidebars = [
         document.getElementById('imagery-sidebar'),
-        document.getElementById('analytics-sidebar'),
+        // 'analytics-sidebar' removed - analytics now shown in popup window
         document.getElementById('validation-sidebar'),
         document.getElementById('database-sidebar'),
         document.getElementById('review-panel')
@@ -2676,7 +2951,8 @@ const DashboardContent = () => {
           console.log("Preserving 3D mode state:", window.is3DModeActive);
           // Dispatch an event to ensure 3D mode is maintained if needed
           if (window.is3DModeActive) {
-            // Wait a small delay to ensure the map is ready before applying 3D mode
+            console.log("Map view with 3D mode active - ensuring Cesium loads");
+            // No delay needed - directly trigger 3D mode
             setTimeout(() => {
               window.dispatchEvent(new CustomEvent('mapModeChanged', { 
                 detail: { mode: '3D', tilt: 45 } 
@@ -2693,6 +2969,16 @@ const DashboardContent = () => {
 
   return (
     <Layout mapRef={mapRef} mapDataRef={mapDataRef} onNavigate={handleNavigation}>
+      {/* Analytics Popup */}
+      {showAnalyticsPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 z-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-6xl h-5/6 max-h-screen flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-auto">
+              <AnalyticsPanel />
+            </div>
+          </div>
+        </div>
+      )}
       <Suspense fallback={<LoadingSpinner />}>
         {currentView === 'Settings' ? (
           <SettingsPanel />
@@ -2706,7 +2992,6 @@ const DashboardContent = () => {
             {/* DetectionSidebar is now managed by MapView directly */}
             <AerialImagery />
             <ValidationSidebar />
-            <AnalyticsSidebar />
             <DatabaseSidebar />
           </div>
         ) : currentView === 'ObjectReport' ? (
@@ -2725,7 +3010,6 @@ const DashboardContent = () => {
             {/* DetectionSidebar is now managed by MapView directly */}
             <AerialImagery />
             <ValidationSidebar />
-            <AnalyticsSidebar />
             <DatabaseSidebar />
           </div>
         ) : (
@@ -2750,8 +3034,7 @@ const DashboardContent = () => {
               {/* DetectionSidebar is now managed by MapView directly */}
               <AerialImagery />
               <ValidationSidebar />
-              <AnalyticsSidebar />
-              <DatabaseSidebar />
+                <DatabaseSidebar />
             </div>
           )
         )}
