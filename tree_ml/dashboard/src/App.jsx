@@ -103,8 +103,8 @@ const ResizableSidebar = ({
       const isCollapsed = event.detail.collapsed;
       setHeaderCollapsed(isCollapsed);
       
-      // Also update all sidebar positions immediately to be responsive to header changes
-      // This ensures sidebars don't overlap the header when it expands or collapses
+      // CRITICAL FIX: Adjust all main containers to respond to header state
+      // 1. Update all sidebar positions
       const sidebarElements = document.querySelectorAll('[id$="-sidebar"]');
       sidebarElements.forEach(sidebar => {
         if (sidebar) {
@@ -115,14 +115,64 @@ const ResizableSidebar = ({
           }
         }
       });
+      
+      // 2. Update map-wrapper for proper map container sizing
+      const mapWrapper = document.getElementById('map-wrapper');
+      if (mapWrapper) {
+        try {
+          if (isCollapsed) {
+            mapWrapper.style.height = '100vh';
+          } else {
+            mapWrapper.style.height = '';  // Let CSS handle it
+          }
+          console.log(`App: Set map-wrapper height ${isCollapsed ? 'to 100vh' : 'to default'}`);
+        } catch (e) {
+          console.warn("Could not update map-wrapper:", e);
+        }
+      }
+      
+      // 3. Fix report-container height and position
+      const reportContainer = document.getElementById('report-container');
+      if (reportContainer) {
+        try {
+          if (isCollapsed) {
+            reportContainer.style.height = 'calc(100vh - 40px)';
+            reportContainer.style.top = '40px';
+          } else {
+            reportContainer.style.height = 'calc(100vh - 64px)';
+            reportContainer.style.top = '64px';
+          }
+          console.log(`App: Updated report-container for ${isCollapsed ? 'collapsed' : 'expanded'} header`);
+        } catch (e) {
+          console.warn("Could not update report-container:", e);
+        }
+      }
+      
+      // 4. Trigger resize event to ensure all components update
+      setTimeout(() => {
+        window.dispatchEvent(new Event('resize'));
+      }, 50);
     };
     
     window.addEventListener('headerCollapse', handleHeaderCollapse);
     
+    // Also check header state on initial render
+    const header = document.querySelector('header');
+    if (header) {
+      const isInitiallyCollapsed = header.offsetHeight < 50 || header.classList.contains('collapsed');
+      if (isInitiallyCollapsed && !headerCollapsed) {
+        // Update state and dispatch event
+        setHeaderCollapsed(true);
+        window.dispatchEvent(new CustomEvent('headerCollapse', {
+          detail: { collapsed: true }
+        }));
+      }
+    }
+    
     return () => {
       window.removeEventListener('headerCollapse', handleHeaderCollapse);
     };
-  }, []);
+  }, [headerCollapsed]);
   
   // Handle mouse movement for resize
   React.useEffect(() => {
@@ -2985,7 +3035,19 @@ const DashboardContent = () => {
         ) : currentView === 'Reports' ? (
           // Default view - Reports Overview with sidebars
           <div className="h-full w-full relative">
-            <div className="w-full h-full overflow-auto" id="report-container" style={{position: 'relative'}}>
+            <div 
+              className="w-full overflow-auto" 
+              id="report-container" 
+              style={{
+                position: 'absolute',
+                top: headerCollapsed ? '40px' : '64px',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: headerCollapsed ? 'calc(100vh - 40px)' : 'calc(100vh - 64px)',
+                transition: 'top 0.2s, height 0.2s'
+              }}
+            >
               <ReportsOverview onNavigate={handleNavigation} />
             </div>
             {/* All sidebars - positioned absolutely through their own internal styling */}
@@ -2997,7 +3059,19 @@ const DashboardContent = () => {
         ) : currentView === 'ObjectReport' ? (
           // Object Report view with sidebars - simplified layout
           <div className="h-full w-full relative">
-            <div className="w-full h-full overflow-auto" id="report-container" style={{position: 'relative'}}>
+            <div 
+              className="w-full overflow-auto" 
+              id="report-container" 
+              style={{
+                position: 'absolute',
+                top: headerCollapsed ? '40px' : '64px',
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: headerCollapsed ? 'calc(100vh - 40px)' : 'calc(100vh - 64px)',
+                transition: 'top 0.2s, height 0.2s'
+              }}
+            >
               <ObjectReport 
                 object={selectedObject} 
                 onBackToReports={() => {

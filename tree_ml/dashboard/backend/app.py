@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 
 # Third-party imports
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, redirect
 from flask_cors import CORS
 
 # Fix for module name conflict with Python's built-in 'code' module
@@ -1410,6 +1410,61 @@ def create_app():
             )
         except Exception as e:
             logger.error(f"Error serving ML data file: {str(e)}")
+            return jsonify({"error": str(e)}), 500
+            
+    # Add unified compatibility route for /detection/ paths
+    @app.route('/detection/<path:filepath>', methods=['GET'])
+    def serve_detection_data(filepath):
+        """Compatibility route for /detection/ paths - maps to /ttt/data/ml"""
+        try:
+            # Log the request
+            logger.info(f"Received request for /detection/{filepath}, mapping to /ttt/data/ml/{filepath}")
+            
+            # First, check if this is a special resource type that needs redirection
+            parts = filepath.split('/')
+            detection_id = parts[0] if parts else ""
+            resource_type = parts[1] if len(parts) > 1 else ""
+            
+            # Check if we should redirect to a specific API endpoint
+            if resource_type == "visualization":
+                logger.info(f"Redirecting to visualization API endpoint for {detection_id}")
+                return redirect(f"/api/ml/detection/{detection_id}/visualization")
+            elif resource_type == "trees":
+                logger.info(f"Redirecting to trees API endpoint for {detection_id}")
+                return redirect(f"/api/ml/detection/{detection_id}/trees")
+            elif resource_type == "satellite":
+                logger.info(f"Redirecting to satellite API endpoint for {detection_id}")
+                return redirect(f"/api/ml/detection/{detection_id}/satellite")
+            
+            # If no redirection, serve the file directly from /ttt/data/ml
+            ml_path = os.path.join('/ttt/data/ml', filepath)
+            
+            # Extract directory and filename
+            directory = os.path.dirname(ml_path)
+            filename = os.path.basename(ml_path)
+            
+            # Check if the file exists
+            if not os.path.exists(ml_path):
+                logger.warning(f"ML data file not found: {ml_path}")
+                return jsonify({"error": f"File not found: {filepath}"}), 404
+                
+            # Determine MIME type
+            mime_type = 'application/octet-stream'  # Default
+            if filepath.endswith('.jpg') or filepath.endswith('.jpeg'):
+                mime_type = 'image/jpeg'
+            elif filepath.endswith('.png'):
+                mime_type = 'image/png'
+            elif filepath.endswith('.json'):
+                mime_type = 'application/json'
+                
+            # Serve the file
+            return send_from_directory(
+                directory,
+                filename,
+                mimetype=mime_type
+            )
+        except Exception as e:
+            logger.error(f"Error serving detection data from compatibility route: {str(e)}")
             return jsonify({"error": str(e)}), 500
             
     # Route to serve ML detection specific endpoints

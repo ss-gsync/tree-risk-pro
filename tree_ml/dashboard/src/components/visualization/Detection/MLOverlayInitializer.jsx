@@ -375,14 +375,8 @@ const MLOverlayInitializer = () => {
           }
         }
           
-        // Force Google Maps to resize for proper alignment
-        if (window.google && window.google.maps) {
-          const mapInstance = window.map || window.googleMapsInstance || window._googleMap;
-          if (mapInstance) {
-            window.google.maps.event.trigger(mapInstance, 'resize');
-            console.log('MLOverlayInitializer: Forced Google Maps resize after detection trigger');
-          }
-        }
+        // Avoid forcing map resize here to prevent resize loops
+        // The map resize will be handled by MapView's resize handler
       } else {
         // If no overlay exists yet, we'll need to initialize it correctly once created
         console.log('MLOverlayInitializer: No existing overlay, will apply sizing on creation');
