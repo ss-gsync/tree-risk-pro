@@ -242,7 +242,7 @@ This section provides step-by-step instructions for deploying Tree ML on a T4 GP
 8. **Configure run_model_server.sh**:
    ```bash
    # Create or edit the run script
-   cat > /ttt/tree_ml/pipeline/run_model_server.sh << EOL
+   cat > /ttt/tree_ml/pipeline/run_model_server.sh << 'EOL'
    #!/bin/bash
    # T4 Model Server Launch Script
    
@@ -250,20 +250,20 @@ This section provides step-by-step instructions for deploying Tree ML on a T4 GP
    source /home/ss/tree_ml/bin/activate
    
    # Set the environment
-   export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:\$PYTHONPATH
+   export PYTHONPATH=/ttt/tree_ml:/ttt/tree_ml/pipeline:/ttt/tree_ml/pipeline/grounded-sam:/ttt/tree_ml/pipeline/grounded-sam/GroundingDINO:/ttt/tree_ml/pipeline/grounded-sam/segment_anything:$PYTHONPATH
    export CUDA_HOME=/usr/lib/nvidia-cuda-toolkit
    
    # Set LD_LIBRARY_PATH to include PyTorch libraries
    if python -c "import torch" &>/dev/null; then
-       PYTORCH_PATH=\$(python -c "import torch, os; print(os.path.dirname(torch.__file__))")
-       if [ -d "\$PYTORCH_PATH/lib" ]; then
-           export LD_LIBRARY_PATH=\$PYTORCH_PATH/lib:\$LD_LIBRARY_PATH
-           echo "Added PyTorch libraries to LD_LIBRARY_PATH: \$PYTORCH_PATH/lib"
+       PYTORCH_PATH=$(python -c "import torch, os; print(os.path.dirname(torch.__file__))")
+       if [ -d "$PYTORCH_PATH/lib" ]; then
+           export LD_LIBRARY_PATH=$PYTORCH_PATH/lib:$LD_LIBRARY_PATH
+           echo "Added PyTorch libraries to LD_LIBRARY_PATH: $PYTORCH_PATH/lib"
        fi
    fi
    
    # Verify CUDA setup
-   if [ -x "\$(command -v nvidia-smi)" ]; then
+   if [ -x "$(command -v nvidia-smi)" ]; then
        nvidia-smi
        export CUDA_DEVICE_ORDER=PCI_BUS_ID
        export CUDA_VISIBLE_DEVICES=0
@@ -283,22 +283,27 @@ This section provides step-by-step instructions for deploying Tree ML on a T4 GP
    if ! python -c "from groundingdino import _C" &>/dev/null; then
        echo "Building GroundingDINO CUDA extension..."
        cd /ttt/tree_ml/pipeline/grounded-sam/GroundingDINO
+       # Ensure directory structure is correct
+       mkdir -p groundingdino
+       touch groundingdino/__init__.py
        python setup.py build develop
        cd /ttt/tree_ml
    fi
    
-   # Create log directory
+   # Create log and output directories
    mkdir -p /ttt/tree_ml/logs
+   mkdir -p /ttt/data/ml
    
    # Start the model server
    echo "Starting Model Server..."
-   python /ttt/tree_ml/pipeline/model_server.py --port 8000 --host 0.0.0.0 \\
-       --model-dir /ttt/tree_ml/pipeline/model \\
-       --output-dir /ttt/data/ml \\
+   python /ttt/tree_ml/pipeline/model_server.py --port 8000 --host 0.0.0.0 \
+       --model-dir /ttt/tree_ml/pipeline/model \
+       --output-dir /ttt/data/ml \
        --device cuda
    EOL
    
    # Make the script executable
+   chmod +x /ttt/tree_ml/pipeline/run_model_server.sh
    chmod +x /ttt/tree_ml/pipeline/run_model_server.sh
    ```
 
